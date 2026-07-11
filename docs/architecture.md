@@ -57,7 +57,7 @@ Each layer maps to a real directory in the repository.
 
 | Layer | Directory | Responsibility |
 |---|---|---|
-| Rust backend | `src-tauri/src/` | Implemented: file IO (`read_document`) and `app_version`. Planned: recent files, native menus, window state, secure store |
+| Rust backend | `src-tauri/src/` | Implemented: file read (`read_document`) and `app_version`, plus the dialog and fs plugins (save dialog and file writing). Planned: recent files, native menus, window state, secure store |
 | Static assets | `public/` | Files served verbatim by Vite (currently empty; the PDF.js worker is bundled via a `?url` import, not placed here) |
 | UI components | `src/components/` | `Viewer/`, `Toolbar/`, `Sidebar/`, `Search/`, `common/` (`common/` also holds `toastStore`) |
 | Command registry | `src/commands/` | Every user action as a `Command`; single dispatch point |
@@ -66,6 +66,8 @@ Each layer maps to a real directory in the repository.
 | Theming | `src/theme/` | `ThemeProvider`, design tokens (`tokens.css`), reading modes, `themeStore` |
 | Accessibility | `src/a11y/` | Announcer (live region), focus trap, keyboard shortcut dispatch, skip link |
 | Annotations | `src/features/annotations/` | Annotation model, `store` (localStorage sidecar), and tools |
+| Signatures | `src/features/signatures/` | Signature creation (draw/type/upload), on-page placement, per-document `store` |
+| Save / export | `src/features/export/` | Writes the filled PDF (PDF.js `saveDocument`) and stamps signatures with pdf-lib |
 | Plugins | `src/plugins/` | Plugin host, SDK types, `contributionStore`, `builtins/` |
 | AI layer | `src/ai/` | `aiStore`, `providers/` (`AIProvider` impls, Claude default), `mcp/` (experimental MCP transport) |
 
@@ -121,10 +123,14 @@ interface PdfEngine {
   getPageDimensions(pageNumber: number, scale: number): Promise<PageDimensions>;
   renderPage(pageNumber: number, options: RenderPageOptions): Promise<void>;
   renderTextLayer(pageNumber: number, container: HTMLElement, scale: number): Promise<void>;
+  renderAnnotationLayer(pageNumber: number, container: HTMLElement, scale: number): Promise<void>;
   getPageText(pageNumber: number): Promise<string>;
   getOutline(): Promise<OutlineNode[]>;
   getMetadata(): Promise<PdfMetadata>;
   search(query: string, options?: { limit?: number }): Promise<SearchMatch[]>;
+  hasFormFields(): Promise<boolean>;
+  getPendingEditCount(): number;
+  saveDocument(): Promise<Uint8Array>;
 }
 ```
 
@@ -214,7 +220,7 @@ Implemented today (`src-tauri/src/lib.rs`), the two registered commands are:
 - **`read_document(path)`.** Read a PDF from disk and return its raw bytes to the frontend. It returns a Tauri `Response` (a binary body the frontend receives as an `ArrayBuffer`) rather than a JSON array, so a multi-megabyte PDF is not serialized number-by-number. It rejects paths that do not end in `.pdf`. The frontend receives bytes, never raw file-system access.
 - **`app_version()`.** Return the running version string, sourced from `Cargo.toml`.
 
-The native file picker is provided by `tauri-plugin-dialog` (registered in `run()`), not a custom command.
+The native open and save pickers are provided by `tauri-plugin-dialog`, and file writing (saving a filled/signed copy) by `tauri-plugin-fs` (`writeFile`), both registered in `run()` rather than as custom commands. The fs write capability is scoped to the user's home directory tree in `capabilities/default.json`. The document is prepared for saving in the frontend: PDF.js `saveDocument()` writes filled form values, then pdf-lib stamps placed signatures (see `src/features/export/`).
 
 Planned Rust-side responsibilities (documented in the `lib.rs` module comment, not yet built):
 

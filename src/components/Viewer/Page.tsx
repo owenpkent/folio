@@ -5,6 +5,7 @@ import 'pdfjs-dist/web/pdf_viewer.css';
 
 import { getEngine } from '@/core/pdf';
 import { AnnotationLayer } from '@/features/annotations';
+import { SignatureLayer } from '@/features/signatures';
 import { pluginHost } from '@/plugins';
 
 interface PageProps {
@@ -20,6 +21,7 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
+  const formsLayerRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState<{ width: number; height: number } | null>(null);
   const [visible, setVisible] = useState(false);
 
@@ -74,6 +76,9 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
         if (textLayerRef.current) {
           await engine.renderTextLayer(pageNumber, textLayerRef.current, scale);
         }
+        if (formsLayerRef.current) {
+          await engine.renderAnnotationLayer(pageNumber, formsLayerRef.current, scale);
+        }
         pluginHost.emitPageRender({ pageNumber, scale });
       } catch (error) {
         if (active) console.error(`[folio] failed to render page ${pageNumber}`, error);
@@ -97,7 +102,9 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
     >
       <canvas ref={canvasRef} className="folio-page-canvas" />
       <div ref={textLayerRef} className="textLayer folio-text-layer" />
+      <div ref={formsLayerRef} className="annotationLayer folio-forms-layer" />
       <AnnotationLayer pageNumber={pageNumber} />
+      <SignatureLayer pageNumber={pageNumber} />
     </div>
   );
 });

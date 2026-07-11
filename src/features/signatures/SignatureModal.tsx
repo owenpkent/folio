@@ -1,0 +1,153 @@
+import { useEffect, useRef, useState } from 'react';
+
+import { announce } from '@/a11y/announcer';
+import { useFocusTrap } from '@/a11y/focus';
+import { Button, Icon } from '@/components/common';
+import { useViewerStore } from '@/state/viewerStore';
+
+import { placeSignatureOnCurrentPage } from './commands';
+import { loadImageFile, renderTypedSignature } from './render';
+import { SignaturePad, type SignaturePadHandle } from './SignaturePad';
+import { SIGNATURE_FONTS, type CreatedSignature, type SignatureSource } from './types';
+
+const TAB_LABELS: Record<SignatureSource, string> = { draw: 'Draw', type: 'Type', upload: 'Upload' };
+
+/** Modal for creating a signature by drawing, typing, or uploading an image. */
+export function SignatureModal() {
+  const open = useViewerStore((s) => s.signatureModalOpen);
+  const setOpen = useViewerStore((s) => s.setSignatureModalOpen);
+  const [tab, setTab] = useState<SignatureSource>('draw');
+  const [typed, setTyped] = useState('');
+  const [font, setFont] = useState(SIGNATURE_FONTS[0].value);
+  const [upload, setUpload] = useState<CreatedSignature | null>(null);
+  const padRef = useRef<SignaturePadHandle>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useFocusTrap(dialogRef, open);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, setOpen]);
+
+  if (!open) return null;
+
+  const close = () => {
+    setOpen(false);
+    setTyped('');
+    setUpload(null);
+  };
+
+  const onAdd = async () => {
+    let created: CreatedSignature | null = null;
+    if (tab === 'draw') created = padRef.current?.export() ?? null;
+    else if (tab === 'type') created = renderTypedSignature(typed, font);
+    else created = upload;
+
+    if (!created) {
+      announce('Create a signature first', true);
+      return;
+    }
+    await placeSignatureOnCurrentPage(created.dataUrl, created.aspect);
+    close();
+  };
+
+  const onFile = async (file?: File) => {
+    if (!file) return;
+    try {
+      setUpload(await loadImageFile(file));
+    } catch {
+      announce('Could not load that image', true);
+    }
+  };
+
+  return (
+    <div className="folio-modal-backdrop">
+      <div ref={dialogRef} className="folio-modal" role="dialog" aria-modal="true" aria-label="Add signature">
+        <div className="folio-modal__header">
+          <h2 className="folio-modal__title">Add signature</h2>
+          <button type="button" className="folio-icon-button" aria-label="Close" onClick={close}>
+            <Icon name="x" />
+          </button>
+        </div>
+
+        <div className="folio-modal__tabs" role="tablist" aria-label="Signature type">
+          {(Object.keys(TAB_LABELS) as SignatureSource[]).map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={tab === t}
+              className={`folio-modal__tab${tab === t ? ' is-active' : ''}`}
+              onClick={() => setTab(t)}
+            >
+              {TAB_LABELS[t]}
+            </button>
+          ))}
+        </div>
+
+        <div className="folio-modal__body">
+          {tab === 'draw' && (
+            <>
+              <SignaturePad ref={padRef} />
+              <div className="folio-modal__row">
+                <span className="folio-modal__hint">Sign above using your mouse, pen, or finger.</span>
+                <Button onClick={() => padRef.current?.clear()}>Clear</Button>
+              </div>
+            </>
+          )}
+
+          {tab === 'type' && (
+            <div className="folio-sig-type">
+              <input
+                className="folio-input"
+                type="text"
+                placeholder="Type your name"
+                value={typed}
+                aria-label="Signature text"
+                onChange={(e) => setTyped(e.target.value)}
+              />
+              <div className="folio-sig-fonts">
+                {SIGNATURE_FONTS.map((f) => (
+                  <button
+                    key={f.value}
+                    type="button"
+                    className={`folio-sig-font${font === f.value ? ' is-active' : ''}`}
+                    style={{ fontFamily: f.value }}
+                    onClick={() => setFont(f.value)}
+                  >
+                    {typed || f.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {tab === 'upload' && (
+            <div className="folio-sig-upload">
+              <input
+                className="folio-input"
+                type="file"
+                accept="image/png,image/jpeg"
+                aria-label="Signature image"
+                onChange={(e) => onFile(e.target.files?.[0])}
+              />
+              {upload && <img className="folio-sig-preview" src={upload.dataUrl} alt="Signature preview" />}
+            </div>
+          )}
+        </div>
+
+        <div className="folio-modal__footer">
+          <Button onClick={close}>Cancel</Button>
+          <Button variant="primary" onClick={onAdd}>
+            Add to page
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

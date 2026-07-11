@@ -1,5 +1,6 @@
 import { Icon, type IconName } from '@/components/common';
 import { AnnotationsPanel } from '@/features/annotations';
+import { SignaturesPanel } from '@/features/signatures';
 import { useContributionStore } from '@/plugins';
 import { useViewerStore } from '@/state/viewerStore';
 
@@ -11,6 +12,7 @@ const CORE_TABS: { id: string; title: string; icon: IconName }[] = [
   { id: 'thumbnails', title: 'Thumbnails', icon: 'image' },
   { id: 'outline', title: 'Outline', icon: 'list' },
   { id: 'annotations', title: 'Annotations', icon: 'highlighter' },
+  { id: 'signatures', title: 'Signatures', icon: 'signature' },
 ];
 
 export function Sidebar() {
@@ -47,6 +49,7 @@ export function Sidebar() {
         {tab === 'thumbnails' && <Thumbnails />}
         {tab === 'outline' && <Outline />}
         {tab === 'annotations' && <AnnotationsPanel />}
+        {tab === 'signatures' && <SignaturesPanel />}
         {activePanel && <PluginPanel panel={activePanel} />}
       </div>
     </aside>

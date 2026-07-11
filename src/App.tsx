@@ -11,6 +11,8 @@ import { Toolbar } from '@/components/Toolbar/Toolbar';
 import { PdfViewer } from '@/components/Viewer/PdfViewer';
 import { isTauri, readPath } from '@/core/document/openDocument';
 import { registerAnnotationCommands } from '@/features/annotations';
+import { registerExportCommands } from '@/features/export';
+import { registerSignatureCommands, SignatureModal } from '@/features/signatures';
 import { activateBuiltinPlugins } from '@/plugins';
 import { loadSource } from '@/state/actions';
 import { useViewerStore } from '@/state/viewerStore';
@@ -25,6 +27,8 @@ export function App() {
   useEffect(() => {
     registerDefaultCommands();
     registerAnnotationCommands();
+    registerSignatureCommands();
+    registerExportCommands();
     void activateBuiltinPlugins();
   }, []);
 
@@ -57,6 +61,7 @@ export function App() {
         </main>
       </div>
       {searchOpen && <SearchBar />}
+      <SignatureModal />
       <ToastHost />
     </div>
   );

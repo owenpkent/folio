@@ -38,6 +38,23 @@ export interface PdfEngine {
    */
   renderTextLayer(pageNumber: number, container: HTMLElement, scale: number): Promise<void>;
 
+  /**
+   * Render the interactive annotation layer for a page: fillable AcroForm
+   * widgets (text fields, checkboxes, radios, dropdowns) and link annotations.
+   * Edits flow into the engine's annotation storage and are written out by
+   * {@link saveDocument}.
+   */
+  renderAnnotationLayer(pageNumber: number, container: HTMLElement, scale: number): Promise<void>;
+
+  /** Whether the document contains fillable AcroForm fields. */
+  hasFormFields(): Promise<boolean>;
+
+  /** Count of pending in-memory edits (filled fields not yet saved). */
+  getPendingEditCount(): number;
+
+  /** Export the current document, with filled form values, as PDF bytes. */
+  saveDocument(): Promise<Uint8Array>;
+
   /** Extracted plain text for a page (used by search and the AI layer). */
   getPageText(pageNumber: number): Promise<string>;
 

@@ -13,6 +13,7 @@ interface ViewerState {
   sidebarOpen: boolean;
   sidebarTab: SidebarTab;
   searchOpen: boolean;
+  signatureModalOpen: boolean;
   /** Set when something requests a scroll-to-page; the viewer clears it. */
   pendingScrollPage: number | null;
 
@@ -29,6 +30,7 @@ interface ViewerState {
   setSidebarTab(tab: SidebarTab): void;
   toggleSearch(): void;
   setSearchOpen(open: boolean): void;
+  setSignatureModalOpen(open: boolean): void;
   clearPendingScroll(): void;
   reset(): void;
 }
@@ -47,6 +49,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   sidebarOpen: true,
   sidebarTab: 'thumbnails',
   searchOpen: false,
+  signatureModalOpen: false,
   pendingScrollPage: null,
 
   setScale: (scale) => set({ scale: clampScale(scale), fitMode: 'custom' }),
@@ -66,6 +69,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   setSidebarTab: (sidebarTab) => set({ sidebarTab, sidebarOpen: true }),
   toggleSearch: () => set((s) => ({ searchOpen: !s.searchOpen })),
   setSearchOpen: (searchOpen) => set({ searchOpen }),
+  setSignatureModalOpen: (signatureModalOpen) => set({ signatureModalOpen }),
   clearPendingScroll: () => set({ pendingScrollPage: null }),
   reset: () =>
     set({
@@ -74,6 +78,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       currentPage: 1,
       numPages: 0,
       searchOpen: false,
+      signatureModalOpen: false,
       pendingScrollPage: null,
     }),
 }));

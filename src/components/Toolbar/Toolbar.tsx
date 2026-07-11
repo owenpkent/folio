@@ -102,6 +102,18 @@ export function Toolbar() {
           onClick={() => run('annotate.highlight')}
         />
         <IconButton
+          icon="signature"
+          label="Add signature"
+          disabled={!hasDoc}
+          onClick={() => run('sign.addSignature')}
+        />
+        <IconButton
+          icon="download"
+          label="Save a copy (Ctrl/Cmd + S)"
+          disabled={!hasDoc}
+          onClick={() => run('file.save')}
+        />
+        <IconButton
           icon="search"
           label="Find (Ctrl/Cmd + F)"
           disabled={!hasDoc}

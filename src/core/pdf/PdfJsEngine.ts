@@ -26,6 +26,7 @@ export class PdfJsEngine implements PdfEngine {
   private name = '';
   private pageCache = new Map<number, PDFPageProxy>();
   private textCache = new Map<number, string>();
+  private readonly linkService = createLinkService();
 
   get isReady(): boolean {
     return this.doc !== null;
@@ -104,6 +105,56 @@ export class PdfJsEngine implements PdfEngine {
       viewport,
     });
     await textLayer.render();
+  }
+
+  async renderAnnotationLayer(
+    pageNumber: number,
+    container: HTMLElement,
+    scale: number,
+  ): Promise<void> {
+    const doc = this.requireDoc();
+    const page = await this.getPage(pageNumber);
+    const viewport = page.getViewport({ scale });
+    const annotations = await page.getAnnotations({ intent: 'display' });
+
+    container.replaceChildren();
+    container.style.setProperty('--scale-factor', String(scale));
+
+    const layer = new pdfjsLib.AnnotationLayer({
+      div: container as HTMLDivElement,
+      accessibilityManager: null,
+      annotationCanvasMap: null,
+      annotationEditorUIManager: null,
+      page,
+      viewport: viewport.clone({ dontFlip: true }),
+      structTreeLayer: null,
+    });
+
+    await layer.render({
+      annotations,
+      div: container as HTMLDivElement,
+      page,
+      viewport: viewport.clone({ dontFlip: true }),
+      linkService: this.linkService,
+      annotationStorage: doc.annotationStorage,
+      renderForms: true,
+      enableScripting: false,
+      hasJSActions: false,
+    } as unknown as Parameters<pdfjsLib.AnnotationLayer['render']>[0]);
+  }
+
+  async hasFormFields(): Promise<boolean> {
+    const doc = this.requireDoc();
+    const fields = await doc.getFieldObjects();
+    return fields != null && Object.keys(fields).length > 0;
+  }
+
+  getPendingEditCount(): number {
+    return this.doc ? this.doc.annotationStorage.size : 0;
+  }
+
+  async saveDocument(): Promise<Uint8Array> {
+    return this.requireDoc().saveDocument();
   }
 
   async getPageText(pageNumber: number): Promise<string> {
@@ -219,4 +270,33 @@ function buildSnippet(text: string, index: number, length: number): string {
   const lead = start > 0 ? '…' : '';
   const trail = end < text.length ? '…' : '';
   return `${lead}${text.slice(start, end).trim()}${trail}`;
+}
+
+/**
+ * A minimal link service for the annotation layer. Form widgets need one to be
+ * present; external links open in a new window. Internal navigation is not
+ * wired up here (the viewer handles page navigation elsewhere).
+ */
+function createLinkService() {
+  return {
+    externalLinkEnabled: true,
+    externalLinkTarget: 2, // LinkTarget.BLANK
+    externalLinkRel: 'noopener noreferrer nofollow',
+    isInPresentationMode: false,
+    pagesCount: 0,
+    page: 0,
+    rotation: 0,
+    getDestinationHash: () => '',
+    getAnchorUrl: (url: string) => url,
+    addLinkAttributes: (link: HTMLAnchorElement, url: string, newWindow?: boolean) => {
+      link.href = url || '';
+      link.rel = 'noopener noreferrer nofollow';
+      link.target = newWindow ? '_blank' : '';
+    },
+    setHash: () => {},
+    executeNamedAction: () => {},
+    executeSetOCGState: () => {},
+    goToDestination: async () => {},
+    goToPage: () => {},
+  };
 }

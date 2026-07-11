@@ -437,6 +437,10 @@ kbd {
   z-index: 1;
   pointer-events: none;
 }
+/* Interactive AcroForm fields sit above the text layer so they are fillable. */
+.folio-forms-layer {
+  z-index: 3;
+}
 .folio-annotation--highlight {
   position: absolute;
   border-radius: 2px;
@@ -606,6 +610,251 @@ kbd {
   font-size: 18px;
   line-height: 1;
   padding: 0 2px;
+}
+
+/* ---- Signatures (on-page overlay) ---- */
+.folio-signature-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+.folio-signature {
+  position: absolute;
+  pointer-events: auto;
+  border: 1px solid transparent;
+  border-radius: 2px;
+}
+.folio-signature:hover,
+.folio-signature:focus-within {
+  border-color: var(--folio-accent);
+}
+.folio-signature__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: move;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.folio-signature__delete {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 24px;
+  height: 24px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--folio-border);
+  border-radius: 50%;
+  background: var(--folio-surface);
+  color: var(--folio-text);
+  cursor: pointer;
+}
+.folio-signature:hover .folio-signature__delete,
+.folio-signature:focus-within .folio-signature__delete {
+  display: inline-flex;
+}
+.folio-signature__resize {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--folio-accent);
+  border-radius: 50%;
+  background: var(--folio-surface);
+  cursor: nwse-resize;
+  display: none;
+}
+.folio-signature:hover .folio-signature__resize,
+.folio-signature:focus-within .folio-signature__resize {
+  display: block;
+}
+
+/* ---- Modal (signature creation) ---- */
+.folio-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.folio-modal {
+  width: min(520px, 100%);
+  background: var(--folio-surface);
+  border: 1px solid var(--folio-border);
+  border-radius: var(--folio-radius);
+  box-shadow: var(--folio-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.folio-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 12px 16px;
+  border-bottom: 1px solid var(--folio-border);
+}
+.folio-modal__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.folio-modal__tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 16px 0;
+}
+.folio-modal__tab {
+  padding: 8px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--folio-text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+.folio-modal__tab.is-active {
+  color: var(--folio-accent);
+  border-bottom-color: var(--folio-accent);
+}
+.folio-modal__body {
+  padding: 16px;
+  min-height: 200px;
+}
+.folio-modal__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+}
+.folio-modal__hint {
+  color: var(--folio-text-muted);
+  font-size: 13px;
+}
+.folio-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--folio-border);
+}
+.folio-sigpad {
+  width: 100%;
+  height: 180px;
+  background: #ffffff;
+  border: 1px dashed var(--folio-border);
+  border-radius: var(--folio-radius-sm);
+  touch-action: none;
+  cursor: crosshair;
+}
+.folio-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--folio-bg);
+  color: var(--folio-text);
+  border: 1px solid var(--folio-border);
+  border-radius: var(--folio-radius-sm);
+  font: inherit;
+}
+.folio-sig-type {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.folio-sig-fonts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.folio-sig-font {
+  padding: 10px 14px;
+  min-height: 56px;
+  border: 1px solid var(--folio-border);
+  border-radius: var(--folio-radius-sm);
+  background: #ffffff;
+  color: #111111;
+  cursor: pointer;
+  font-size: 28px;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.folio-sig-font.is-active {
+  border-color: var(--folio-accent);
+  outline: 1px solid var(--folio-accent);
+}
+.folio-sig-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.folio-sig-preview {
+  max-width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+  align-self: center;
+  background: #ffffff;
+  border: 1px solid var(--folio-border);
+  border-radius: var(--folio-radius-sm);
+  padding: 8px;
+}
+
+/* Signatures sidebar panel */
+.folio-signatures-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.folio-signatures-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.folio-signatures-list__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.folio-signatures-list__jump {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  color: var(--folio-text);
+  cursor: pointer;
+  border-radius: var(--folio-radius-sm);
+  min-width: 0;
+}
+.folio-signatures-list__jump:hover {
+  background: var(--folio-surface-hover);
+}
+.folio-signatures-list__thumb {
+  width: 48px;
+  height: 28px;
+  object-fit: contain;
+  background: #ffffff;
+  border: 1px solid var(--folio-border);
+  border-radius: 3px;
+}
+.folio-signatures-list__page {
+  color: var(--folio-text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Scrollbars */

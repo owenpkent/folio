@@ -11,6 +11,7 @@ All shortcuts dispatch through the command registry (`useKeyboardShortcuts` matc
 | Action | Command id | Windows/Linux | macOS |
 |---|---|---|---|
 | Open document | `file.open` | `Ctrl+O` | `Cmd+O` |
+| Save a copy | `file.save` | `Ctrl+S` | `Cmd+S` |
 | Next page | `nav.nextPage` | `→` | `→` |
 | Previous page | `nav.prevPage` | `←` | `←` |
 | First page | `nav.firstPage` | `Ctrl+Home` | `Cmd+Home` |
@@ -32,8 +33,11 @@ These commands exist but have **no keyboard binding**; they are reachable from t
 | Fit width | `view.fitWidth` | Toolbar button |
 | Fit page | `view.fitPage` | Toolbar button |
 | Cycle reading mode | `theme.cycleReadingMode` | Toolbar button |
+| Add signature | `sign.addSignature` | Toolbar button / Signatures panel |
 
-Planned, **not yet implemented** (no command is registered for these today): a command palette (`Ctrl/Cmd+Shift+P`), an in-app keyboard-shortcuts help overlay (`?`), and save/export. Toolbar buttons carry their shortcut in the button tooltip so bindings stay discoverable until the help overlay lands.
+Planned, **not yet implemented** (no command is registered for these today): a command palette (`Ctrl/Cmd+Shift+P`) and an in-app keyboard-shortcuts help overlay (`?`). Toolbar buttons carry their shortcut in the button tooltip so bindings stay discoverable until the help overlay lands.
+
+Form fields and signatures: filled AcroForm fields are native HTML inputs, so they are keyboard-operable and labeled from the PDF. The signature dialog is a focus-trapped modal (dismiss with `Escape`), and placed signatures expose a keyboard-focusable delete button; keyboard placement and resizing of signatures are planned. See [forms-and-signatures.md](forms-and-signatures.md).
 
 Everything reachable by mouse is reachable by keyboard. If you add a feature, add its command with a `keybinding` rather than wiring a bespoke key handler.
 

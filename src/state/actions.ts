@@ -2,6 +2,7 @@ import { pickAndReadDocument } from '@/core/document/openDocument';
 import { getEngine, type DocumentSource } from '@/core/pdf';
 import { announce } from '@/a11y/announcer';
 import { useAnnotationStore } from '@/features/annotations';
+import { useSignatureStore } from '@/features/signatures';
 import { pluginHost } from '@/plugins/PluginHost';
 
 import { useDocumentStore } from './documentStore';
@@ -32,6 +33,7 @@ export async function loadSource(source: DocumentSource): Promise<void> {
     viewer.reset();
     viewer.setNumPages(info.numPages);
     useAnnotationStore.getState().loadForDocument(info.fingerprint);
+    useSignatureStore.getState().loadForDocument(info.fingerprint);
     document.title = `${info.name} · Folio`;
 
     pluginHost.emitDocumentOpen({
@@ -52,6 +54,7 @@ export async function closeDocument(): Promise<void> {
   useDocumentStore.getState().reset();
   useViewerStore.getState().reset();
   useAnnotationStore.getState().reset();
+  useSignatureStore.getState().reset();
   document.title = 'Folio';
   announce('Closed document');
 }

@@ -55,17 +55,23 @@ Text highlighting with sidecar (local) persistence and an annotations panel alre
 
 ## v0.3 Forms & Signatures
 
-Fill forms and work with digital signatures.
+Fill forms and sign documents. Signing lands in two phases: ink/visual
+signatures first, then certificate-based digital signatures. See
+[docs/forms-and-signatures.md](docs/forms-and-signatures.md).
 
 | Area | Deliverable | Status |
 | --- | --- | --- |
-| AcroForm fill | Fill and save interactive AcroForm fields (text, checkbox, radio, choice) | Planned |
-| Form navigation | Tab-order field navigation, validation feedback | Planned |
-| Signature verification | Verify existing digital signatures and show trust status | Planned |
-| Signing | Apply a digital signature to a document | Planned |
-| Accessibility | Fields announced with label, type, state, and required status | Planned |
+| AcroForm fill | Fill and save interactive AcroForm fields (text, checkbox, radio, choice) | Done |
+| Save filled/signed copy | Export a copy with form values and signatures baked in | Done |
+| Ink / visual signatures | Draw, type, or upload a signature; place, drag, and resize it | Done |
+| Form navigation | Tab-order field navigation, validation feedback | In progress (native field focus works) |
+| Signing (cryptographic) | Certificate-based (PKCS#7 / PAdES) digital signatures | Planned (phase 2) |
+| Signature verification | Verify existing digital signatures and show trust status | Planned (phase 2) |
+| Accessibility | Fields announced with label, type, state, and required status | In progress (native inputs; keyboard placement planned) |
 
-**Milestone: complete a form and trust a signature.** A user can fill and save an AcroForm, see whether an existing signature is valid, and sign a document. (XFA forms are out of scope; see Non-goals.)
+**Milestone: complete a form and sign it.** A user can fill an AcroForm, add a
+signature, and save a copy with both baked in (shipped). Cryptographic signing
+and verification follow in phase 2. (XFA forms are out of scope; see Non-goals.)
 
 ## v0.4 Editing & OCR
 

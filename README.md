@@ -44,6 +44,12 @@ around three things Acrobat treats as afterthoughts: **accessibility**,
 - Highlight selected text; annotations persist per document
 - Annotations panel to review and jump between them
 
+**Forms and signing**
+- Fill interactive AcroForm fields (text, checkbox, radio, dropdown)
+- Sign by drawing, typing, or uploading a signature; place, drag, and resize it
+- Save a copy with form values and signatures baked in (original untouched)
+- Certificate-based digital signatures are planned (phase 2)
+
 **Extensible**
 - A plugin system: contribute commands, toolbar items, sidebar panels, and tools
 - Every action flows through a command registry, so plugins get shortcuts for free
@@ -101,6 +107,7 @@ npm run typecheck    # tsc --noEmit
 | Action            | Shortcut                    |
 | ----------------- | --------------------------- |
 | Open document     | `Ctrl/Cmd + O`              |
+| Save a copy       | `Ctrl/Cmd + S`              |
 | Find in document  | `Ctrl/Cmd + F`              |
 | Zoom in / out     | `Ctrl/Cmd + =` / `Ctrl/Cmd + -` |
 | Actual size       | `Ctrl/Cmd + 0`              |
@@ -121,7 +128,7 @@ folio/
 │  ├─ core/pdf/          PdfEngine interface + PDF.js implementation
 │  ├─ commands/          command registry (every user action)
 │  ├─ components/        Viewer, Toolbar, Sidebar, Search, common
-│  ├─ features/          annotations (text highlighting + persistence)
+│  ├─ features/          annotations, signatures, forms, and save/export
 │  ├─ plugins/           plugin host, SDK types, built-in Word Count plugin
 │  ├─ ai/                provider-agnostic AI layer (Claude, experimental) + MCP stubs
 │  ├─ theme/             tokens, ThemeProvider, reading modes
@@ -141,6 +148,7 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Getting started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
 - [Accessibility](docs/accessibility.md)
+- [Forms and signatures](docs/forms-and-signatures.md)
 - [Theming](docs/theming.md)
 - [Writing plugins](docs/plugins.md)
 - [AI and MCP](docs/ai.md)
