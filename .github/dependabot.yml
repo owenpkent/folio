@@ -1,11 +1,14 @@
 version: 2
 updates:
-  # Frontend npm dependencies at the repository root.
+  # Frontend npm dependencies. Grouped into a single monthly PR to cut noise.
   - package-ecosystem: npm
     directory: "/"
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 10
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      npm:
+        patterns: ["*"]
     labels:
       - dependencies
       - javascript
@@ -17,8 +20,11 @@ updates:
   - package-ecosystem: cargo
     directory: "/src-tauri"
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 10
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      cargo:
+        patterns: ["*"]
     labels:
       - dependencies
       - rust
@@ -30,7 +36,11 @@ updates:
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns: ["*"]
     labels:
       - dependencies
       - github-actions
