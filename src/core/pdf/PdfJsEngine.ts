@@ -24,6 +24,7 @@ interface RawOutlineItem {
 export class PdfJsEngine implements PdfEngine {
   private doc: PDFDocumentProxy | null = null;
   private name = '';
+  private sourceBytes: Uint8Array | null = null;
   private pageCache = new Map<number, PDFPageProxy>();
   private textCache = new Map<number, string>();
   private readonly linkService = createLinkService();
@@ -35,6 +36,10 @@ export class PdfJsEngine implements PdfEngine {
   async loadDocument(source: DocumentSource): Promise<PdfDocumentInfo> {
     ensureWorker();
     await this.closeDocument();
+
+    // Keep an untouched copy of the bytes before PDF.js can transfer/detach the
+    // buffer; signature detection needs the exact original file.
+    this.sourceBytes = source.kind === 'bytes' ? source.data.slice() : null;
 
     const params = source.kind === 'bytes' ? { data: source.data } : { url: source.url };
     this.doc = await pdfjsLib.getDocument(params).promise;
@@ -50,10 +55,15 @@ export class PdfJsEngine implements PdfEngine {
   async closeDocument(): Promise<void> {
     this.pageCache.clear();
     this.textCache.clear();
+    this.sourceBytes = null;
     if (this.doc) {
       await this.doc.destroy();
       this.doc = null;
     }
+  }
+
+  getOriginalBytes(): Uint8Array | null {
+    return this.sourceBytes;
   }
 
   async getPageDimensions(pageNumber: number, scale: number): Promise<PageDimensions> {

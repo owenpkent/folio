@@ -3,6 +3,7 @@ import { getEngine, type DocumentSource } from '@/core/pdf';
 import { announce } from '@/a11y/announcer';
 import { useAnnotationStore } from '@/features/annotations';
 import { useSignatureStore } from '@/features/signatures';
+import { detectSignatures, useSigningStore } from '@/features/signing';
 import { pluginHost } from '@/plugins/PluginHost';
 
 import { useDocumentStore } from './documentStore';
@@ -34,6 +35,12 @@ export async function loadSource(source: DocumentSource): Promise<void> {
     viewer.setNumPages(info.numPages);
     useAnnotationStore.getState().loadForDocument(info.fingerprint);
     useSignatureStore.getState().loadForDocument(info.fingerprint);
+    try {
+      const original = engine.getOriginalBytes();
+      useSigningStore.getState().setDetected(original ? detectSignatures(original) : []);
+    } catch {
+      useSigningStore.getState().setDetected([]);
+    }
     document.title = `${info.name} · Folio`;
 
     pluginHost.emitDocumentOpen({
@@ -55,6 +62,7 @@ export async function closeDocument(): Promise<void> {
   useViewerStore.getState().reset();
   useAnnotationStore.getState().reset();
   useSignatureStore.getState().reset();
+  useSigningStore.getState().setDetected([]);
   document.title = 'Folio';
   announce('Closed document');
 }

@@ -13,6 +13,7 @@ import { isTauri, readPath } from '@/core/document/openDocument';
 import { registerAnnotationCommands } from '@/features/annotations';
 import { registerExportCommands } from '@/features/export';
 import { registerSignatureCommands, SignatureModal } from '@/features/signatures';
+import { registerSigningCommands, SigningModal } from '@/features/signing';
 import { activateBuiltinPlugins } from '@/plugins';
 import { loadSource } from '@/state/actions';
 import { useViewerStore } from '@/state/viewerStore';
@@ -28,6 +29,7 @@ export function App() {
     registerDefaultCommands();
     registerAnnotationCommands();
     registerSignatureCommands();
+    registerSigningCommands();
     registerExportCommands();
     void activateBuiltinPlugins();
   }, []);
@@ -62,6 +64,7 @@ export function App() {
       </div>
       {searchOpen && <SearchBar />}
       <SignatureModal />
+      <SigningModal />
       <ToastHost />
     </div>
   );

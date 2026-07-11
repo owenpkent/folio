@@ -47,8 +47,9 @@ around three things Acrobat treats as afterthoughts: **accessibility**,
 **Forms and signing**
 - Fill interactive AcroForm fields (text, checkbox, radio, dropdown)
 - Sign by drawing, typing, or uploading a signature; place, drag, and resize it
+- Cryptographic digital signatures (PKCS#7): import a `.p12` or create a
+  self-signed identity; opened signed PDFs show the signer and tamper status
 - Save a copy with form values and signatures baked in (original untouched)
-- Certificate-based digital signatures are planned (phase 2)
 
 **Extensible**
 - A plugin system: contribute commands, toolbar items, sidebar panels, and tools

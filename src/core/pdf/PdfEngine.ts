@@ -55,6 +55,9 @@ export interface PdfEngine {
   /** Export the current document, with filled form values, as PDF bytes. */
   saveDocument(): Promise<Uint8Array>;
 
+  /** The original bytes the document was loaded from (for signature detection). */
+  getOriginalBytes(): Uint8Array | null;
+
   /** Extracted plain text for a page (used by search and the AI layer). */
   getPageText(pageNumber: number): Promise<string>;
 

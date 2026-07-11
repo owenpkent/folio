@@ -3,13 +3,13 @@
 Folio can fill interactive PDF forms and place signatures, then save a copy with
 everything baked in. This page explains how both work today and what is planned.
 
-Signing is being delivered in two phases:
+Signing is delivered in two phases, both now available:
 
-1. **Ink / visual signatures (shipped).** Draw, type, or upload a signature and
-   place it on the page. This is what most people mean by "sign this PDF."
-2. **Cryptographic digital signatures (planned).** Certificate-based (PKCS#7 /
-   PAdES) signing and verification, like Acrobat's "Sign with a Digital ID."
-   See [Roadmap](#roadmap).
+1. **Ink / visual signatures.** Draw, type, or upload a signature and place it on
+   the page. This is what most people mean by "sign this PDF."
+2. **Cryptographic digital signatures.** Certificate-based (PKCS#7 detached)
+   signing, like Acrobat's "Sign with a Digital ID," plus basic verification of
+   existing signatures. See [Cryptographic digital signatures](#cryptographic-digital-signatures).
 
 ## Filling forms
 
@@ -76,6 +76,56 @@ Tauri `dialog` and `fs` plugins) or downloaded in the browser dev build. The
 suggested filename is the original name with a `(filled)` or `(signed)` suffix;
 the original document is never overwritten.
 
+## Cryptographic digital signatures
+
+Beyond visual signatures, Folio can apply a real cryptographic signature (PKCS#7
+detached) that PDF readers, including Acrobat, recognize under "Signatures." Open
+it from the toolbar (the shield icon), the Signatures panel ("Digitally sign"),
+or the `sign.digitallySign` command.
+
+### Signing identities
+
+A signing identity is a certificate plus its private key, held in a passphrase
+protected PKCS#12 (`.p12` / `.pfx`). You can:
+
+- **Import** an existing `.p12` from a certificate authority or your organization
+  (enter its passphrase to unlock it).
+- **Create a self-signed** identity in the app (name, optional organization, and
+  a passphrase). Self-signed certificates are fine for personal use and testing;
+  they verify as a valid signature from an untrusted issuer until the recipient
+  chooses to trust your certificate.
+
+Saved identities are kept in local storage as their passphrase-protected `.p12`
+(the passphrase itself is never stored). You re-enter the passphrase each time
+you sign.
+
+### Signing
+
+"Sign and save" first prepares the document (filling forms and stamping any
+visual signatures), then computes the CMS SignedData over the whole file with
+[@signpdf](https://github.com/vbuch/node-signpdf) and node-forge and writes a
+`(signed)` copy. Because a digital signature covers the entire file, signing is
+the last step: any later edit invalidates it, so Folio always saves to a new file
+rather than modifying the open one.
+
+### Verifying signatures
+
+When you open a signed PDF, the Signatures panel lists each digital signature
+with the signer's name (from the certificate), the signing time, and whether the
+document changed after signing. That last check is a reliable tamper signal: it
+is derived from the signed byte range, so appended edits are detected. Full
+certificate-chain trust validation and CMS digest verification are not yet
+performed (see Limitations).
+
+### Where the crypto runs, and security
+
+Signing currently runs in the app's front-end (WebView) using the mature,
+open-source @signpdf and node-forge libraries. This is portable and verifiable,
+but private-key material passes through the WebView. Moving signing into the Rust
+backend with OS-keychain-backed key storage is planned; the code is isolated
+behind `src/features/signing/` so that change will not affect the rest of the
+app.
+
 ## Accessibility
 
 - Form fields are native inputs: full keyboard operation and screen-reader
@@ -86,17 +136,21 @@ the original document is never overwritten.
 
 ## Limitations (current)
 
-- Signatures are **visual**, not cryptographic. They do not prove identity or
-  detect tampering. Cryptographic signing is the next phase.
-- Signature stamping assumes unrotated pages (page rotation support is planned).
-- Saving requires the destination to be within the user's home directory tree in
-  the desktop app (the write capability scope). This will be broadened.
+- Cryptographic signing uses PKCS#7 detached signatures. Certificate-chain trust
+  validation, full CMS digest verification, PAdES-specific profiles, and embedded
+  timestamps (RFC 3161) are not yet implemented; verification reports the signer,
+  signing time, and whether the file changed after signing.
+- Signing runs in the WebView today; a Rust/OS-keychain backend is planned.
+- Visual-signature stamping assumes unrotated pages (rotation support is planned).
+- Saving targets the user's home directory tree in the desktop app (the write
+  capability scope). This will be broadened.
 
 ## Roadmap
 
-- Certificate-based digital signatures (PKCS#7 / PAdES) with a Rust signing
-  backend and PKCS#12 (`.p12`) import.
-- Signature verification and a signatures/trust panel.
+- Certificate-chain trust validation and full CMS digest verification, with a
+  trust panel.
+- Embedded timestamps (RFC 3161) and PAdES profiles.
+- Move signing to a Rust backend with OS-keychain-backed key storage.
 - Optional flattening of form fields on export.
 - Creating and editing form fields (not just filling them).
 - Keyboard placement and rotation-aware stamping.

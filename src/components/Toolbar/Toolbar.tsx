@@ -108,6 +108,12 @@ export function Toolbar() {
           onClick={() => run('sign.addSignature')}
         />
         <IconButton
+          icon="shield"
+          label="Digitally sign"
+          disabled={!hasDoc}
+          onClick={() => run('sign.digitallySign')}
+        />
+        <IconButton
           icon="download"
           label="Save a copy (Ctrl/Cmd + S)"
           disabled={!hasDoc}

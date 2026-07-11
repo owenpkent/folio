@@ -58,26 +58,31 @@ export async function saveDocumentToFile(): Promise<void> {
 
   const base = info.name.replace(/\.pdf$/i, '');
   const suffix = useSignatureStore.getState().signatures.length > 0 ? 'signed' : 'filled';
-  const suggested = `${base} (${suffix}).pdf`;
+  await saveBytes(bytes, `${base} (${suffix}).pdf`);
+}
 
+/** Save raw PDF bytes via a native dialog (desktop) or a download (browser). */
+export async function saveBytes(bytes: Uint8Array, suggested: string): Promise<boolean> {
   try {
     if (isTauri()) {
       const path = await save({
         defaultPath: suggested,
         filters: [{ name: 'PDF', extensions: ['pdf'] }],
       });
-      if (!path) return;
+      if (!path) return false;
       await writeFile(path, bytes);
       pushToast('Saved', 'success');
       announce(`Saved ${suggested}`);
-    } else {
-      downloadBytes(bytes, suggested);
-      announce(`Downloaded ${suggested}`);
+      return true;
     }
+    downloadBytes(bytes, suggested);
+    announce(`Downloaded ${suggested}`);
+    return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Write failed';
     announce(`Could not save the document: ${message}`, true);
     pushToast('Could not save the document', 'error');
+    return false;
   }
 }
 

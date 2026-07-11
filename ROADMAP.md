@@ -65,13 +65,15 @@ signatures first, then certificate-based digital signatures. See
 | Save filled/signed copy | Export a copy with form values and signatures baked in | Done |
 | Ink / visual signatures | Draw, type, or upload a signature; place, drag, and resize it | Done |
 | Form navigation | Tab-order field navigation, validation feedback | In progress (native field focus works) |
-| Signing (cryptographic) | Certificate-based (PKCS#7 / PAdES) digital signatures | Planned (phase 2) |
-| Signature verification | Verify existing digital signatures and show trust status | Planned (phase 2) |
+| Signing (cryptographic) | Certificate-based PKCS#7 detached signing; import a .p12 or create a self-signed identity | Done (PAdES profiles and RFC 3161 timestamps planned) |
+| Signature verification | Detect signatures; show signer, signing time, and post-signing tamper status | In progress (certificate-chain trust and CMS digest validation planned) |
 | Accessibility | Fields announced with label, type, state, and required status | In progress (native inputs; keyboard placement planned) |
 
-**Milestone: complete a form and sign it.** A user can fill an AcroForm, add a
-signature, and save a copy with both baked in (shipped). Cryptographic signing
-and verification follow in phase 2. (XFA forms are out of scope; see Non-goals.)
+**Milestone: complete a form and sign it (shipped).** A user can fill an
+AcroForm, add a visual signature, and cryptographically sign the document with an
+imported or self-signed certificate, then save a copy. Full trust-chain
+verification, timestamps, and a Rust/keychain signing backend are the remaining
+phase-2 work. (XFA forms are out of scope; see Non-goals.)
 
 ## v0.4 Editing & OCR
 

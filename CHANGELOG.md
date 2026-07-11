@@ -8,6 +8,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Cryptographic digital signatures (v0.3, phase 2):
+  - Sign a document with a real PKCS#7 detached signature (via @signpdf and
+    node-forge) that PDF readers, including Acrobat, recognize.
+  - Signing identities: import a `.p12` / `.pfx`, or create a self-signed
+    certificate in-app. Stored passphrase-protected; the passphrase is never
+    saved.
+  - Opened signed PDFs list each signature with signer, signing time, and a
+    post-signing tamper check in the Signatures panel.
+  - New `sign.digitallySign` command, a toolbar shield button, and a Node
+    globals shim (`Buffer`/`process`) for the WebView. Certificate-chain trust
+    validation and a Rust/keychain backend remain planned.
 - Forms and signing (v0.3, phase 1):
   - Fill interactive AcroForm fields (text, checkbox, radio, dropdown) rendered
     over each page via the PDF.js annotation layer.

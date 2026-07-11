@@ -66,7 +66,8 @@ Each layer maps to a real directory in the repository.
 | Theming | `src/theme/` | `ThemeProvider`, design tokens (`tokens.css`), reading modes, `themeStore` |
 | Accessibility | `src/a11y/` | Announcer (live region), focus trap, keyboard shortcut dispatch, skip link |
 | Annotations | `src/features/annotations/` | Annotation model, `store` (localStorage sidecar), and tools |
-| Signatures | `src/features/signatures/` | Signature creation (draw/type/upload), on-page placement, per-document `store` |
+| Signatures | `src/features/signatures/` | Visual signature creation (draw/type/upload), on-page placement, per-document `store` |
+| Digital signing | `src/features/signing/` | Certificate identities (create/import .p12 via node-forge), PKCS#7 signing (@signpdf), and signature detection. Runs in the WebView today; a Rust/keychain backend is planned |
 | Save / export | `src/features/export/` | Writes the filled PDF (PDF.js `saveDocument`) and stamps signatures with pdf-lib |
 | Plugins | `src/plugins/` | Plugin host, SDK types, `contributionStore`, `builtins/` |
 | AI layer | `src/ai/` | `aiStore`, `providers/` (`AIProvider` impls, Claude default), `mcp/` (experimental MCP transport) |

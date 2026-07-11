@@ -34,6 +34,7 @@ These commands exist but have **no keyboard binding**; they are reachable from t
 | Fit page | `view.fitPage` | Toolbar button |
 | Cycle reading mode | `theme.cycleReadingMode` | Toolbar button |
 | Add signature | `sign.addSignature` | Toolbar button / Signatures panel |
+| Digitally sign | `sign.digitallySign` | Toolbar button / Signatures panel |
 
 Planned, **not yet implemented** (no command is registered for these today): a command palette (`Ctrl/Cmd+Shift+P`) and an in-app keyboard-shortcuts help overlay (`?`). Toolbar buttons carry their shortcut in the button tooltip so bindings stay discoverable until the help overlay lands.
 
