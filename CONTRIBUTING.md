@@ -285,10 +285,12 @@ a round trip.
 - Bug fixes should include a test that fails before the fix and passes after.
 - New features should include unit tests, plus e2e coverage when they touch the
   UI or a full workflow.
-- Keep tests deterministic and fast. Prefer small fixtures; commit sample PDFs
-  only when necessary and keep them minimal.
+- Keep tests deterministic and fast. Prefer generating small fixtures at runtime
+  (the e2e suite builds its sample PDF with pdf-lib in `e2e/global-setup.ts`)
+  rather than committing binaries.
 
-All tests must pass in CI before a PR can merge.
+See [docs/testing.md](docs/testing.md) for how the unit and e2e suites are
+organized and what is covered. All tests must pass in CI before a PR can merge.
 
 ---
 

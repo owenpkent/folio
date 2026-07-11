@@ -123,7 +123,7 @@ npm run lint        # ESLint over src/
 npm run typecheck   # tsc --noEmit against tsconfig.json
 ```
 
-End-to-end tests use **Playwright** and include the axe-core accessibility scans described in `docs/accessibility.md`. Run them with the project's e2e script (for example `npm run test:e2e`); they drive the packaged app, so allow extra time on the first run.
+End-to-end tests use **Playwright** and drive the browser build (served by the Vite dev server). Install the browser once with `npx playwright install chromium`, then run `npm run test:e2e`. See [testing.md](testing.md) for how the suite is organized.
 
 Recommended pre-PR sequence:
 

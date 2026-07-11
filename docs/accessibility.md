@@ -133,9 +133,11 @@ Accessibility is verified continuously, not audited once.
 
 **Automated (in CI):**
 
-- **axe-core** runs against the app in the Playwright end-to-end suite. Views (viewer, sidebar open, search open, each reading mode, light and dark) are scanned for violations, and the build fails on new violations.
-- **Vitest** unit tests cover the announcer (correct messages, polite vs assertive), focus management (trap and restore), and that every command with a `keybinding` is reachable.
-- Lint rules flag missing labels and `outline: none` without a focus replacement.
+- **eslint-plugin-jsx-a11y** flags missing labels, unsupported ARIA, and other markup issues on every push and pull request (see the `quality` CI job).
+- **Vitest** unit tests cover keyboard-shortcut dispatch (chords, the typing-in-input guard, and `when()` gating) and the stores behind accessible state.
+- **Playwright** end-to-end tests drive real keyboard and pointer flows in a browser (open, render, fill a form, sign). See [testing.md](testing.md).
+
+Planned: **axe-core** violation scanning wired into the end-to-end suite across views (viewer, sidebar open, search open, each reading mode, light and dark), plus unit tests for the announcer (polite vs assertive) and focus trap/restore. These are not yet implemented.
 
 **Manual (per release):**
 

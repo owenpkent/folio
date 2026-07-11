@@ -8,6 +8,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Test suites: a Vitest unit suite (49 tests across stores, the command
+  registry, the plugin host, keyboard shortcuts, and signing) and a Playwright
+  end-to-end smoke suite (open, render, fill a form field, and digitally sign),
+  plus a CI e2e job. See docs/testing.md.
 - Cryptographic digital signatures (v0.3, phase 2):
   - Sign a document with a real PKCS#7 detached signature (via @signpdf and
     node-forge) that PDF readers, including Acrobat, recognize.

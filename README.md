@@ -153,6 +153,7 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Theming](docs/theming.md)
 - [Writing plugins](docs/plugins.md)
 - [AI and MCP](docs/ai.md)
+- [Testing](docs/testing.md)
 - [Roadmap](ROADMAP.md)
 
 ## Contributing
