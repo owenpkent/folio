@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Folio",
+  "version": "0.1.0",
+  "identifier": "app.folio.viewer",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Folio",
+        "width": 1200,
+        "height": 820,
+        "minWidth": 640,
+        "minHeight": 480,
+        "dragDropEnabled": true,
+        "theme": null
+      }
+    ],
+    "security": {
+      "comment": "CSP is intentionally relaxed for the initial scaffold. Tighten before release: see docs/architecture.md (Security).",
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Productivity",
+    "shortDescription": "A world-class, open-source PDF viewer",
+    "longDescription": "Folio is a fast, accessible, extensible, dark-mode-native PDF viewer.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {}
+}

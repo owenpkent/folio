@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & discussions
+    url: https://github.com/owenpkent/folio/discussions
+    about: Ask questions, share ideas, and get help from the community. Please use Discussions instead of opening an issue for general questions.
+  - name: Report a security vulnerability
+    url: https://github.com/owenpkent/folio/security/policy
+    about: Please do not file public issues for security problems. Report vulnerabilities privately via our Security Policy.

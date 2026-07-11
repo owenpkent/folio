@@ -1,0 +1,88 @@
+name: Feature request
+description: Suggest an idea or improvement for Folio
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement to Folio! Please describe the
+        problem you are trying to solve, not just the solution, so we can find
+        the best approach together.
+
+        Before submitting, please search
+        [existing issues and discussions](https://github.com/owenpkent/folio/issues)
+        to avoid duplicates. For larger ideas, consider starting a
+        [Discussion](https://github.com/owenpkent/folio/discussions) first.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What problem does this feature solve? What are you trying to accomplish, and why is it hard today?
+      placeholder: I frequently compare two revisions of a contract, but Folio can only show one document at a time.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe what you would like to happen. Be as concrete as you can.
+      placeholder: Add a side-by-side split view that can display two open documents and scroll them independently or in sync.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches or workarounds have you tried or thought about?
+      placeholder: Opening two Folio windows works, but there is no synced scrolling and it is easy to lose track of which is which.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of Folio does this relate to?
+      options:
+        - Viewer (rendering, navigation, zoom)
+        - Annotations
+        - Accessibility
+        - Theming
+        - Plugins
+        - AI
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Optional. Add mockups, links, references, or anything else that helps explain the idea.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Willingness to contribute
+      description: Would you be open to helping build this? No obligation either way.
+      options:
+        - label: I am willing to help implement this feature (with guidance if needed).
+          required: false
+        - label: I am willing to help test or review a proposed implementation.
+          required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I searched existing issues and discussions and did not find a duplicate.
+          required: true
+        - label: This request describes a single, focused feature or improvement.
+          required: true

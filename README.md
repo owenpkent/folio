@@ -1,0 +1,154 @@
+<div align="center">
+
+# Folio
+
+**A world-class, open-source PDF viewer.** Fast, accessible, extensible, and dark-mode native.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24C8DB.svg)](https://tauri.app)
+[![React](https://img.shields.io/badge/React-18-61DAFB.svg)](https://react.dev)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+</div>
+
+Folio is a desktop PDF reader that aims for Adobe Acrobat-caliber quality while
+staying free, open source, and a pleasure to build on. It renders with
+[PDF.js](https://mozilla.github.io/pdf.js/), wraps a modern React interface in a
+native [Tauri](https://tauri.app) shell, and is designed from the first commit
+around three things Acrobat treats as afterthoughts: **accessibility**,
+**a real dark mode**, and **extensibility**.
+
+> Status: early foundation (v0.1). The core viewer, annotations, theming,
+> accessibility, and the plugin/AI architecture are in place. See the
+> [roadmap](ROADMAP.md).
+
+## Features
+
+**Reading**
+- Open, render, and navigate PDFs with a continuous, lazily-rendered page view
+- Zoom, fit-to-width, fit-to-page, and a live page indicator
+- Thumbnail strip and document outline (bookmarks)
+- Fast in-document text search with a results list
+
+**Accessibility (first-class, not bolted on)**
+- Real text layer over every page: selectable, screen-reader readable
+- Full keyboard control with a command-driven shortcut system
+- ARIA landmarks and roles, a skip link, and live-region announcements
+- Respects `prefers-reduced-motion`; targets WCAG 2.2 AA
+
+**Dark mode and reading comfort**
+- Native light / dark / system UI theming via CSS custom properties
+- Page reading modes: normal, night (inverted), sepia, and high-contrast
+
+**Annotations**
+- Highlight selected text; annotations persist per document
+- Annotations panel to review and jump between them
+
+**Extensible**
+- A plugin system: contribute commands, toolbar items, sidebar panels, and tools
+- Every action flows through a command registry, so plugins get shortcuts for free
+
+**AI-ready**
+- A provider-agnostic AI layer (Claude by default, opt-in, bring-your-own-key)
+- Summarize, ask-about-the-document, and structured extraction
+- Model Context Protocol (MCP) client/server support planned
+
+See [`docs/`](docs/) for the full documentation set.
+
+## Tech stack
+
+| Layer      | Choice                                             |
+| ---------- | -------------------------------------------------- |
+| Shell      | [Tauri 2](https://tauri.app) (Rust)                |
+| UI         | [React 18](https://react.dev) + TypeScript         |
+| Build      | [Vite](https://vitejs.dev)                         |
+| Rendering  | [PDF.js](https://mozilla.github.io/pdf.js/)        |
+| State      | [Zustand](https://github.com/pmndrs/zustand)       |
+| Testing    | [Vitest](https://vitest.dev) + [Playwright](https://playwright.dev) |
+
+## Quick start
+
+Prerequisites: **Node 20+**, **Rust (stable)**, and the Tauri system
+dependencies for your OS. Full setup, including the exact Linux packages, is in
+[docs/getting-started.md](docs/getting-started.md).
+
+```bash
+# Install dependencies
+npm install
+
+# Run the desktop app in development (hot reload)
+npm run tauri dev
+
+# Build a production bundle for your platform
+npm run tauri build
+```
+
+Other useful scripts:
+
+```bash
+npm run dev          # Vite dev server only (opens in a browser, no native shell)
+npm run test         # unit tests (Vitest)
+npm run lint         # ESLint
+npm run typecheck    # tsc --noEmit
+```
+
+> First-time build note: app icons must exist for Tauri to compile. Generate
+> them once with `npm run tauri icon src/assets/folio-logo.svg` (see
+> [src-tauri/icons/README.md](src-tauri/icons/README.md)).
+
+## Keyboard shortcuts
+
+| Action            | Shortcut                    |
+| ----------------- | --------------------------- |
+| Open document     | `Ctrl/Cmd + O`              |
+| Find in document  | `Ctrl/Cmd + F`              |
+| Zoom in / out     | `Ctrl/Cmd + =` / `Ctrl/Cmd + -` |
+| Actual size       | `Ctrl/Cmd + 0`              |
+| Next / prev page  | `→` / `←`                   |
+| First / last page | `Ctrl/Cmd + Home` / `End`   |
+| Toggle sidebar    | `Ctrl/Cmd + B`              |
+| Highlight text    | `Ctrl/Cmd + Shift + H`      |
+| Toggle dark mode  | `Ctrl/Cmd + Shift + L`      |
+
+The complete list, plus the accessibility model, is in
+[docs/accessibility.md](docs/accessibility.md).
+
+## Project structure
+
+```
+folio/
+├─ src/                  React + TypeScript frontend
+│  ├─ core/pdf/          PdfEngine interface + PDF.js implementation
+│  ├─ commands/          command registry (every user action)
+│  ├─ components/        Viewer, Toolbar, Sidebar, Search, common
+│  ├─ features/          annotations
+│  ├─ plugins/           plugin host, SDK types, built-in plugins
+│  ├─ ai/                provider-agnostic AI layer + MCP (planned)
+│  ├─ theme/             tokens, ThemeProvider, reading modes
+│  ├─ a11y/              announcer, focus, keyboard shortcuts
+│  └─ state/             Zustand stores
+├─ src-tauri/            Rust backend (file IO, native shell)
+└─ docs/                 architecture, accessibility, theming, plugins, AI
+```
+
+Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
+
+## Documentation
+
+- [Getting started](docs/getting-started.md)
+- [Architecture](docs/architecture.md)
+- [Accessibility](docs/accessibility.md)
+- [Theming](docs/theming.md)
+- [Writing plugins](docs/plugins.md)
+- [AI and MCP](docs/ai.md)
+- [Roadmap](ROADMAP.md)
+
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and our
+[Code of Conduct](CODE_OF_CONDUCT.md). Good first issues are labeled in the
+tracker.
+
+## License
+
+[MIT](LICENSE) © 2026 the Folio contributors.

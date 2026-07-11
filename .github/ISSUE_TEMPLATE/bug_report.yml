@@ -1,0 +1,120 @@
+name: Bug report
+description: Report a problem or unexpected behavior in Folio
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report! Please fill out the
+        sections below so we can reproduce and fix the issue quickly.
+
+        Before submitting, please search
+        [existing issues](https://github.com/owenpkent/folio/issues) to avoid
+        duplicates. For security vulnerabilities, do **not** open an issue;
+        follow our [Security Policy](https://github.com/owenpkent/folio/security/policy)
+        instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug, including the actual behavior you observed.
+      placeholder: When I open a scanned PDF and zoom past 200%, the page renders blank.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Tell us exactly how to reproduce the behavior.
+      placeholder: |
+        1. Open Folio
+        2. Open the attached PDF
+        3. Zoom to 250%
+        4. Scroll to page 3
+        5. Observe the blank page
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+      placeholder: The page should render fully at any zoom level.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Folio version
+      description: Which version of Folio are you running? See Help > About, or the release tag.
+      placeholder: "0.4.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      description: Where did you encounter this bug?
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other (describe in "What happened?")
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version / distribution
+      description: Optional. For example "Windows 11 23H2", "macOS 14.5", "Ubuntu 24.04".
+      placeholder: "Ubuntu 24.04"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: pdf-source
+    attributes:
+      label: PDF source / type
+      description: Optional. What kind of PDF triggers the bug? This helps us find fixtures.
+      options:
+        - Not applicable
+        - Digitally created (exported from an app)
+        - Scanned / image-based
+        - Form (AcroForm / XFA)
+        - Encrypted / password protected
+        - Digitally signed
+        - Very large (many pages or high resolution)
+        - Other
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or output
+      description: Paste any error messages, console output, or crash logs. This will be formatted as code, so no backticks needed.
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission checklist
+      description: Please confirm the following before submitting.
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I am running the latest release, or I have noted my version above.
+          required: true
+        - label: This report is about a bug, not a security vulnerability (those go through the Security Policy).
+          required: true
+        - label: I have provided steps to reproduce, or explained why I cannot.
+          required: true

@@ -1,0 +1,120 @@
+# Folio Roadmap
+
+Folio is an open-source, MIT-licensed PDF viewer aiming at Adobe Acrobat-caliber quality: fast rendering, accessibility-first (WCAG 2.2 AA), dark-mode native, extensible through a plugin system, and AI-ready. The stack is Tauri 2 (Rust) with React 18, TypeScript 5, and Vite 5, rendering via PDF.js (`pdfjs-dist` v4), Zustand for state, CSS-variable theming, and Vitest plus Playwright for tests.
+
+This roadmap is a direction, not a contract. Milestones ship when they are correct and accessible, not on a fixed date. Each phase lists what "done" means so progress is legible.
+
+Status legend: **Planned** (designed, not started), **In progress**, **Done**.
+
+## Guiding principles
+
+These hold across every phase and are how proposals are judged:
+
+- **Accessibility is a release gate, not a phase.** Every feature ships keyboard-operable and screen-reader-labeled, meeting WCAG 2.2 AA. A feature that is not accessible is not done.
+- **Rendering stays fast.** Large documents open quickly and scroll smoothly. Performance regressions block release.
+- **The plugin API is the extension surface.** New capabilities are exposed through the public plugin and command APIs so third parties reach the same surface built-ins do.
+- **AI and cloud features are opt-in and local-first.** Nothing leaves the machine unless the user turns it on. See [docs/ai.md](./docs/ai.md).
+- **Dark mode and theming are native**, driven by CSS variables, not bolted on.
+
+## v0.1 Foundation
+
+The core viewer: open a PDF and read it comfortably, fully by keyboard, fully with a screen reader.
+
+| Area | Deliverable | Status |
+| --- | --- | --- |
+| Open and render | Open local PDFs, render pages via PDF.js with a virtualized page list | Planned |
+| Navigate | Page up/down, go-to-page, continuous and single-page scroll modes | Planned |
+| Zoom and fit | Zoom in/out, fit-width, fit-page, actual-size; per-page rotation | Planned |
+| Search | Full-text search with match highlighting and next/previous navigation | Planned |
+| Thumbnails | Thumbnail sidebar panel for page navigation | Planned |
+| Outline | Bookmarks/outline sidebar panel with jump-to-destination | Planned |
+| Dark mode | Native dark theme via CSS variables, following the OS by default | Planned |
+| Accessibility | Full keyboard operation, focus management, ARIA labeling, screen-reader page announcements, visible focus, reduced-motion support | Planned |
+| Command registry | Global command registry backing keybindings, palette, and toolbar (see [docs/plugins.md](./docs/plugins.md)) | Planned |
+| Plugin host | `PluginHost` loading built-in and third-party plugins against the public API | Planned |
+
+**Milestone: readable and operable.** A user can open a document, find text, navigate by outline and thumbnails, and do all of it by keyboard and with a screen reader, in light or dark mode. Plugins can contribute commands, toolbar items, and panels.
+
+## v0.2 Annotations
+
+Mark up documents. Annotations persist to a sidecar file and can be embedded back into the PDF.
+
+| Area | Deliverable | Status |
+| --- | --- | --- |
+| Text markup | Highlight, underline, strikethrough over the text layer | Planned |
+| Notes | Sticky notes anchored to a point or region | Planned |
+| Freehand | Ink annotations with pressure-agnostic smoothing | Planned |
+| Shapes | Rectangle, ellipse, line, and arrow tools | Planned |
+| Persistence | Sidecar storage of annotations, plus embed-into-PDF on save | Planned |
+| Plugin tools | `registerAnnotationTool` so plugins add custom annotation tools | Planned |
+| Accessibility | Keyboard-createable and editable annotations; annotations list panel; screen-reader descriptions | Planned |
+
+**Milestone: mark up and save.** A user can highlight, note, draw, and add shapes, review them in an annotations panel, and save them either alongside the PDF (sidecar) or embedded into the file. Plugins can add annotation tools through the public API.
+
+## v0.3 Forms & Signatures
+
+Fill forms and work with digital signatures.
+
+| Area | Deliverable | Status |
+| --- | --- | --- |
+| AcroForm fill | Fill and save interactive AcroForm fields (text, checkbox, radio, choice) | Planned |
+| Form navigation | Tab-order field navigation, validation feedback | Planned |
+| Signature verification | Verify existing digital signatures and show trust status | Planned |
+| Signing | Apply a digital signature to a document | Planned |
+| Accessibility | Fields announced with label, type, state, and required status | Planned |
+
+**Milestone: complete a form and trust a signature.** A user can fill and save an AcroForm, see whether an existing signature is valid, and sign a document. (XFA forms are out of scope; see Non-goals.)
+
+## v0.4 Editing & OCR
+
+Change document content, reorganize pages, make scans searchable, and redact.
+
+| Area | Deliverable | Status |
+| --- | --- | --- |
+| Text and image edit | Edit existing text runs and replace/move images | Planned |
+| Page operations | Insert, delete, reorder, rotate, split, and merge pages | Planned |
+| OCR | Recognize text in scanned pages and add a searchable text layer | Planned |
+| Redaction | True redaction that removes underlying content, not just a black box | Planned |
+| Accessibility | Editing operations keyboard-driven; OCR output feeds search and screen readers | Planned |
+
+**Milestone: edit, reorganize, and redact.** A user can edit content, restructure pages, run OCR to make a scan searchable, and redact sensitive content so it is actually gone.
+
+## v0.5 AI & MCP
+
+General availability of the AI features and MCP integration. See [docs/ai.md](./docs/ai.md) for the design.
+
+| Area | Deliverable | Status |
+| --- | --- | --- |
+| Summarize | Document summarization, streaming, multiple styles | Planned |
+| Ask | Chat grounded in the document's extracted text | Planned |
+| Extract | Structured data extraction to a user-defined JSON schema | Planned |
+| Providers | Provider-agnostic layer; Claude (Anthropic) default, bring-your-own-key; local provider support | Planned |
+| MCP client | Folio's assistant can call external MCP tools | Planned |
+| MCP server | Folio exposes tools (`open_document`, `search`, `get_outline`, `extract_text`, `add_annotation`, `get_page_image`) so an external assistant can drive it | Planned |
+| Privacy | Opt-in, local-first posture; keys in the OS keychain; explicit consent for what is sent | Planned |
+| Accessibility | AI results panels and chat fully keyboard and screen-reader accessible | Planned |
+
+**Milestone: AI GA.** Summarize, Ask, and Extract are stable and provider-agnostic, keys are stored securely, and the MCP client and server directions are generally available and opt-in.
+
+## Non-goals
+
+Saying no keeps Folio focused. These are explicitly out of scope, at least through v1:
+
+- **Not a desktop publishing tool.** Folio is a viewer and annotator, not an InDesign or full DTP replacement. Complex layout authoring is out of scope.
+- **Not a browser extension in v1.** Folio is a desktop app. A browser extension or web build is not a v1 goal.
+- **Not a cloud service.** No Folio-hosted accounts, sync service, or document storage. Documents stay on your machine; any cloud AI is opt-in and provider-supplied.
+- **No XFA forms.** Dynamic XFA forms are a legacy Adobe format and are not planned. AcroForm support (v0.3) covers the standard interactive form model.
+- **Not a scanner driver.** Folio consumes PDFs and images; it does not drive scanner hardware. OCR (v0.4) operates on already-scanned pages.
+- **No bundled AI model or keys.** Folio ships no model weights and no API keys. AI is bring-your-own-key or bring-your-own-local-model.
+- **No telemetry or analytics.** Folio does not phone home.
+
+## How to influence the roadmap
+
+This is an open-source project and the roadmap is meant to be shaped by its users and contributors.
+
+- **Open an issue** to propose a feature, report a gap, or argue that a non-goal should change. Concrete use cases move things faster than abstract requests.
+- **Weigh priorities.** If a v0.4 item matters more to you than a v0.2 item, say so in an issue. Ordering within and across phases is negotiable when the demand is there.
+- **Prototype it as a plugin.** Many ideas can ship first as a plugin against the public API (see [docs/plugins.md](./docs/plugins.md)). A working plugin is the strongest possible case for pulling a capability into core.
+- **Contribute.** Pick up an issue, or open a draft PR for discussion. Accessibility and performance are release gates, so land features with keyboard support, labeling, and no regressions from the start.
+
+License: MIT. Contact: Owenpkent@gmail.com.

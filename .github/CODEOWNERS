@@ -1,0 +1,10 @@
+# CODEOWNERS for Folio
+#
+# These owners are requested for review automatically when someone opens a
+# pull request that modifies matching files. The last matching pattern for a
+# given path takes precedence.
+#
+# Docs: https://docs.github.com/articles/about-code-owners
+
+# Default owner for everything in the repository.
+*       @owenpkent

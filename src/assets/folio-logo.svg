@@ -1,0 +1,12 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f6bff" />
+      <stop offset="1" stop-color="#1f57e6" />
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#bg)" />
+  <!-- Stylized folded page / "F" mark -->
+  <path d="M368 268h300a24 24 0 0 1 24 24v72a24 24 0 0 1-24 24H472v96h160a24 24 0 0 1 24 24v72a24 24 0 0 1-24 24H472v148a24 24 0 0 1-24 24h-80a24 24 0 0 1-24-24V292a24 24 0 0 1 24-24Z" fill="#ffffff" />
+  <path d="M676 268l80 80h-56a24 24 0 0 1-24-24v-56Z" fill="#cddcff" />
+</svg>

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Folio</title>
+    <!--
+      No-flash theme bootstrap: apply the saved (or system) theme before first
+      paint so the app never flashes the wrong background. Kept tiny and inline
+      on purpose. ThemeProvider takes over once React mounts.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('folio.theme') || 'system';
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var dark = stored === 'dark' || (stored === 'system' && prefersDark);
+          document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        } catch (e) {
+          /* localStorage may be unavailable; default styling still applies. */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

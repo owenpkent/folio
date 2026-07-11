@@ -1,0 +1,81 @@
+/*
+ * Folio design tokens.
+ *
+ * Every color and dimension the UI uses is a custom property defined here.
+ * Light values live on :root; dark values override under [data-theme='dark'].
+ * See docs/theming.md.
+ */
+
+:root,
+:root[data-theme='light'] {
+  --folio-bg: #f4f5f7;
+  --folio-surface: #ffffff;
+  --folio-surface-2: #eceef1;
+  --folio-surface-hover: #e4e7eb;
+  --folio-text: #1c1f24;
+  --folio-text-muted: #5b626e;
+  --folio-border: #d9dce1;
+  --folio-accent: #2f6bff;
+  --folio-accent-hover: #1f57e6;
+  --folio-accent-contrast: #ffffff;
+  --folio-focus: #2f6bff;
+  --folio-danger: #d64545;
+  --folio-shadow: 0 6px 24px rgba(15, 18, 25, 0.12);
+  --folio-page-shadow: 0 1px 3px rgba(15, 18, 25, 0.18), 0 8px 24px rgba(15, 18, 25, 0.1);
+  --folio-page-bg: #ffffff;
+
+  --folio-toolbar-height: 48px;
+  --folio-sidebar-width: 264px;
+  --folio-radius: 10px;
+  --folio-radius-sm: 6px;
+  --folio-space: 8px;
+  --folio-transition: 150ms ease;
+  --folio-font: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+:root[data-theme='dark'] {
+  --folio-bg: #17191d;
+  --folio-surface: #1f2228;
+  --folio-surface-2: #2a2e36;
+  --folio-surface-hover: #333944;
+  --folio-text: #e7e9ee;
+  --folio-text-muted: #9aa2b1;
+  --folio-border: #333944;
+  --folio-accent: #6f9bff;
+  --folio-accent-hover: #8bb0ff;
+  --folio-accent-contrast: #0d1016;
+  --folio-focus: #6f9bff;
+  --folio-danger: #ff6b6b;
+  --folio-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  --folio-page-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 10px 30px rgba(0, 0, 0, 0.45);
+  --folio-page-bg: #ffffff;
+}
+
+/*
+ * Page reading modes. These filter the rasterised page canvas only, leaving
+ * the UI chrome untouched, so users can read comfortably in any light.
+ */
+[data-reading-mode='night'] .folio-page-canvas {
+  filter: invert(1) hue-rotate(180deg);
+}
+[data-reading-mode='sepia'] .folio-page-canvas {
+  filter: sepia(0.4) contrast(0.95) brightness(0.98);
+}
+[data-reading-mode='high-contrast'] .folio-page-canvas {
+  filter: contrast(1.3) brightness(1.05);
+}
+
+/* Respect users who prefer less motion. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --folio-transition: 0ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
