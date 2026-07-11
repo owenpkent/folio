@@ -22,16 +22,16 @@ The core viewer: open a PDF and read it comfortably, fully by keyboard, fully wi
 
 | Area | Deliverable | Status |
 | --- | --- | --- |
-| Open and render | Open local PDFs, render pages via PDF.js with a virtualized page list | Planned |
-| Navigate | Page up/down, go-to-page, continuous and single-page scroll modes | Planned |
-| Zoom and fit | Zoom in/out, fit-width, fit-page, actual-size; per-page rotation | Planned |
-| Search | Full-text search with match highlighting and next/previous navigation | Planned |
-| Thumbnails | Thumbnail sidebar panel for page navigation | Planned |
-| Outline | Bookmarks/outline sidebar panel with jump-to-destination | Planned |
-| Dark mode | Native dark theme via CSS variables, following the OS by default | Planned |
-| Accessibility | Full keyboard operation, focus management, ARIA labeling, screen-reader page announcements, visible focus, reduced-motion support | Planned |
-| Command registry | Global command registry backing keybindings, palette, and toolbar (see [docs/plugins.md](./docs/plugins.md)) | Planned |
-| Plugin host | `PluginHost` loading built-in and third-party plugins against the public API | Planned |
+| Open and render | Open local PDFs, render pages via PDF.js with a lazily-rendered page list | Done |
+| Navigate | Page navigation, go-to-page, and continuous scroll (single-page mode planned) | Done |
+| Zoom and fit | Zoom in/out, fit-width, fit-page, and actual-size (per-page rotation planned) | Done |
+| Search | Full-text search with a results list and next/previous navigation | Done |
+| Thumbnails | Thumbnail sidebar panel for page navigation | Done |
+| Outline | Bookmarks/outline sidebar panel with jump-to-destination | Done |
+| Dark mode | Native dark theme via CSS variables, following the OS by default | Done |
+| Accessibility | Full keyboard operation, focus management, ARIA labeling, screen-reader page announcements, visible focus, reduced-motion support | Done |
+| Command registry | Global command registry backing keybindings, palette, and toolbar (see [docs/plugins.md](./docs/plugins.md)) | Done |
+| Plugin host | `PluginHost` loading plugins against the public API; ships a built-in Word Count plugin | Done |
 
 **Milestone: readable and operable.** A user can open a document, find text, navigate by outline and thumbnails, and do all of it by keyboard and with a screen reader, in light or dark mode. Plugins can contribute commands, toolbar items, and panels.
 
@@ -39,15 +39,17 @@ The core viewer: open a PDF and read it comfortably, fully by keyboard, fully wi
 
 Mark up documents. Annotations persist to a sidecar file and can be embedded back into the PDF.
 
+Text highlighting with sidecar (local) persistence and an annotations panel already shipped in v0.1 as the foundation for this phase; the rest builds on it.
+
 | Area | Deliverable | Status |
 | --- | --- | --- |
-| Text markup | Highlight, underline, strikethrough over the text layer | Planned |
+| Text markup | Highlight (shipped), plus underline and strikethrough over the text layer | In progress |
 | Notes | Sticky notes anchored to a point or region | Planned |
 | Freehand | Ink annotations with pressure-agnostic smoothing | Planned |
 | Shapes | Rectangle, ellipse, line, and arrow tools | Planned |
-| Persistence | Sidecar storage of annotations, plus embed-into-PDF on save | Planned |
+| Persistence | Sidecar storage of annotations (shipped), plus embed-into-PDF on save | In progress |
 | Plugin tools | `registerAnnotationTool` so plugins add custom annotation tools | Planned |
-| Accessibility | Keyboard-createable and editable annotations; annotations list panel; screen-reader descriptions | Planned |
+| Accessibility | Keyboard-createable and editable annotations; annotations list panel (shipped); screen-reader descriptions | In progress |
 
 **Milestone: mark up and save.** A user can highlight, note, draw, and add shapes, review them in an annotations panel, and save them either alongside the PDF (sidecar) or embedded into the file. Plugins can add annotation tools through the public API.
 
@@ -82,6 +84,8 @@ Change document content, reorganize pages, make scans searchable, and redact.
 ## v0.5 AI & MCP
 
 General availability of the AI features and MCP integration. See [docs/ai.md](./docs/ai.md) for the design.
+
+An experimental, opt-in Claude provider and a stubbed MCP tool surface already exist as v0.1 scaffolding (off by default, no bundled keys); this phase brings them to general availability.
 
 | Area | Deliverable | Status |
 | --- | --- | --- |

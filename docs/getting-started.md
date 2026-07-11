@@ -39,19 +39,29 @@ Tauri renders in a native WebView, which needs OS-level libraries. Install the s
 sudo apt update
 sudo apt install -y \
   libwebkit2gtk-4.1-dev \
+  libsoup-3.0-dev \
+  libjavascriptcoregtk-4.1-dev \
+  librsvg2-dev \
   build-essential \
+  curl \
+  wget \
+  file \
   libssl-dev \
+  libgtk-3-dev \
   libayatana-appindicator3-dev \
-  librsvg2-dev
+  patchelf
 ```
 
 - `libwebkit2gtk-4.1-dev` provides the WebView (Tauri 2 uses the 4.1 series, not 4.0).
-- `build-essential` provides the C toolchain and linker.
-- `libssl-dev` is needed by Rust crates that link OpenSSL.
-- `libayatana-appindicator3-dev` supports the system tray / indicator.
+- `libsoup-3.0-dev` and `libjavascriptcoregtk-4.1-dev` are the HTTP and JavaScript-engine libraries the 4.1 WebView links against.
 - `librsvg2-dev` is used for icon rasterization.
+- `build-essential` provides the C toolchain and linker; `curl`, `wget`, and `file` are used by the Tauri build and bundling steps.
+- `libssl-dev` is needed by Rust crates that link OpenSSL.
+- `libgtk-3-dev` provides the GTK 3 toolkit the window shell uses.
+- `libayatana-appindicator3-dev` supports the system tray / indicator.
+- `patchelf` is required to assemble the Linux AppImage bundle.
 
-On Fedora, the equivalents are `webkit2gtk4.1-devel`, `openssl-devel`, `libappindicator-gtk3-devel`, `librsvg2-devel`, and the `@development-tools` group. On Arch, use `webkit2gtk-4.1`, `base-devel`, `openssl`, `libappindicator-gtk3`, and `librsvg`.
+On Fedora, the equivalents are `webkit2gtk4.1-devel`, `libsoup3-devel`, `javascriptcoregtk4.1-devel`, `openssl-devel`, `gtk3-devel`, `libappindicator-gtk3-devel`, `librsvg2-devel`, `patchelf`, and the `@development-tools` group. On Arch, use `webkit2gtk-4.1`, `libsoup3`, `base-devel`, `openssl`, `gtk3`, `libappindicator-gtk3`, `librsvg`, and `patchelf`.
 
 **macOS:**
 
@@ -130,18 +140,21 @@ folio/
 ├─ .github/                 # CI, issue/PR templates, dependabot, CODEOWNERS
 ├─ docs/                    # documentation (this file lives here)
 │  └─ adr/                  # architecture decision records
-├─ public/                  # static assets served by Vite (incl. the PDF.js worker)
+├─ public/                  # static assets served by Vite
 ├─ src/                     # React + TypeScript frontend
-│  ├─ ai/                   # AI layer: providers/ (Claude default), mcp/ (planned)
+│  ├─ ai/                   # AI layer: providers/ (Claude, experimental), mcp/ (stubs)
 │  ├─ a11y/                 # accessibility utils (announcer, focus mgmt, shortcuts help)
-│  ├─ commands/             # command registry — every user action is a Command
+│  ├─ assets/               # bundled assets (folio-logo.svg, the app-icon source)
+│  ├─ commands/             # command registry: every user action is a Command
 │  ├─ components/           # Viewer/, Toolbar/, Sidebar/, Search/, common/
 │  ├─ core/                 # engine-agnostic PDF core: pdf/ (PdfEngine + PdfJsEngine), document/
 │  ├─ features/annotations/ # annotation model, store, tools
-│  ├─ plugins/              # plugin host + SDK types + builtins/
+│  ├─ plugins/              # plugin host + SDK types + builtins/ (Word Count)
 │  ├─ state/                # Zustand stores
+│  ├─ styles/               # global CSS
+│  ├─ test/                 # test setup (Vitest)
 │  └─ theme/                # ThemeProvider, design tokens, reading modes
-├─ src-tauri/               # Rust backend (Tauri 2): src/, icons/
+├─ src-tauri/               # Rust backend (Tauri 2): src/, icons/, capabilities/
 ├─ index.html · package.json · tsconfig.json · vite.config.ts · LICENSE · README.md
 ```
 
@@ -154,7 +167,7 @@ Where to start reading code:
 ## Troubleshooting
 
 **Pages stay blank / "worker not loading" errors.**
-PDF.js runs its parser in a Web Worker, and the most common setup issue is the worker not being found. Confirm `GlobalWorkerOptions.workerSrc` resolves to the bundled `pdf.worker` asset and that Vite is emitting it (the worker asset must be served, typically from `public/` or via the Vite worker import). After changing worker configuration, do a clean restart of `npm run tauri dev`. If you see a version-mismatch warning, ensure the worker and `pdfjs-dist` are the same v4 version.
+PDF.js runs its parser in a Web Worker, and the most common setup issue is the worker not being found. Folio configures this in `src/core/pdf/setupWorker.ts`, which imports `pdfjs-dist/build/pdf.worker.min.mjs?url` and assigns it to `GlobalWorkerOptions.workerSrc`; Vite then emits the worker as a hashed bundle asset. Confirm that import resolves and that Vite is emitting the worker. After changing worker configuration, do a clean restart of `npm run tauri dev`. If you see a version-mismatch warning, ensure the worker and `pdfjs-dist` are the same v4 version.
 
 **`npm run tauri dev` fails to compile the backend on Linux.**
 Almost always a missing system dependency. Reinstall the Linux set above, paying attention to `libwebkit2gtk-4.1-dev` (the **4.1**, not 4.0, package is required by Tauri 2). A `pkg-config` error naming `webkit2gtk-4.1` or `openssl` points directly at the missing `-dev` package.
@@ -169,7 +182,7 @@ The Visual C++ Build Tools are missing or the Rust toolchain is set to GNU inste
 The WebView2 Runtime is missing. Install the Evergreen WebView2 runtime and relaunch.
 
 **Icons look wrong or the build complains about icons.**
-App icons live in `src-tauri/icons/`. Regenerate them from a single source with `npm run tauri icon path/to/icon.png`, which produces the full platform icon set. On Linux, missing `librsvg2-dev` can cause icon rasterization to fail during the build.
+App icons live in `src-tauri/icons/`. Regenerate them from the SVG source with `npm run tauri icon src/assets/folio-logo.svg`, which produces the full platform icon set (see `src-tauri/icons/README.md`). On Linux, missing `librsvg2-dev` can cause icon rasterization to fail during the build.
 
 **Rust build is very slow the first time.**
 Expected. The initial backend compile builds all crates from scratch; later builds are incremental and much faster. Do not delete `src-tauri/target/` unless you intend to pay that cost again.

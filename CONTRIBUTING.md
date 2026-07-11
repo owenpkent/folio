@@ -73,7 +73,9 @@ The short version:
   sudo apt-get update
   sudo apt-get install -y \
     libwebkit2gtk-4.1-dev \
-    libappindicator3-dev \
+    libsoup-3.0-dev \
+    libjavascriptcoregtk-4.1-dev \
+    libayatana-appindicator3-dev \
     librsvg2-dev \
     patchelf \
     build-essential \
@@ -82,7 +84,7 @@ The short version:
     libgtk-3-dev
   ```
 
-  See the [Tauri prerequisites guide](https://tauri.app/start/prerequisites/)
+  See the [Tauri prerequisites guide](https://v2.tauri.app/start/prerequisites/)
   for macOS and Windows.
 
 ### Install and run

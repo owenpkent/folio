@@ -18,9 +18,9 @@ native [Tauri](https://tauri.app) shell, and is designed from the first commit
 around three things Acrobat treats as afterthoughts: **accessibility**,
 **a real dark mode**, and **extensibility**.
 
-> Status: early foundation (v0.1). The core viewer, annotations, theming,
-> accessibility, and the plugin/AI architecture are in place. See the
-> [roadmap](ROADMAP.md).
+> Status: early foundation (v0.1). The core viewer, text highlighting, theming,
+> accessibility, the plugin system, and the AI/MCP scaffolding are in place. See
+> the [roadmap](ROADMAP.md).
 
 ## Features
 
@@ -49,9 +49,9 @@ around three things Acrobat treats as afterthoughts: **accessibility**,
 - Every action flows through a command registry, so plugins get shortcuts for free
 
 **AI-ready**
-- A provider-agnostic AI layer (Claude by default, opt-in, bring-your-own-key)
-- Summarize, ask-about-the-document, and structured extraction
-- Model Context Protocol (MCP) client/server support planned
+- A provider-agnostic AI layer with an experimental, opt-in Claude provider (bring-your-own-key)
+- Summarize, ask-about-the-document, and structured extraction (experimental)
+- Model Context Protocol (MCP) client/server support planned; the tool surface is stubbed out
 
 See [`docs/`](docs/) for the full documentation set.
 
@@ -121,12 +121,15 @@ folio/
 │  ├─ core/pdf/          PdfEngine interface + PDF.js implementation
 │  ├─ commands/          command registry (every user action)
 │  ├─ components/        Viewer, Toolbar, Sidebar, Search, common
-│  ├─ features/          annotations
-│  ├─ plugins/           plugin host, SDK types, built-in plugins
-│  ├─ ai/                provider-agnostic AI layer + MCP (planned)
+│  ├─ features/          annotations (text highlighting + persistence)
+│  ├─ plugins/           plugin host, SDK types, built-in Word Count plugin
+│  ├─ ai/                provider-agnostic AI layer (Claude, experimental) + MCP stubs
 │  ├─ theme/             tokens, ThemeProvider, reading modes
 │  ├─ a11y/              announcer, focus, keyboard shortcuts
-│  └─ state/             Zustand stores
+│  ├─ state/             Zustand stores
+│  ├─ styles/            global CSS
+│  ├─ assets/            app-icon source (folio-logo.svg)
+│  └─ test/              test setup
 ├─ src-tauri/            Rust backend (file IO, native shell)
 └─ docs/                 architecture, accessibility, theming, plugins, AI
 ```

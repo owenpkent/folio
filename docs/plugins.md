@@ -1,28 +1,29 @@
 # Writing Folio Plugins
 
-Folio is extensible. Almost everything the built-in UI does (adding a toolbar button, contributing a sidebar panel, defining an annotation tool, reacting to a document opening) is available to plugins through the same public API. Built-in features under `src/plugins/builtins/` are written against exactly the contract described here, so there is no privileged internal path that third-party plugins cannot reach.
+Folio is extensible. Almost everything the built-in UI does (adding a toolbar button, contributing a sidebar panel, defining an annotation tool, reacting to a document opening) is available to plugins through the same public API. Built-in features under `src/plugins/builtins/` are written against exactly the contract described here, so there is no privileged internal path that a plugin cannot reach.
 
-This guide covers plugin anatomy and lifecycle, every contribution point on `PluginContext`, a complete worked example, how the `PluginHost` discovers and activates plugins, storage, event hooks, versioning, and the current security model.
+This guide covers plugin anatomy and lifecycle, every contribution point on `PluginContext`, a complete worked example, how the `PluginHost` activates plugins today, storage, event hooks, versioning, and the current security model. Where a capability is on the roadmap but not yet implemented, it is called out as **Planned**.
 
 - Command registry contract: [`src/commands`](../src/commands)
 - Plugin API and host: [`src/plugins`](../src/plugins)
 - Built-in plugins: [`src/plugins/builtins`](../src/plugins/builtins)
+
+The public type surface lives in [`src/plugins/types.ts`](../src/plugins/types.ts) and is re-exported from [`src/plugins/index.ts`](../src/plugins/index.ts), so plugins import from `@/plugins`. Built-ins that live inside the plugins folder import the same types from the relative `../types`.
 
 ## Anatomy of a plugin
 
 A plugin is an object that satisfies `FolioPlugin`. The only required members are an identity (`id`, `name`, `version`) and an `activate` function. Everything a plugin contributes is registered from inside `activate`, using the `PluginContext` it receives.
 
 ```ts
-// @folio/plugin-api is the public type surface exported from src/plugins/api.ts
-import type { FolioPlugin, PluginContext } from '@folio/plugin-api';
+import type { FolioPlugin, PluginContext } from '@/plugins';
 
 const plugin: FolioPlugin = {
   id: 'com.example.hello',   // reverse-DNS, globally unique, stable across versions
-  name: 'Hello',             // human-readable, shown in the plugin manager
+  name: 'Hello',             // human-readable, shown wherever Folio lists active plugins
   version: '1.0.0',          // semver of the plugin itself
 
   activate(ctx: PluginContext) {
-    ctx.ui.showToast('Hello from a plugin');
+    ctx.ui.showToast('Hello from a plugin'); // kind defaults to 'info'
   },
 };
 
@@ -33,7 +34,7 @@ export default plugin;
 
 ```ts
 interface FolioPlugin {
-  id: string;       // reverse-DNS, e.g. "com.example.wordcount"
+  id: string;       // reverse-DNS, e.g. "app.folio.word-count"
   name: string;
   version: string;
   activate(ctx: PluginContext): void | Promise<void>;
@@ -41,9 +42,9 @@ interface FolioPlugin {
 }
 ```
 
-- `id` is the identity the host keys everything on: storage namespace, settings, enable/disable state, and dependency references. Never change it between releases (change `version` instead).
-- `activate` runs once when the plugin is activated (see [Activation](#how-pluginhost-loads-and-activates-plugins)). It may be async; the host awaits it before considering the plugin ready.
-- `deactivate` is optional but strongly recommended if you hold any resource the `Disposable` chain does not cover (timers, `AbortController`s, external sockets).
+- `id` is the identity the host keys everything on: the storage namespace (`folio.plugin.<id>.`) and the host's active-plugin map. Never change it between releases (change `version` instead).
+- `activate` runs once when the plugin is activated (see [Activation](#how-pluginhost-loads-and-activates-plugins)). It may be async; the host awaits it before considering the plugin ready. If it throws, the host logs the error and immediately deactivates the plugin.
+- `deactivate` is optional. The host already disposes everything you registered through the context (see below), so you only need `deactivate` for resources the context does not know about (timers, `AbortController`s, external sockets).
 
 ## Lifecycle and `Disposable` cleanup
 
@@ -55,12 +56,12 @@ interface Disposable {
 }
 ```
 
-A plugin is responsible for disposing everything it registered when it is deactivated. The idiomatic pattern is to collect disposables and tear them all down in `deactivate`. Do not rely on the host to guess what you own.
+Each of those disposables is also tracked by the host. When a plugin is deactivated the host disposes all of them for you, in reverse registration order, and then calls your optional `deactivate()`. In other words, hot enable/disable is safe without any bookkeeping on your part: a plugin that only registers contributions (like the built-in Word Count) does not need a `deactivate` at all.
+
+Keep the returned `Disposable` only when you want to remove a single contribution *before* the plugin is torn down (for example, retiring a toolbar item when a mode changes):
 
 ```ts
-import type { FolioPlugin, PluginContext, Disposable } from '@folio/plugin-api';
-
-let subscriptions: Disposable[] = [];
+import type { FolioPlugin, PluginContext, Disposable } from '@/plugins';
 
 const plugin: FolioPlugin = {
   id: 'com.example.hello',
@@ -68,40 +69,39 @@ const plugin: FolioPlugin = {
   version: '1.0.0',
 
   activate(ctx: PluginContext) {
-    subscriptions.push(
-      ctx.registerCommand({
-        id: 'hello.greet',
-        title: 'Hello: Greet',
-        run: () => ctx.ui.showToast('Hi'),
-      }),
-    );
-    subscriptions.push(ctx.onDocumentOpen((doc) => ctx.ui.showToast(`Opened ${doc.title}`)));
-  },
+    const greet: Disposable = ctx.registerCommand({
+      id: 'hello.greet',
+      title: 'Hello: Greet',
+      run: () => ctx.ui.showToast('Hi'),
+    });
 
-  deactivate() {
-    for (const d of subscriptions) d.dispose();
-    subscriptions = [];
+    ctx.onDocumentOpen((doc) => ctx.ui.showToast(`Opened ${doc.name}`));
+
+    // Remove just the command later, if you need to:
+    // greet.dispose();
+    void greet;
   },
 };
 
 export default plugin;
 ```
 
-Why this matters: Folio can enable and disable a plugin without restarting the app. If `deactivate` leaves a toolbar item or an event handler behind, that stale contribution keeps firing against a context that no longer exists. Disposing on deactivate is what makes hot enable/disable safe.
+Why the host tracks disposables: Folio can deactivate a plugin without restarting the app. If a contribution or event handler were left behind, it would keep firing against a context that no longer exists. Automatic disposal on deactivate is what makes that safe. Use `deactivate` for anything the host cannot see (timers, sockets, `AbortController`s).
 
 ## Contribution points: the `PluginContext`
 
 ```ts
 interface PluginContext {
-  readonly apiVersion: string;   // semver of the host plugin API, e.g. "0.1.0"
+  readonly pluginId: string;     // this plugin's id
+  readonly apiVersion: string;   // host plugin API version, currently "0.1.0"
 
-  registerCommand(cmd: Command): Disposable;
+  registerCommand(command: Command): Disposable;
   registerToolbarItem(item: ToolbarItem): Disposable;
   registerSidebarPanel(panel: SidebarPanel): Disposable;
-  registerAnnotationTool(tool: AnnotationTool): Disposable;
+  registerAnnotationTool(tool: AnnotationToolDef): Disposable;
 
   onDocumentOpen(handler: (doc: DocumentInfo) => void): Disposable;
-  onPageRender(handler: (e: PageRenderEvent) => void): Disposable;
+  onPageRender(handler: (event: PageRenderEvent) => void): Disposable;
 
   getActiveDocument(): DocumentInfo | null;
 
@@ -112,40 +112,39 @@ interface PluginContext {
 
 ### Commands
 
-Commands are the single dispatch mechanism in Folio. Keyboard shortcuts, toolbar clicks, menu items, plugin actions, and AI actions all resolve to a command id and run through the global registry.
+Commands are the single dispatch mechanism in Folio. Keyboard shortcuts, toolbar clicks, plugin actions, and AI actions all resolve to a command id and run through the global registry.
 
 ```ts
 interface Command {
-  id: string;                              // unique, namespaced by convention: "wordcount.recount"
-  title: string;                           // shown in the command palette
-  category?: string;                       // groups related commands in the palette
-  keybinding?: string;                     // e.g. "Ctrl+Shift+W" (Cmd on macOS)
-  when?: (ctx: CommandContext) => boolean; // enablement predicate, evaluated on each dispatch
-  run(ctx: CommandContext): void | Promise<void>;
+  id: string;                          // unique, namespaced by convention: "wordcount.recount"
+  title: string;                       // human-readable label shown in menus / the command palette
+  category?: string;                   // grouping label, e.g. "View"
+  keybinding?: string;                 // e.g. "Mod+O" (Mod = Cmd on macOS, Ctrl elsewhere)
+  when?: () => boolean;                // enablement guard, re-evaluated on each dispatch
+  run(ctx?: CommandContext): void | Promise<void>;
 }
 ```
 
 `ctx.registerCommand(cmd)` forwards to the global `commandRegistry.register(cmd)`. Anything can then invoke it:
 
 ```ts
-import { commandRegistry } from '@folio/commands';
+import { commandRegistry } from '@/commands';
 
 await commandRegistry.execute('wordcount.recount');
-await commandRegistry.execute('viewer.goToPage', { page: 12 }); // args flow to CommandContext.args
+await commandRegistry.execute('viewer.goToPage', { args: { page: 12 } });
 ```
 
-The `CommandContext` passed to `run` and `when` gives read access to app state at dispatch time:
+The optional `CommandContext` passed to `run` carries an opaque payload:
 
 ```ts
 interface CommandContext {
-  getActiveDocument(): DocumentInfo | null;
-  readonly viewer: ViewerApi;              // navigation and zoom (goToPage, setZoom, rotate, ...)
-  readonly selection: TextSelection | null; // current text-layer selection, if any
-  readonly args?: unknown;                 // second argument passed to commandRegistry.execute
+  args?: unknown; // the second argument passed to commandRegistry.execute
 }
 ```
 
-Use `when` to keep a command out of the palette and disable its keybinding when it cannot run. It is re-evaluated on every dispatch, so it must be cheap and side-effect free.
+**Planned:** a richer `CommandContext` (typed access to the active document, viewer navigation/zoom, and the current text selection) is on the roadmap. Today `run` reads app state directly from the relevant stores, as the built-in Word Count plugin does.
+
+Use `when` to disable a command (and its keybinding) when it cannot run. It takes no arguments and is re-evaluated on every dispatch, so it must be cheap and side-effect free. A command whose `when` returns `false` is skipped by `commandRegistry.execute`. The command palette that will also consult `when` is planned; commands, keybindings, and programmatic dispatch work today.
 
 ### Toolbar items
 
@@ -154,298 +153,298 @@ A toolbar item is a visual affordance that runs a command. It carries no logic o
 ```ts
 interface ToolbarItem {
   id: string;
-  commandId: string;                       // the command executed on click
-  icon: string;                            // Folio icon name, or an inline SVG string
-  tooltip?: string;
-  group?: 'navigation' | 'view' | 'annotate' | 'tools';
-  order?: number;                          // lower numbers sort earlier within the group
+  title: string;                       // tooltip / accessible label
+  icon?: string;                       // icon name from the built-in icon set (see components/common/Icon)
+  group?: 'left' | 'center' | 'right'; // which toolbar cluster the item joins
+  commandId: string;                   // the command dispatched when the item is activated
 }
 ```
 
+Registering an item adds it to the reactive contribution store, so the toolbar shows it immediately and removes it the moment the item's `Disposable` is disposed (or the plugin deactivates).
+
 ### Sidebar panels
 
-Sidebar panels contribute to the left rail alongside Thumbnails, Outline, and Annotations. The `mount` contract is deliberately framework-neutral so third-party plugins are not forced to depend on React or on Folio's internal component tree. You are handed a container element; return an optional cleanup function that runs on unmount.
+Sidebar panels contribute to the rail alongside Folio's built-in panels. The `render` contract is deliberately framework-free (a DOM node, not a React component) so plugins are not coupled to Folio's UI stack. You are handed a container element and return an optional cleanup function that runs on unmount.
 
 ```ts
 interface SidebarPanel {
   id: string;
   title: string;
   icon?: string;
-  order?: number;
-  // Return an optional teardown callback. Called when the panel is unmounted
-  // (user switches panels, or the plugin is deactivated).
-  mount(container: HTMLElement, ctx: PluginContext): void | (() => void);
+  // Render the panel body into `container`. Return an optional teardown
+  // callback, called when the panel is unmounted (the plugin is deactivated,
+  // or the panel is otherwise torn down).
+  render(container: HTMLElement): void | (() => void);
 }
 ```
 
-Built-in panels may render with React directly; third-party panels typically manipulate the DOM inside `container` or mount their own micro-framework. Either is fine. The container is owned by Folio: do not reach outside it into the rest of the DOM.
+Both built-in and third-party panels render into the container the same way: create DOM nodes and append them, or mount your own micro-framework inside `container`. The container is owned by Folio, so do not reach outside it into the rest of the DOM. See the [worked example](#worked-example-the-word-count-plugin) for a real `render` implementation.
 
 ### Annotation tools
 
-Annotation tools plug into the annotation layer described in the [roadmap](../ROADMAP.md) v0.2 milestone. A tool receives normalized pointer events in PDF page coordinates and returns an `AnnotationDraft` on completion, which Folio persists through the same pipeline as the built-in highlight and ink tools.
+`registerAnnotationTool` adds a tool definition to the annotation-tools contribution store. Today that definition is intentionally minimal (an id, a title, and an optional icon):
 
 ```ts
-interface AnnotationTool {
+interface AnnotationToolDef {
   id: string;
-  label: string;
-  icon: string;
-  cursor?: string;                         // CSS cursor while the tool is active
-  onPointerDown?(e: AnnotationPointerEvent): void;
-  onPointerMove?(e: AnnotationPointerEvent): void;
-  // Returning a draft commits an annotation; returning void cancels the gesture.
-  onPointerUp?(e: AnnotationPointerEvent): AnnotationDraft | void;
-}
-
-interface AnnotationPointerEvent {
-  readonly pageNumber: number;
-  readonly point: { x: number; y: number }; // PDF user-space units, origin bottom-left
-  readonly modifiers: { shift: boolean; alt: boolean; ctrl: boolean; meta: boolean };
+  title: string;
+  icon?: string;
 }
 ```
+
+**Planned:** the interactive drawing contract for annotation tools is a roadmap item (see the [roadmap](../ROADMAP.md) annotation-layer milestone). The intended shape is a tool that receives normalized pointer events in PDF page coordinates and returns an annotation draft on completion, which Folio would persist through the same pipeline as the built-in tools. That handler API (`onPointerDown` / `onPointerMove` / `onPointerUp`, pointer events, and draft objects) is not implemented yet; `registerAnnotationTool` currently only registers the definition above.
 
 ### Event hooks
 
-Two document lifecycle hooks are stable in v0.1. Both return a `Disposable`.
+Two document lifecycle hooks are available in v0.1. Both return a `Disposable`.
 
 ```ts
 onDocumentOpen(handler: (doc: DocumentInfo) => void): Disposable;
-onPageRender(handler: (e: PageRenderEvent) => void): Disposable;
+onPageRender(handler: (event: PageRenderEvent) => void): Disposable;
 ```
 
-`onDocumentOpen` fires after a document is parsed and the first page is ready. `onPageRender` fires each time a page is rasterized to a canvas, which is the correct place to draw per-page overlays (badges, watermarks, search-hit boxes). Because it can fire dozens of times during fast scrolling, keep the handler cheap and idempotent.
-
-```ts
-// A minimal overlay plugin: draw a small page number badge on every rendered page.
-ctx.onPageRender((e: PageRenderEvent) => {
-  const badge = document.createElement('div');
-  badge.className = 'example-page-badge';
-  badge.textContent = String(e.pageNumber);
-  e.overlay.appendChild(badge); // overlay is a positioned layer above the canvas
-});
-```
+`onDocumentOpen` fires when a document has been opened and loaded; the `DocumentInfo` handed to the handler is also cached as the active document (so `getActiveDocument()` returns it afterwards). `onPageRender` fires each time a page is rasterized to a canvas. Because it can fire many times during fast scrolling, keep the handler cheap and idempotent.
 
 ```ts
 interface PageRenderEvent {
-  readonly pageNumber: number;
-  readonly scale: number;                  // current render scale (device pixels per PDF unit)
-  readonly canvas: HTMLCanvasElement;      // the rendered page canvas (read-only for overlays)
-  readonly textLayer: HTMLElement | null;  // selectable text layer, if generated
-  readonly overlay: HTMLElement;           // plugin-writable layer, cleared on re-render
-  readonly document: DocumentInfo;
+  pageNumber: number;
+  scale: number; // current render scale (device pixels per PDF unit)
 }
 ```
+
+A minimal use of `onPageRender` today is tracking which page and zoom level are on screen:
+
+```ts
+ctx.onPageRender((event) => {
+  console.debug(`rendered page ${event.pageNumber} at scale ${event.scale}`);
+});
+```
+
+**Planned:** a richer `PageRenderEvent` that also exposes the page canvas, text layer, and a plugin-writable overlay layer (for drawing per-page badges, watermarks, or search-hit boxes) is on the roadmap. The current event carries only `pageNumber` and `scale`.
 
 ### The active document
 
-`getActiveDocument()` returns a `DocumentInfo`, or `null` when no document is open. It exposes metadata plus lazy text and outline extraction backed by PDF.js.
+`getActiveDocument()` returns a `DocumentInfo`, or `null` when no document is open.
 
 ```ts
 interface DocumentInfo {
-  readonly id: string;                     // session id, unique per open tab
-  readonly title: string;
-  readonly path: string | null;            // filesystem path, null for in-memory documents
-  readonly pageCount: number;
-  readonly fingerprint: string;            // PDF.js content fingerprint, stable per file
-  getPageText(pageNumber: number): Promise<string>;
-  getText(): Promise<string>;              // full document text (extracts and caches per page)
-  getOutline(): Promise<OutlineNode[]>;
+  name: string;        // display name of the document
+  numPages: number;    // total page count
+  fingerprint: string; // PDF.js content fingerprint, stable per file
 }
 ```
 
-Prefer `fingerprint` over `id` as a storage key when you want results to persist across sessions for the same file. `id` is per-tab and changes when the document is reopened.
+`DocumentInfo` is metadata only. To read page text or other content, use the PDF engine directly, as the built-in Word Count plugin does:
+
+```ts
+import { getEngine } from '@/core/pdf';
+
+const engine = getEngine();
+const text = await engine.getPageText(1); // text of page 1
+```
+
+Use `fingerprint` as a stable per-file storage key when you want results to persist across sessions for the same file: it is derived from the file content, not from the session.
 
 ### Plugin storage
 
-Each plugin gets a private key/value store, namespaced by `plugin.id` and persisted across app restarts (written to the app data directory through the Tauri backend). Values are structured-clone serializable.
+Each plugin gets a private key/value store, namespaced by `plugin.id` (keys are prefixed `folio.plugin.<id>.`) and persisted through the browser's `localStorage` inside the Tauri webview. The API is synchronous, and values are serialized with `JSON.stringify`, so they must be JSON-serializable.
 
 ```ts
 interface PluginStorage {
-  get<T>(key: string): Promise<T | undefined>;
-  set<T>(key: string, value: T): Promise<void>;
-  delete(key: string): Promise<void>;
-  keys(): Promise<string[]>;
-  clear(): Promise<void>;
+  get<T = unknown>(key: string): T | null;   // null if absent or unparseable
+  set<T = unknown>(key: string, value: T): void;
+  remove(key: string): void;
 }
 ```
 
-Storage is scoped so two plugins cannot read or clobber each other's data. It is meant for plugin state and small caches, not for large binary blobs.
+Storage is scoped by the id prefix so two plugins do not read or clobber each other's keys. It is meant for plugin state and small caches, not for large binary blobs. `get` returns `null` (never throws) if the key is missing or the stored value cannot be parsed.
+
+**Planned:** richer storage helpers (`keys()`, `clear()`, and a Tauri-backed store in the app data directory that survives a `localStorage` clear) are on the roadmap. The three synchronous methods above are what ships today.
 
 ### UI helpers
 
 ```ts
 interface PluginUi {
-  showToast(msg: string, opts?: { kind?: 'info' | 'success' | 'warn' | 'error'; timeout?: number }): void;
-  showQuickPick<T>(items: QuickPickItem<T>[], opts?: { placeholder?: string }): Promise<T | undefined>;
-  setStatusBarMessage(msg: string, timeout?: number): Disposable;
+  showToast(message: string, opts?: { kind?: 'info' | 'success' | 'error' }): void;
 }
 ```
 
-`showToast` is fire-and-forget. `showQuickPick` resolves to the chosen value or `undefined` if dismissed. `setStatusBarMessage` returns a `Disposable` so you can clear a persistent message yourself.
+`showToast` is fire-and-forget; `kind` defaults to `'info'`. It forwards to Folio's shared toast store.
+
+**Planned:** additional UI helpers such as a quick-pick prompt and a persistent status-bar message are on the roadmap. `showToast` is the only UI helper implemented today.
 
 ## Worked example: the Word Count plugin
 
-This is a complete, self-contained plugin that registers a command, a toolbar item, and a sidebar panel, and recounts whenever a document opens. It is representative of a built-in under `src/plugins/builtins/word-count/`.
+This is a complete, self-contained plugin that registers a command and a live sidebar panel, and reacts when a document opens. It is the real built-in from `src/plugins/builtins/wordCount.ts`.
 
 ```ts
-// src/plugins/builtins/word-count/index.ts
-import type { FolioPlugin, PluginContext, Disposable } from '@folio/plugin-api';
+// src/plugins/builtins/wordCount.ts
+import { getEngine } from '@/core/pdf';
+import { useDocumentStore } from '@/state/documentStore';
 
-interface WordCountStats {
+import type { FolioPlugin, PluginContext } from '../types';
+
+interface Stats {
   words: number;
   characters: number;
-  charactersNoSpaces: number;
   pages: number;
 }
 
-const EMPTY: WordCountStats = { words: 0, characters: 0, charactersNoSpaces: 0, pages: 0 };
+async function computeStats(): Promise<Stats | null> {
+  const { info, status } = useDocumentStore.getState();
+  if (status !== 'ready' || !info) return null;
 
-function count(text: string): Omit<WordCountStats, 'pages'> {
-  const trimmed = text.trim();
-  return {
-    words: trimmed.length === 0 ? 0 : trimmed.split(/\s+/).length,
-    characters: text.length,
-    charactersNoSpaces: text.replace(/\s/g, '').length,
+  const engine = getEngine();
+  let words = 0;
+  let characters = 0;
+  for (let page = 1; page <= info.numPages; page++) {
+    const text = await engine.getPageText(page);
+    characters += text.length;
+    words += text.split(/\s+/).filter(Boolean).length;
+  }
+  return { words, characters, pages: info.numPages };
+}
+
+// The sidebar panel renders imperatively into the container and returns a
+// teardown callback. No JSX, no React: just DOM nodes.
+function renderPanel(container: HTMLElement): () => void {
+  let disposed = false;
+  container.replaceChildren();
+
+  const status = document.createElement('p');
+  status.className = 'folio-plugin-panel__hint';
+  status.textContent = 'Reading document…';
+  container.appendChild(status);
+
+  const list = document.createElement('dl');
+  list.className = 'folio-stats';
+  container.appendChild(list);
+
+  const row = (label: string, value: string) => {
+    const dt = document.createElement('dt');
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    list.append(dt, dd);
+  };
+
+  void computeStats().then((stats) => {
+    if (disposed) return;
+    if (!stats) {
+      status.textContent = 'Open a document to see word counts.';
+      return;
+    }
+    status.remove();
+    row('Words', stats.words.toLocaleString());
+    row('Characters', stats.characters.toLocaleString());
+    row('Pages', stats.pages.toLocaleString());
+  });
+
+  return () => {
+    disposed = true;
   };
 }
 
-let subscriptions: Disposable[] = [];
-let stats: WordCountStats = EMPTY;
-let render: (s: WordCountStats) => void = () => {};
-
-const plugin: FolioPlugin = {
-  id: 'com.folio.wordcount',
+export const wordCountPlugin: FolioPlugin = {
+  id: 'app.folio.word-count',
   name: 'Word Count',
-  version: '1.0.0',
+  version: '0.1.0',
 
   activate(ctx: PluginContext) {
-    async function recompute(): Promise<void> {
-      const doc = ctx.getActiveDocument();
-      if (!doc) {
-        stats = EMPTY;
-        render(stats);
-        return;
-      }
-      // Serve from cache first so switching back to a document is instant.
-      const cached = await ctx.storage.get<WordCountStats>(doc.fingerprint);
-      if (cached) {
-        stats = cached;
-        render(stats);
-      }
-      const text = await doc.getText();
-      stats = { ...count(text), pages: doc.pageCount };
-      await ctx.storage.set(doc.fingerprint, stats);
-      render(stats);
-    }
+    // 1) Command: enabled only when a document is ready; invocable by keybinding,
+    //    AI actions, or other plugins through the command registry.
+    ctx.registerCommand({
+      id: 'plugin.wordCount.show',
+      title: 'Word Count: count this document',
+      category: 'Plugins',
+      when: () => useDocumentStore.getState().status === 'ready',
+      run: async () => {
+        const stats = await computeStats();
+        ctx.ui.showToast(stats ? `${stats.words.toLocaleString()} words` : 'No document open', {
+          kind: stats ? 'info' : 'error',
+        });
+      },
+    });
 
-    // 1) Command: bound to a keybinding, and invocable by AI actions or other plugins.
-    subscriptions.push(
-      ctx.registerCommand({
-        id: 'wordcount.recount',
-        title: 'Word Count: Recount Document',
-        category: 'Word Count',
-        keybinding: 'Ctrl+Shift+W',
-        when: (c) => c.getActiveDocument() !== null,
-        run: () => recompute(),
-      }),
-    );
+    // 2) Sidebar panel: renders live stats into the container DOM node.
+    ctx.registerSidebarPanel({
+      id: 'app.folio.word-count.panel',
+      title: 'Word Count',
+      icon: 'hash',
+      render: renderPanel,
+    });
 
-    // 2) Toolbar item: clicking runs the command above (no duplicated logic).
-    subscriptions.push(
-      ctx.registerToolbarItem({
-        id: 'wordcount.toolbar',
-        commandId: 'wordcount.recount',
-        icon: 'text-columns',
-        tooltip: 'Recount document',
-        group: 'tools',
-        order: 50,
-      }),
-    );
-
-    // 3) Sidebar panel: renders live stats. mount() returns a teardown callback.
-    subscriptions.push(
-      ctx.registerSidebarPanel({
-        id: 'wordcount.panel',
-        title: 'Word Count',
-        icon: 'text-columns',
-        order: 30,
-        mount(container) {
-          const dl = document.createElement('dl');
-          dl.className = 'wc';
-          container.appendChild(dl);
-
-          render = (s) => {
-            dl.replaceChildren(
-              row('Words', s.words),
-              row('Characters', s.characters),
-              row('Characters (no spaces)', s.charactersNoSpaces),
-              row('Pages', s.pages),
-            );
-          };
-          render(stats);
-          void recompute();
-
-          return () => {
-            render = () => {};   // stop rendering once the panel is unmounted
-            dl.remove();
-          };
-        },
-      }),
-    );
-
-    // Recount whenever a new document opens.
-    subscriptions.push(ctx.onDocumentOpen(() => void recompute()));
-  },
-
-  deactivate() {
-    for (const d of subscriptions) d.dispose();
-    subscriptions = [];
-    render = () => {};
-    stats = EMPTY;
+    // 3) React whenever a new document opens.
+    ctx.onDocumentOpen(() => {
+      ctx.ui.showToast('Word Count is ready for this document', { kind: 'info' });
+    });
   },
 };
-
-function row(label: string, value: number): HTMLElement {
-  const wrap = document.createElement('div');
-  wrap.className = 'wc-row';
-  const dt = document.createElement('dt');
-  dt.textContent = label;
-  const dd = document.createElement('dd');
-  dd.textContent = value.toLocaleString();
-  wrap.append(dt, dd);
-  return wrap;
-}
-
-export default plugin;
 ```
 
 Points worth noting in this example:
 
-- The toolbar item and the keybinding both resolve to `wordcount.recount`. There is exactly one code path that does the work.
-- The sidebar panel's `mount` returns a teardown callback, and `deactivate` disposes every subscription. Enabling and disabling the plugin at runtime leaves nothing behind.
-- Results are cached in `ctx.storage` under the document `fingerprint`, so reopening the same file is instant while a fresh count runs in the background.
+- The plugin registers a command and a panel and never keeps the returned disposables: the host disposes both automatically on deactivate, so no `deactivate` is needed.
+- The command's `when` gates enablement (`status === 'ready'`), and the command is the single code path that computes the count. A keybinding or a toolbar item pointing at the same `id` would reuse it.
+- The sidebar panel renders imperatively into `container` and returns a teardown callback that stops the in-flight async work; this is the `render` contract, not a React component.
+
+To add a toolbar button that runs the same command, register a `ToolbarItem` whose `commandId` matches the command id:
+
+```ts
+ctx.registerToolbarItem({
+  id: 'plugin.wordCount.toolbar',
+  title: 'Count this document',
+  icon: 'hash',
+  group: 'right',
+  commandId: 'plugin.wordCount.show',
+});
+```
 
 ## How `PluginHost` loads and activates plugins
 
-The `PluginHost` (in `src/plugins/host.ts`) owns discovery, activation, and teardown. It treats built-in and third-party plugins the same way once loaded; only discovery differs.
+The `PluginHost` (in `src/plugins/PluginHost.ts`, exported as the app-wide singleton `pluginHost`) owns activation, teardown, and brokering the events plugins subscribe to. Built-in and (eventually) third-party plugins go through the same `activate` path.
 
-### Built-in plugins
+### Built-in plugins (today)
 
-Built-ins live in `src/plugins/builtins/` and are compiled into the app bundle. The host imports a static manifest of them at startup:
+Built-ins live in `src/plugins/builtins/` and are compiled into the app bundle. `src/plugins/builtins/index.ts` exports a static array of them:
 
 ```ts
 // src/plugins/builtins/index.ts
-import wordCount from './word-count';
-import pageRotation from './page-rotation';
-// ...
+import type { FolioPlugin } from '../types';
+import { wordCountPlugin } from './wordCount';
 
-export const builtinPlugins = [wordCount, pageRotation /* ... */];
+export const builtinPlugins: FolioPlugin[] = [wordCountPlugin];
 ```
 
-Built-ins are trusted (they ship with Folio) and are enabled by default, though the user can disable any of them in the plugin manager.
+`activateBuiltinPlugins()` (in `src/plugins/index.ts`) iterates that array and activates each plugin. It is called once on startup from `App.tsx`:
 
-### Third-party plugins
+```ts
+// src/plugins/index.ts
+export async function activateBuiltinPlugins(): Promise<void> {
+  for (const plugin of builtinPlugins) {
+    await pluginHost.activate(plugin);
+  }
+}
+```
 
-Third-party plugins are discovered at runtime from the plugins directory in the app data folder (resolved through Tauri, e.g. `~/.local/share/com.folio.app/plugins/` on Linux). Each plugin is a folder containing a `manifest.json` and a bundled entry module:
+Built-ins are trusted (they ship with Folio) and are activated on startup. This is the only plugin-loading path that exists today.
+
+### Activation flow (today)
+
+```
+activateBuiltinPlugins() -> for each plugin in builtinPlugins:
+  pluginHost.activate(plugin)
+    -> build a PluginContext scoped to plugin.id
+    -> await plugin.activate(ctx)         (on throw: log and deactivate)
+```
+
+Teardown is the mirror image. `pluginHost.deactivate(id)` disposes every tracked `Disposable` in reverse registration order, then calls the plugin's optional `deactivate()`, then drops the plugin's event-handler sets. The host never depends on a plugin to clean up its own contributions; it disposes them for you.
+
+### Third-party plugins (Planned)
+
+> **Planned / not yet implemented.** Folio does not yet load third-party plugins. There is no manifest loader, no plugin directory discovery, no activation-events system, and no `engines` compatibility gate. Everything in this subsection describes the intended design, not shipped behavior.
+
+The intended model is that third-party plugins are discovered at runtime from a plugins directory in the app data folder (resolved through Tauri, e.g. `~/.local/share/app.folio/plugins/` on Linux). Each plugin would be a folder containing a `manifest.json` and a bundled entry module:
 
 ```json
 {
@@ -459,9 +458,7 @@ Third-party plugins are discovered at runtime from the plugins directory in the 
 }
 ```
 
-The host reads the manifest, checks compatibility against the running API version (see [Versioning](#versioning-and-compatibility)), and lazily activates the plugin when one of its `activationEvents` fires. `onStartup` activates immediately; `onCommand:<id>` defers activation until that command is first invoked, keeping cold start fast for plugins that are rarely used.
-
-### Activation flow
+Under that design the host would read the manifest, check compatibility against the running API version, and lazily activate the plugin when one of its `activationEvents` fired: `onStartup` immediately, `onCommand:<id>` deferred until that command is first invoked. The planned activation flow:
 
 ```
 discover -> validate manifest -> check engines.folio -> wait for activationEvent
@@ -469,34 +466,34 @@ discover -> validate manifest -> check engines.folio -> wait for activationEvent
          -> await plugin.activate(ctx)
 ```
 
-On disable, uninstall, or app shutdown the host calls `plugin.deactivate()` (if present) and then disposes any `Disposable` the plugin failed to dispose itself, as a safety net. Never depend on that safety net for correctness: dispose your own resources.
+Because the `PluginContext` surface is deliberately narrow, the goal is that a plugin written against today's API keeps working once third-party loading lands.
 
 ## Versioning and compatibility
 
 Two independent versions are in play:
 
 - The plugin's own `version` (semver), which you bump on each release.
-- The host plugin API version, exposed as `ctx.apiVersion` and satisfied against the plugin's `engines.folio` range.
+- The host plugin API version, exposed as `ctx.apiVersion`. Its value is the `FOLIO_PLUGIN_API_VERSION` constant, currently `"0.1.0"`.
 
-A plugin declares the API range it supports with `engines.folio` in its manifest. The host refuses to activate a plugin whose range does not include the current `apiVersion`, and surfaces the mismatch in the plugin manager rather than failing silently. Follow standard semver expectations: the API adds capabilities in minor releases and only removes or changes them in majors. Pin conservatively (`>=0.1.0 <0.2.0`) while the API is pre-1.0 and moving.
+Today a plugin can read `ctx.apiVersion` and decide for itself whether it is compatible. **Planned:** automatic enforcement, where a plugin declares an `engines.folio` range in its manifest and the host refuses to activate it (surfacing the mismatch rather than failing silently) if the range does not include the current `apiVersion`. That gate depends on the third-party manifest loader described above and is not implemented yet. Either way, follow standard semver expectations: the API adds capabilities in minor releases and only removes or changes them in majors. Pin conservatively (`>=0.1.0 <0.2.0`) while the API is pre-1.0 and moving.
 
 If you contribute a command, toolbar item, sidebar panel, or annotation tool, treat its `id` as public API for your plugin. Other plugins and user keybindings may reference it.
 
 ## Security and sandboxing
 
-Read this section before installing any third-party plugin, and before publishing one.
-
 ### The trust model today
 
-In v0.1, plugins run in the renderer process, in the same JavaScript context as Folio's own UI. That means a plugin has the same reach as the app UI code: it can touch the DOM, call the public plugin API, and reach anything else exposed to the renderer. It does not get direct filesystem or shell access, because those live behind explicit Tauri commands in the Rust backend, but a plugin can still exfiltrate document text over the network or interfere with the UI. **Treat installing a third-party plugin as running third-party code with access to your open documents.**
+Today Folio runs only its own built-in, first-party plugins, and they run in the renderer process, in the same JavaScript context as Folio's UI. A plugin therefore has the same reach as the app UI code: it can touch the DOM, call the public plugin API, and reach anything else exposed to the renderer. It does not get direct filesystem or shell access, because those live behind explicit Tauri commands in the Rust backend, but code running in the renderer could still read document text or interfere with the UI.
 
-Built-in plugins are trusted because they ship as part of Folio and go through the project's review process. Third-party plugins do not carry that guarantee.
+Built-in plugins are trusted because they ship as part of Folio and go through the project's review process. There is no third-party install path yet, so there is no untrusted plugin code running today. The remainder of this section describes the roadmap for when third-party plugins are supported.
 
-### The `permissions` manifest (declared now, enforced later)
+### The `permissions` manifest (Planned)
 
-Third-party manifests already declare a `permissions` array (`documents:read`, `documents:write`, `storage`, `network`, `annotations:write`, and so on). In v0.1 these are advisory: the plugin manager shows them to the user at install time so the request is transparent, but they are not yet hard-enforced by a sandbox. Declaring the minimum set your plugin actually needs is both good manners and forward-compatible with enforcement.
+> **Planned / not yet implemented.**
 
-### Roadmap toward isolation
+The intended design gives each third-party manifest a `permissions` array (`documents:read`, `documents:write`, `storage`, `network`, `annotations:write`, and so on). In the first phase these would be advisory: the plugin manager shows them to the user at install time so the request is transparent, before they are hard-enforced by a sandbox. Declaring the minimum set a plugin actually needs is both good manners and forward-compatible with enforcement. None of this is wired up yet; no manifest is read today.
+
+### Roadmap toward isolation (Planned)
 
 The direction is capability-based isolation, enforced rather than advisory:
 
@@ -504,31 +501,34 @@ The direction is capability-based isolation, enforced rather than advisory:
 2. **Worker isolation.** Move third-party plugin code into a dedicated Web Worker (or a sandboxed iframe) with no direct DOM or global access. The plugin talks to the host over a typed message channel, and the same `PluginContext` shape is proxied across that boundary, so the API in this guide does not change for plugin authors.
 3. **Brokered UI.** Panel and toolbar rendering flows through a host-owned, sanitized surface so a plugin cannot reach into Folio's own DOM.
 
-Because the public API is already the only supported surface, this migration is intended to be transparent for well-behaved plugins: if you only ever touch `PluginContext`, dispose what you register, and declare accurate permissions, your plugin should keep working as isolation lands.
+Because the public API is already the only supported surface, this migration is intended to be transparent for well-behaved plugins: if you only ever touch `PluginContext`, let the host dispose what you register, and (in future) declare accurate permissions, your plugin should keep working as isolation lands.
 
-### Guidance for users installing third-party plugins
+### Guidance for users installing third-party plugins (Planned)
+
+> Applies once third-party plugins are supported; there is no install path today.
 
 - Install plugins only from sources you trust. A plugin can read the text of every document you open.
 - Review the permissions shown at install time. A word-count plugin has no reason to request `network`.
-- Keep plugins updated, and disable any plugin you are not actively using (disable is instant and reversible).
-- Report suspicious plugins. Folio's plugin manager lets you disable and uninstall without restarting the app.
+- Keep plugins updated, and disable any plugin you are not actively using.
+- Report suspicious plugins.
 
 ## `PluginContext` API reference
 
 | Member | Kind | Signature | Returns | Purpose |
 | --- | --- | --- | --- | --- |
-| `apiVersion` | property | `readonly apiVersion: string` | `string` | Semver of the host plugin API, matched against `engines.folio`. |
-| `registerCommand` | method | `registerCommand(cmd: Command): Disposable` | `Disposable` | Register a command in the global registry (keybinding, palette entry, dispatch target). |
-| `registerToolbarItem` | method | `registerToolbarItem(item: ToolbarItem): Disposable` | `Disposable` | Add a toolbar button that runs a command. |
-| `registerSidebarPanel` | method | `registerSidebarPanel(panel: SidebarPanel): Disposable` | `Disposable` | Contribute a panel to the sidebar via a `mount(container)` contract. |
-| `registerAnnotationTool` | method | `registerAnnotationTool(tool: AnnotationTool): Disposable` | `Disposable` | Add a custom annotation tool that emits `AnnotationDraft`s. |
-| `onDocumentOpen` | method | `onDocumentOpen(handler: (doc: DocumentInfo) => void): Disposable` | `Disposable` | Fire when a document is opened and ready. |
-| `onPageRender` | method | `onPageRender(handler: (e: PageRenderEvent) => void): Disposable` | `Disposable` | Fire on each page rasterization; use for per-page overlays. |
+| `pluginId` | property | `readonly pluginId: string` | `string` | This plugin's id; also the prefix for its storage namespace. |
+| `apiVersion` | property | `readonly apiVersion: string` | `string` | Host plugin API version (`FOLIO_PLUGIN_API_VERSION`), currently `"0.1.0"`. Read it to check compatibility. |
+| `registerCommand` | method | `registerCommand(command: Command): Disposable` | `Disposable` | Register a command in the global registry (keybinding, dispatch target, future palette entry). |
+| `registerToolbarItem` | method | `registerToolbarItem(item: ToolbarItem): Disposable` | `Disposable` | Add a toolbar button that dispatches a command by id. |
+| `registerSidebarPanel` | method | `registerSidebarPanel(panel: SidebarPanel): Disposable` | `Disposable` | Contribute a panel to the sidebar via a `render(container)` contract. |
+| `registerAnnotationTool` | method | `registerAnnotationTool(tool: AnnotationToolDef): Disposable` | `Disposable` | Register an annotation tool definition (id/title/icon). Interaction API is planned. |
+| `onDocumentOpen` | method | `onDocumentOpen(handler: (doc: DocumentInfo) => void): Disposable` | `Disposable` | Fire when a document is opened and loaded. |
+| `onPageRender` | method | `onPageRender(handler: (event: PageRenderEvent) => void): Disposable` | `Disposable` | Fire on each page rasterization (carries `pageNumber` and `scale`). |
 | `getActiveDocument` | method | `getActiveDocument(): DocumentInfo \| null` | `DocumentInfo \| null` | Get the current document, or `null` if none is open. |
-| `storage` | property | `storage: PluginStorage` | `PluginStorage` | Private, persisted key/value store namespaced to the plugin. |
-| `ui` | property | `ui: PluginUi` | `PluginUi` | Toasts, quick picks, and status-bar messages. |
+| `storage` | property | `storage: PluginStorage` | `PluginStorage` | Private, synchronous, `localStorage`-backed key/value store namespaced to the plugin. |
+| `ui` | property | `ui: PluginUi` | `PluginUi` | UI helpers; today just `showToast`. |
 
 ## Related documentation
 
 - [AI & MCP integration](./ai.md): how AI actions dispatch through the same command registry your plugins use.
-- [Roadmap](../ROADMAP.md): where the plugin host, annotation tools, and sandboxing sit in the release plan.
+- [Roadmap](../ROADMAP.md): where the plugin host, annotation tools, third-party loading, and sandboxing sit in the release plan.
