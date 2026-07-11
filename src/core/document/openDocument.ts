@@ -45,11 +45,20 @@ function pickViaFileInput(): Promise<DocumentSource | null> {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'application/pdf,.pdf';
+    // Attach (hidden) so the picker opens reliably across browsers.
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    const cleanup = () => input.remove();
+
     input.addEventListener('change', async () => {
       const file = input.files?.[0];
+      cleanup();
       resolve(file ? await sourceFromFile(file) : null);
     });
-    input.addEventListener('cancel', () => resolve(null));
+    input.addEventListener('cancel', () => {
+      cleanup();
+      resolve(null);
+    });
     input.click();
   });
 }
