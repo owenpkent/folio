@@ -1,0 +1,70 @@
+{
+  "name": "folio-vscode",
+  "displayName": "Folio PDF Viewer",
+  "description": "A fast, accessible, dark-mode-native PDF viewer inside VS Code. Powered by Folio and PDF.js.",
+  "version": "0.0.1",
+  "publisher": "folio",
+  "private": true,
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1f57e6",
+    "theme": "dark"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "pdf",
+    "pdf viewer",
+    "pdf.js",
+    "viewer",
+    "dark mode",
+    "annotations",
+    "accessibility"
+  ],
+  "homepage": "https://github.com/owenpkent/folio/tree/main/extensions/vscode",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/owenpkent/folio.git",
+    "directory": "extensions/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/owenpkent/folio/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "folio.pdfViewer",
+        "displayName": "Folio PDF Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.pdf"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.10.38"
+  }
+}

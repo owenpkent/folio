@@ -139,6 +139,7 @@ folio/
 │  ├─ assets/            app-icon source (folio-logo.svg)
 │  └─ test/              test setup
 ├─ src-tauri/            Rust backend (file IO, native shell)
+├─ extensions/vscode/    VS Code extension: view PDFs in an editor tab (preview)
 └─ docs/                 architecture, accessibility, theming, plugins, AI
 ```
 
@@ -154,6 +155,7 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Writing plugins](docs/plugins.md)
 - [AI and MCP](docs/ai.md)
 - [Testing](docs/testing.md)
+- [VS Code extension](extensions/vscode/README.md) (preview: view PDFs in an editor tab)
 - [Roadmap](ROADMAP.md)
 
 ## Contributing

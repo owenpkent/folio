@@ -113,7 +113,7 @@ An experimental, opt-in Claude provider and a stubbed MCP tool surface already e
 Saying no keeps Folio focused. These are explicitly out of scope, at least through v1:
 
 - **Not a desktop publishing tool.** Folio is a viewer and annotator, not an InDesign or full DTP replacement. Complex layout authoring is out of scope.
-- **Not a browser extension in v1.** Folio is a desktop app. A browser extension or web build is not a v1 goal.
+- **Not a browser extension in v1.** Folio is a desktop app first. A standalone browser extension or public web build is not a v1 goal. (A **preview** VS Code extension that embeds the viewer in an editor tab exists at [extensions/vscode](extensions/vscode/README.md); it reuses the same React app through a webview and does not change the desktop-first focus.)
 - **Not a cloud service.** No Folio-hosted accounts, sync service, or document storage. Documents stay on your machine; any cloud AI is opt-in and provider-supplied.
 - **No XFA forms.** Dynamic XFA forms are a legacy Adobe format and are not planned. AcroForm support (v0.3) covers the standard interactive form model.
 - **Not a scanner driver.** Folio consumes PDFs and images; it does not drive scanner hardware. OCR (v0.4) operates on already-scanned pages.

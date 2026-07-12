@@ -1,0 +1,12 @@
+.vscode/**
+src/**
+build.mjs
+tsconfig.json
+node_modules/**
+**/*.map
+.gitignore
+DEVELOPING.md
+DISTRIBUTING.md
+out/*.pdf
+out/*.html
+media/screenshot.png
