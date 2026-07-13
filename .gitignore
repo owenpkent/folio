@@ -10,6 +10,9 @@ dist-ssr/
 src-tauri/target/
 src-tauri/gen/
 
+# Release artifacts (signed installers, SBOMs) — collected locally, published to Releases
+/release/
+
 # Logs
 *.log
 npm-debug.log*

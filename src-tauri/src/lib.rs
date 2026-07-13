@@ -22,6 +22,19 @@ fn read_document(path: String) -> Result<Response, String> {
     Ok(Response::new(bytes))
 }
 
+/// Write PDF bytes to an absolute path chosen via the native save dialog.
+///
+/// Lives on the Rust side (mirroring [`read_document`]) so the frontend does
+/// not need a broad `fs:allow-write-file` capability scope to save a copy
+/// wherever the user picks. The `.pdf` extension guard matches `read_document`.
+#[tauri::command]
+fn write_document(path: String, contents: Vec<u8>) -> Result<(), String> {
+    if !path.to_lowercase().ends_with(".pdf") {
+        return Err(format!("Unsupported file type (expected .pdf): {path}"));
+    }
+    std::fs::write(&path, &contents).map_err(|e| format!("Failed to write {path}: {e}"))
+}
+
 /// Return the running application version, sourced from `Cargo.toml`.
 #[tauri::command]
 fn app_version() -> String {
@@ -34,7 +47,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![read_document, app_version])
+        .invoke_handler(tauri::generate_handler![read_document, write_document, app_version])
         .run(tauri::generate_context!())
         .expect("error while running the Folio application");
 }

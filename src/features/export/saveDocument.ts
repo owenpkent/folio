@@ -1,5 +1,5 @@
+import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
-import { writeFile } from '@tauri-apps/plugin-fs';
 import { PDFDocument } from 'pdf-lib';
 
 import { announce } from '@/a11y/announcer';
@@ -70,7 +70,9 @@ export async function saveBytes(bytes: Uint8Array, suggested: string): Promise<b
         filters: [{ name: 'PDF', extensions: ['pdf'] }],
       });
       if (!path) return false;
-      await writeFile(path, bytes);
+      // Write through the Rust `write_document` command (mirrors read_document)
+      // so no broad fs:allow-write-file capability scope is needed.
+      await invoke('write_document', { path, contents: Array.from(bytes) });
       pushToast('Saved', 'success');
       announce(`Saved ${suggested}`);
       return true;
