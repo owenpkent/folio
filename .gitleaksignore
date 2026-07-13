@@ -1,0 +1,5 @@
+# Add fingerprints of false-positive findings here, one per line.
+# Get a fingerprint from a gitleaks finding:
+#   <commit>:<file>:<rule-id>:<start-line>
+# Example:
+#   abc1234:src/test_fixtures.py:generic-api-key:42

@@ -1,0 +1,45 @@
+# Pre-commit hooks for client-side secret scanning + GH Action SHA pinning.
+# Setup (one-time, in the target repo):
+#   pip install pre-commit
+#   pre-commit install                         # writes .git/hooks/pre-commit
+#   pre-commit install --hook-type pre-push    # writes .git/hooks/pre-push
+#   pre-commit run --all-files                 # one-time scan of existing tree
+#
+# After install, every `git commit` runs gitleaks against the staged diff,
+# and every `git push` runs gitleaks again as a safety net for commits made
+# with --no-verify (those skip the pre-commit hook but pre-push still fires).
+# A detected secret blocks the commit / push. If a match is a false
+# positive, add it to .gitleaksignore.
+
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      # Default stage (pre-commit): scans the staged diff. Fast.
+      - id: gitleaks
+      # Pre-push: scans diff between local HEAD and remote ref. Catches
+      # commits made with `git commit --no-verify` before they leave the
+      # workstation. The closest free analog to GHAS push protection on
+      # private repos.
+      - id: gitleaks
+        name: gitleaks (pre-push)
+        stages: [pre-push]
+
+  # SHA-pin GitHub Actions on commit. Auto-rewrites
+  #   uses: actions/checkout@v6
+  # to
+  #   uses: actions/checkout@<sha> # v6
+  # using the pinact tool. Defends against the class of compromise that
+  # hit tj-actions/changed-files and reviewdog/action-setup in 2025.
+  - repo: https://github.com/suzuki-shunsuke/pinact
+    rev: v3.0.0
+    hooks:
+      - id: pinact
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key      # belt-and-suspenders against PEM blocks
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
