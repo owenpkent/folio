@@ -10,3 +10,4 @@ DISTRIBUTING.md
 out/*.pdf
 out/*.html
 media/screenshot.png
+fuzz/**

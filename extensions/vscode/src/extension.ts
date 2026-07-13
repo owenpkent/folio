@@ -1,6 +1,8 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 
+import { escapeHtml, makeNonce } from './html';
+
 /**
  * Folio PDF Viewer — VS Code custom-editor spike.
  *
@@ -113,17 +115,3 @@ class FolioPdfEditorProvider implements vscode.CustomReadonlyEditorProvider<PdfD
   }
 }
 
-function makeNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let out = '';
-  for (let i = 0; i < 32; i++) out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}

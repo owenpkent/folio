@@ -36,9 +36,6 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": [
-    "Other"
-  ],
   "main": "./out/extension.js",
   "contributes": {
     "customEditors": [

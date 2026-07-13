@@ -63,6 +63,26 @@ For editor IntelliSense (types), optionally `npm install` here to pull
   `out/app.js` bundle rendered against a sample PDF in a headless browser
   (dark theme), captured at 1440×940.
 
+## Security fuzzing
+
+Two harnesses in [`fuzz/`](fuzz/) exercise the untrusted-input paths (a PDF's
+filename reaching the webview HTML, and a filename reaching the LibreOffice
+subprocess):
+
+```bash
+# Webview HTML escaping — drives adversarial filenames through escapeHtml and
+# parses the result with jsdom, asserting no attribute breakout / script / handler
+# injection; also checks the CSP nonce is CSPRNG hex with no collisions.
+../../node_modules/.bin/esbuild fuzz/fuzz-html.mjs --bundle --platform=node \
+  --packages=external --outfile=fuzz/_fuzz-html.cjs && node fuzz/_fuzz-html.cjs
+
+# to_pdf.py command injection — creates real files named as shell payloads and
+# asserts each lands as a single argv element with no shell (run from ATDev venv).
+python fuzz/fuzz-to-pdf.py
+```
+
+Both report `ALL PASS` on the current code (60k+ HTML cases, 5k+ injection names).
+
 ## Distribute
 
 See [DISTRIBUTING.md](DISTRIBUTING.md).
