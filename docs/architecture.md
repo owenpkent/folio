@@ -232,6 +232,12 @@ Planned Rust-side responsibilities (documented in the `lib.rs` module comment, n
 
 Everything else, including all PDF parsing, rendering, text extraction, search, theming, and annotation logic, lives in the frontend/TypeScript layer. This keeps the Rust surface small, auditable, and stable, and it keeps the door open for the future native-rasterizer backend to be added as additional commands without disturbing the rest of the app.
 
+## Security
+
+- **Content Security Policy.** The desktop shell's CSP (`app.security.csp` in `src-tauri/tauri.conf.json`) is currently `null`, i.e. intentionally relaxed for the scaffold. **Tighten it before release**: define an explicit policy that permits only what the WebView needs (the bundled assets and the PDF.js worker) and no remote origins.
+- **VS Code extension.** The [VS Code extension](../extensions/vscode/README.md) renders in a webview under a strict, nonce-locked CSP (`default-src 'none'`, `script-src 'nonce-…'`). Attacker-controlled input (an opened PDF's filename) reaches the webview HTML only through `escapeHtml` or `asWebviewUri` encoding; both paths are fuzzed (see `extensions/vscode/fuzz/`).
+- **Native boundary.** The `read_document` command rejects non-`.pdf` paths and the fs write capability is scoped to the home directory tree (see the Tauri command boundary above).
+
 ## Related documents
 
 - `docs/accessibility.md`: keyboard model, ARIA landmarks, live-region announcements, WCAG 2.2 AA mapping.

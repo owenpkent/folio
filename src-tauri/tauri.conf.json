@@ -23,7 +23,6 @@
       }
     ],
     "security": {
-      "comment": "CSP is intentionally relaxed for the initial scaffold. Tighten before release: see docs/architecture.md (Security).",
       "csp": null
     }
   },
