@@ -22,6 +22,14 @@ around three things Acrobat treats as afterthoughts: **accessibility**,
 > accessibility, the plugin system, and the AI/MCP scaffolding are in place. See
 > the [roadmap](ROADMAP.md).
 
+## Screenshots
+
+Folio rendering a two-page form PDF, in light and dark:
+
+| Light | Dark |
+| :---: | :---: |
+| ![Folio in light mode](docs/screenshots/document-light.png) | ![Folio in dark mode](docs/screenshots/document-dark.png) |
+
 ## Features
 
 **Reading**
