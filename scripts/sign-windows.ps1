@@ -65,6 +65,19 @@ if ($ext -ne '.exe' -and $ext -ne '.msi') {
     exit 0
 }
 
+# Skip gracefully when the OK Studio EV cert isn't in the store: a dev machine
+# without the eToken plugged in, or CI (GitHub's windows-latest builds the app
+# to catch breakage but has no token). This keeps `tauri build` succeeding
+# everywhere; a real *signed* build only happens on the EV host with the token
+# present, where this check passes and signing proceeds. String -eq is
+# case-insensitive, so the lowercase literal matches the store's uppercase.
+$certPresent = @(Get-ChildItem Cert:\CurrentUser\My -ErrorAction SilentlyContinue |
+    Where-Object { $_.Thumbprint -eq $Thumbprint }).Count -gt 0
+if (-not $certPresent) {
+    Write-Host "[sign-windows] OK Studio EV cert not in store (dev/CI build) -- skipping: $Path"
+    exit 0
+}
+
 # Resolve signtool.exe -- Tauri's signCommand spawns this script in a plain
 # (non-Developer) PowerShell where the Windows SDK isn't on PATH. Prefer
 # whatever's on PATH; otherwise pick the highest-versioned x64 signtool from
