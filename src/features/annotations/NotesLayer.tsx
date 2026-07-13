@@ -1,14 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 import { announce } from '@/a11y/announcer';
 import { Icon } from '@/components/common';
 
-import { clamp01, textNearAnchor, useNotesUi } from './notesUi';
+import { clamp01, NOTE_COLOR, textNearAnchor, useNotesUi } from './notesUi';
 import { useAnnotationStore } from './store';
 import type { Annotation } from './types';
-
-/** Sticky-note color (opaque marker, distinct from translucent highlights). */
-const NOTE_COLOR = 'rgba(255, 190, 11, 0.95)';
 
 /**
  * Interactive sticky notes over a page: place (in "adding" mode), drag to move,
@@ -66,35 +63,49 @@ export function NotesLayer({ pageNumber }: { pageNumber: number }) {
         const x = (note.anchor?.x ?? 0.5) * 100;
         const y = (note.anchor?.y ?? 0.5) * 100;
         return (
-          <button
-            key={note.id}
-            className={`folio-note-pin${note.id === activeId ? ' is-active' : ''}${note.note ? '' : ' is-empty'}`}
-            style={{ left: `${x}%`, top: `${y}%` }}
-            aria-label={note.note ? `Note: ${note.note}` : 'Empty note'}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              e.currentTarget.setPointerCapture(e.pointerId);
-              movedRef.current = false;
-              setDragId(note.id);
-            }}
-            onPointerMove={(e) => {
-              if (dragId !== note.id) return;
-              const el = rootRef.current;
-              if (!el) return;
-              const r = el.getBoundingClientRect();
-              movedRef.current = true;
-              moveNote(note.id, {
-                x: clamp01((e.clientX - r.left) / r.width),
-                y: clamp01((e.clientY - r.top) / r.height),
-              });
-            }}
-            onPointerUp={() => {
-              setDragId(null);
-              if (!movedRef.current) setActive(activeId === note.id ? null : note.id);
-            }}
-          >
-            <Icon name="comment" size={13} />
-          </button>
+          <Fragment key={note.id}>
+            {/* Underline the referenced text for selection-anchored comments. */}
+            {note.rects?.map((r, i) => (
+              <div
+                key={i}
+                className={`folio-note-mark${note.id === activeId ? ' is-active' : ''}`}
+                style={{
+                  left: `${r.x * 100}%`,
+                  top: `${r.y * 100}%`,
+                  width: `${r.width * 100}%`,
+                  height: `${r.height * 100}%`,
+                }}
+              />
+            ))}
+            <button
+              className={`folio-note-pin${note.id === activeId ? ' is-active' : ''}${note.note ? '' : ' is-empty'}`}
+              style={{ left: `${x}%`, top: `${y}%` }}
+              aria-label={note.note ? `Note: ${note.note}` : 'Empty note'}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.currentTarget.setPointerCapture(e.pointerId);
+                movedRef.current = false;
+                setDragId(note.id);
+              }}
+              onPointerMove={(e) => {
+                if (dragId !== note.id) return;
+                const el = rootRef.current;
+                if (!el) return;
+                const r = el.getBoundingClientRect();
+                movedRef.current = true;
+                moveNote(note.id, {
+                  x: clamp01((e.clientX - r.left) / r.width),
+                  y: clamp01((e.clientY - r.top) / r.height),
+                });
+              }}
+              onPointerUp={() => {
+                setDragId(null);
+                if (!movedRef.current) setActive(activeId === note.id ? null : note.id);
+              }}
+            >
+              <Icon name="comment" size={13} />
+            </button>
+          </Fragment>
         );
       })}
 

@@ -467,6 +467,16 @@ kbd {
   margin: 0;
   appearance: none;
 }
+.folio-note-mark {
+  position: absolute;
+  background: rgba(255, 190, 11, 0.2);
+  border-bottom: 2px solid rgba(255, 190, 11, 0.85);
+  border-radius: 1px;
+  pointer-events: none;
+}
+.folio-note-mark.is-active {
+  background: rgba(255, 190, 11, 0.34);
+}
 .folio-note-pin {
   position: absolute;
   transform: translate(-50%, -100%);

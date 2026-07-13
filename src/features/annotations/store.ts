@@ -30,12 +30,17 @@ interface AnnotationState {
     text: string,
     color: string,
   ): Annotation;
-  /** Drop a sticky note at a page-relative anchor, capturing nearby text. */
+  /**
+   * Drop a sticky note at a page-relative anchor. `contextText` is the text the
+   * note refers to (the exact selection, or nearby text for a point note), and
+   * `rects` optionally marks the referenced text so it can be underlined.
+   */
   addNote(
     pageNumber: number,
     anchor: { x: number; y: number },
     contextText: string,
     color: string,
+    rects?: NormalizedRect[],
   ): Annotation;
   /** Move a note's anchor (drag). */
   moveNote(id: string, anchor: { x: number; y: number }): void;
@@ -86,12 +91,12 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => {
       return annotation;
     },
 
-    addNote: (pageNumber, anchor, contextText, color) => {
+    addNote: (pageNumber, anchor, contextText, color, rects = []) => {
       const annotation: Annotation = {
         id: uid(),
         type: 'note',
         pageNumber,
-        rects: [],
+        rects,
         anchor,
         text: contextText,
         note: '',

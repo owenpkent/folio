@@ -19,6 +19,9 @@ export const useNotesUi = create<NotesUiState>((set) => ({
   setActive: (activeId) => set({ activeId }),
 }));
 
+/** Sticky-note marker color (opaque; distinct from translucent highlights). */
+export const NOTE_COLOR = 'rgba(255, 190, 11, 0.95)';
+
 export const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
 /**

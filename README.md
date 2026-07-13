@@ -42,7 +42,8 @@ around three things Acrobat treats as afterthoughts: **accessibility**,
 
 **Annotations**
 - Highlight selected text; annotations persist per document
-- Sticky notes: drop a comment anywhere on a page, drag to reposition, edit inline
+- Comments: select text to comment on it (the passage is underlined), or drop a
+  point comment on a figure; drag to reposition, edit inline
 - Annotations panel to review and jump between them
 
 **AI-locatable review**
@@ -101,7 +102,7 @@ these plus the VS Code extension:
 
 ```bash
 python run.py            # interactive menu
-python run.py dev        # Folio in the browser (no Rust needed)
+python run.py dev        # Folio in the browser (opens it; closing the window stops the server)
 python run.py ext a.pdf  # build + open the VS Code extension on a PDF
 python run.py doctor     # check prerequisites
 ```

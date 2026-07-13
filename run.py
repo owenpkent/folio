@@ -5,7 +5,8 @@ One command to run Folio on your machine, so you don't have to remember the
 npm / vsce / code invocations. Run with no arguments for an interactive menu,
 or pass a subcommand:
 
-    python run.py dev              # Folio in the browser (Vite dev server)
+    python run.py dev              # Folio in the browser (opens it; closing the
+                                   #   app window stops the server)
     python run.py ext [file.pdf]   # build + open the VS Code extension (dev host)
     python run.py build-ext        # just build the VS Code extension
     python run.py package          # build a distributable .vsix
@@ -18,14 +19,23 @@ Stdlib only; works with any Python 3.8+.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
+import socket
 import subprocess
 import sys
+import tempfile
+import threading
+import time
+import webbrowser
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent
 EXT = REPO / "extensions" / "vscode"
 BASE_URL = "https://github.com/owenpkent/folio/raw/main/extensions/vscode"
+# Vite is pinned to this port (strictPort) in vite.config.ts.
+DEV_PORT = 1420
+DEV_URL = f"http://localhost:{DEV_PORT}/"
 
 
 # --- small helpers ---------------------------------------------------------
@@ -51,6 +61,61 @@ def run(cmd: list[str], *, cwd: Path = REPO) -> int:
 def latest_vsix() -> Path | None:
     vsixes = sorted(EXT.glob("*.vsix"), key=lambda p: p.stat().st_mtime, reverse=True)
     return vsixes[0] if vsixes else None
+
+
+def find_browser() -> str | None:
+    """Locate a Chromium-based browser (Chrome/Edge/Brave) for app-window mode.
+
+    App mode lets us own the window, so closing it can stop the dev server.
+    """
+    override = os.environ.get("BROWSER_PATH")
+    if override and Path(override).exists():
+        return override
+    candidates = [
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+    ]
+    for c in candidates:
+        if Path(c).exists():
+            return c
+    for name in ("chrome", "google-chrome", "chromium", "msedge", "brave"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
+
+
+def kill_tree(proc: subprocess.Popen) -> None:
+    """Terminate a process and its children (npm spawns node/vite underneath)."""
+    if proc.poll() is not None:
+        return
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+            capture_output=True,
+        )
+    else:
+        proc.terminate()
+
+
+def wait_for_port(host: str, port: int, timeout: float = 90.0) -> bool:
+    """Return True once something is listening on host:port, else False on timeout.
+
+    Uses create_connection against the hostname so it matches however the browser
+    resolves it: Vite may bind IPv6 (::1) or IPv4 (127.0.0.1), and checking only
+    one would miss the other.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                return True
+        except OSError:
+            time.sleep(0.4)
+    return False
 
 
 # --- actions ---------------------------------------------------------------
@@ -82,11 +147,56 @@ def ensure_deps() -> None:
 
 
 def cmd_dev(_args) -> int:
-    """Folio in the browser via the Vite dev server (no Rust needed)."""
+    """Folio in the browser via the Vite dev server (no Rust needed).
+
+    If a Chromium browser is available, Folio opens in a dedicated app window and
+    the dev server stops automatically when that window is closed. Otherwise it
+    opens in your default browser and runs until you press Ctrl+C.
+    """
     ensure_deps()
-    print("Starting the Vite dev server. Open http://localhost:1420/ in your browser.")
-    print("Press Ctrl+C to stop.")
-    return run([need("npm"), "run", "dev"])
+    server = subprocess.Popen([need("npm"), "run", "dev"], cwd=str(REPO))
+    browser = find_browser()
+
+    if browser:
+        print(f"Starting Folio; the dev server will stop when you close the app window.\n")
+
+        def app_window() -> None:
+            if not wait_for_port("localhost", DEV_PORT):
+                print(f"\n(Server did not come up; open {DEV_URL} manually.)")
+                return
+            profile = tempfile.mkdtemp(prefix="folio_win_")
+            win = subprocess.Popen(
+                [browser, f"--app={DEV_URL}", f"--user-data-dir={profile}",
+                 "--new-window", "--no-first-run", "--no-default-browser-check"]
+            )
+            win.wait()  # blocks until the user closes the app window
+            print("\nApp window closed; stopping the dev server.")
+            kill_tree(server)
+            shutil.rmtree(profile, ignore_errors=True)
+
+        threading.Thread(target=app_window, daemon=True).start()
+        try:
+            server.wait()
+        except KeyboardInterrupt:
+            kill_tree(server)
+        return 0
+
+    # No Chromium browser: open a default-browser tab; server runs until Ctrl+C.
+    print(f"Starting the Vite dev server; opening {DEV_URL} when it is ready.")
+    print("Press Ctrl+C to stop.\n")
+
+    def open_when_ready() -> None:
+        if wait_for_port("localhost", DEV_PORT):
+            webbrowser.open(DEV_URL)
+        else:
+            print(f"\n(Server did not come up in time; open {DEV_URL} manually.)")
+
+    threading.Thread(target=open_when_ready, daemon=True).start()
+    try:
+        return server.wait()
+    except KeyboardInterrupt:
+        kill_tree(server)
+        return 0
 
 
 def cmd_build_ext(_args) -> int:

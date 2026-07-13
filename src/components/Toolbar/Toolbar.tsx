@@ -99,15 +99,19 @@ export function Toolbar() {
         ))}
         <IconButton
           icon="comment"
-          label="Add a sticky note (Ctrl/Cmd + Shift + M)"
+          label="Comment on selected text, or click to place (Ctrl/Cmd + Shift + M)"
           active={addingNote}
           disabled={!hasDoc}
+          // Keep the text selection alive: a plain button mousedown collapses it
+          // before the click handler can read it.
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => run('annotate.addNote')}
         />
         <IconButton
           icon="highlighter"
           label="Highlight selection (Ctrl/Cmd + Shift + H)"
           disabled={!hasDoc}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => run('annotate.highlight')}
         />
         <IconButton

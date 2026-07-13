@@ -36,3 +36,7 @@ coverage/
 playwright-report/
 test-results/
 e2e/fixtures/
+
+# Python (run.py)
+__pycache__/
+*.pyc
