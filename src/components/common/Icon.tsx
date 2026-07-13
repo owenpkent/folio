@@ -120,6 +120,12 @@ const ICONS = {
       <path d="M14 20v-6h6" />
     </>
   ),
+  comment: (
+    <>
+      <path d="M4 5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" />
+      <path d="M8 10h8M8 13h5" />
+    </>
+  ),
   download: (
     <>
       <path d="M12 3v12" />

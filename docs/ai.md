@@ -202,6 +202,10 @@ A few notes on what this implementation actually does:
 
 > **Planned: a more robust provider.** A future iteration could adopt the official Anthropic TypeScript SDK (`@anthropic-ai/sdk`) and its higher-level features: constrained structured outputs (`output_config.format` with a JSON schema) so `extract` returns schema-valid JSON rather than free text that is parsed defensively; `cache_control: { type: 'ephemeral' }` on the document body so follow-up requests on the same document are cheaper; and adaptive thinking (`thinking: { type: 'adaptive' }`) for harder analysis. None of these are wired up today; the shipping provider is the plain `fetch` + SSE implementation above.
 
+## Reviewer notes in the AI context
+
+Sticky notes are part of the context the AI sees. `collectDocumentText()` (in `src/ai/documentText.ts`) appends a `REVIEWER NOTES` block to `DocumentText.fullText` and populates `DocumentText.notes` with structured `NoteAnchor`s (page, x/y position as page fractions, the comment, and the page text nearest the anchor, captured when the note was placed). This means every provider path (summarize / ask / extract) automatically knows where each note sits and what it refers to, so the assistant can act on comments and feedback without any provider changes. The formatter lives in `src/ai/notesContext.ts` and is reusable for pasting notes into an external assistant.
+
 ## Built-in AI features
 
 These describe the three provider capabilities and the command ids intended to expose them. The `ai.*` commands are **planned** and not yet registered (see the next section); today the capabilities are reachable by calling the provider directly (for example `claudeProvider.summarize(doc)`).

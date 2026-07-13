@@ -4,11 +4,27 @@ export interface PageText {
   text: string;
 }
 
+/**
+ * A reviewer's sticky note, resolved to something an AI can locate: the page,
+ * the anchor position (page fractions), the comment, and the page text the note
+ * sits next to (captured when it was placed).
+ */
+export interface NoteAnchor {
+  page: number;
+  /** Anchor position as page fractions (0 = left/top, 1 = right/bottom). */
+  x: number;
+  y: number;
+  comment: string;
+  nearText: string;
+}
+
 /** The document text the AI layer operates on. Nothing binary is ever sent. */
 export interface DocumentText {
   name: string;
   pages: PageText[];
   fullText: string;
+  /** Reviewer notes, if any, so the AI can answer/act on them in context. */
+  notes?: NoteAnchor[];
 }
 
 export interface AiRequestOptions {

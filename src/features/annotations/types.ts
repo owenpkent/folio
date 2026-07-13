@@ -15,11 +15,20 @@ export interface Annotation {
   pageNumber: number;
   /** CSS color (may be translucent). */
   color: string;
-  /** One rect per line of a highlight; a single rect for a note anchor. */
+  /** One rect per line of a highlight; empty for a point note. */
   rects: NormalizedRect[];
-  /** The selected text, for the annotations list and screen readers. */
+  /**
+   * Anchor point as page fractions (0..1), for a sticky note. This is where the
+   * pin sits and what the AI export reports so a note can be located on the page.
+   */
+  anchor?: { x: number; y: number };
+  /**
+   * For a highlight: the highlighted text. For a note: the page text nearest the
+   * anchor, captured at placement so an AI reading the doc back can tell what the
+   * note refers to.
+   */
   text?: string;
-  /** Optional user comment. */
+  /** The reviewer's comment (the body of a sticky note). */
   note?: string;
   createdAt: number;
 }

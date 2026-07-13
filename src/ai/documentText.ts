@@ -1,6 +1,7 @@
 import { getEngine } from '@/core/pdf';
 import { useDocumentStore } from '@/state/documentStore';
 
+import { collectNoteAnchors, formatNotesForAi } from './notesContext';
 import type { DocumentText, PageText } from './types';
 
 /**
@@ -21,9 +22,16 @@ export async function collectDocumentText(
     pages.push({ pageNumber, text: await engine.getPageText(pageNumber) });
   }
 
+  const notes = collectNoteAnchors();
+  const body = pages.map((p) => p.text).join('\n\n');
+  const notesBlock = formatNotesForAi(notes);
+
   return {
     name: info.name,
     pages,
-    fullText: pages.map((p) => p.text).join('\n\n'),
+    // Appending the notes block means every AI path (summarize / ask / extract)
+    // sees the reviewer's notes and where they land, without changing providers.
+    fullText: notesBlock ? `${body}\n\n${notesBlock}` : body,
+    notes: notes.length ? notes : undefined,
   };
 }

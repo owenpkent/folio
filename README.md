@@ -42,7 +42,13 @@ around three things Acrobat treats as afterthoughts: **accessibility**,
 
 **Annotations**
 - Highlight selected text; annotations persist per document
+- Sticky notes: drop a comment anywhere on a page, drag to reposition, edit inline
 - Annotations panel to review and jump between them
+
+**AI-locatable review**
+- Each sticky note captures its page, position, and the text it sits next to, so
+  when the document is handed to the AI layer it knows exactly where every note
+  applies, for grounded comments and feedback
 
 **Forms and signing**
 - Fill interactive AcroForm fields (text, checkbox, radio, dropdown)
@@ -88,6 +94,16 @@ npm run tauri dev
 
 # Build a production bundle for your platform
 npm run tauri build
+```
+
+Prefer a single command? [`run.py`](run.py) is a stdlib-only launcher that wraps
+these plus the VS Code extension:
+
+```bash
+python run.py            # interactive menu
+python run.py dev        # Folio in the browser (no Rust needed)
+python run.py ext a.pdf  # build + open the VS Code extension on a PDF
+python run.py doctor     # check prerequisites
 ```
 
 Other useful scripts:

@@ -75,37 +75,55 @@ export function PdfViewer() {
     return () => observer.disconnect();
   }, [recomputeFit]);
 
-  // Track the current page from scroll position.
+  // Track the current page from scroll position. Uses viewport-relative rects
+  // (so it does not depend on offsetParent) and a capture-phase scroll listener
+  // (so it fires whether the viewer element or an ancestor is the scroller, e.g.
+  // inside the VS Code webview).
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     let raf = 0;
-    const onScroll = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        const pages = container.querySelectorAll<HTMLElement>('.folio-page');
-        const mid = container.scrollTop + container.clientHeight / 2;
-        let current = 1;
-        for (const el of pages) {
-          const top = el.offsetTop;
-          const bottom = top + el.offsetHeight;
-          if (mid >= top && mid < bottom) {
-            current = Number(el.dataset.pageNumber);
-            break;
-          }
-          if (mid >= bottom) current = Number(el.dataset.pageNumber);
+    const update = () => {
+      raf = 0;
+      const pages = container.querySelectorAll<HTMLElement>('.folio-page');
+      if (pages.length === 0) return;
+      const cr = container.getBoundingClientRect();
+      const mid = cr.top + container.clientHeight / 2;
+      let current = 0;
+      for (const el of pages) {
+        const r = el.getBoundingClientRect();
+        // Skip pages that have not measured yet (0 height), or the last such
+        // page would be picked before layout settles.
+        if (r.height < 1) continue;
+        if (r.top <= mid && r.bottom > mid) {
+          current = Number(el.dataset.pageNumber);
+          break;
         }
-        const viewer = useViewerStore.getState();
-        if (current && current !== viewer.currentPage) viewer.setCurrentPage(current);
-      });
+        if (r.bottom <= mid) current = Number(el.dataset.pageNumber);
+      }
+      const viewer = useViewerStore.getState();
+      if (current && current !== viewer.currentPage) viewer.setCurrentPage(current);
     };
-    container.addEventListener('scroll', onScroll, { passive: true });
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+    // Capture phase catches scroll from whichever element actually scrolls,
+    // since scroll events do not bubble.
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    // Recompute when page heights arrive (they are measured asynchronously), so
+    // the initial page is correct without waiting for a scroll.
+    const pagesEl = container.querySelector('.folio-pages');
+    const ro = pagesEl ? new ResizeObserver(onScroll) : null;
+    if (pagesEl && ro) ro.observe(pagesEl);
+    update();
     return () => {
-      container.removeEventListener('scroll', onScroll);
+      window.removeEventListener('scroll', onScroll, { capture: true });
+      ro?.disconnect();
       if (raf) cancelAnimationFrame(raf);
     };
-  }, []);
+    // Depend on `status`: the container only exists once the document leaves the
+    // empty state, so the listener must (re)attach when that element appears.
+  }, [status]);
 
   // Honor scroll-to-page requests (outline clicks, page box, next/prev).
   useEffect(() => {

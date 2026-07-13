@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { commandRegistry } from '@/commands';
 import { IconButton, type IconName } from '@/components/common';
+import { useNotesUi } from '@/features/annotations';
 import { useContributionStore } from '@/plugins';
 import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
@@ -19,6 +20,7 @@ export function Toolbar() {
   const goToPage = useViewerStore((s) => s.goToPage);
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme);
   const readingMode = useThemeStore((s) => s.readingMode);
+  const addingNote = useNotesUi((s) => s.adding);
   const toolbarItems = useContributionStore((s) => s.toolbarItems);
 
   return (
@@ -95,6 +97,13 @@ export function Toolbar() {
             onClick={() => commandRegistry.execute(item.commandId)}
           />
         ))}
+        <IconButton
+          icon="comment"
+          label="Add a sticky note (Ctrl/Cmd + Shift + M)"
+          active={addingNote}
+          disabled={!hasDoc}
+          onClick={() => run('annotate.addNote')}
+        />
         <IconButton
           icon="highlighter"
           label="Highlight selection (Ctrl/Cmd + Shift + H)"

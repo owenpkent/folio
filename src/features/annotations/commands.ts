@@ -2,6 +2,7 @@ import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { useDocumentStore } from '@/state/documentStore';
 
+import { useNotesUi } from './notesUi';
 import { useAnnotationStore } from './store';
 import { DEFAULT_HIGHLIGHT_COLOR, type NormalizedRect } from './types';
 
@@ -57,5 +58,18 @@ export function registerAnnotationCommands(): void {
     keybinding: 'Mod+Shift+H',
     when: () => useDocumentStore.getState().status === 'ready',
     run: () => addHighlightFromSelection(),
+  });
+
+  commandRegistry.register({
+    id: 'annotate.addNote',
+    title: 'Add a sticky note',
+    category: 'Annotate',
+    keybinding: 'Mod+Shift+M',
+    when: () => useDocumentStore.getState().status === 'ready',
+    run: () => {
+      useNotesUi.getState().toggleAdding();
+      const adding = useNotesUi.getState().adding;
+      announce(adding ? 'Click a spot on the page to place a note' : 'Note placement cancelled');
+    },
   });
 }

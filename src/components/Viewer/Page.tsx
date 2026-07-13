@@ -4,7 +4,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import 'pdfjs-dist/web/pdf_viewer.css';
 
 import { getEngine } from '@/core/pdf';
-import { AnnotationLayer } from '@/features/annotations';
+import { AnnotationLayer, NotesLayer } from '@/features/annotations';
 import { SignatureLayer } from '@/features/signatures';
 import { pluginHost } from '@/plugins';
 
@@ -104,6 +104,7 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
       <div ref={textLayerRef} className="textLayer folio-text-layer" />
       <div ref={formsLayerRef} className="annotationLayer folio-forms-layer" />
       <AnnotationLayer pageNumber={pageNumber} />
+      <NotesLayer pageNumber={pageNumber} />
       <SignatureLayer pageNumber={pageNumber} />
     </div>
   );

@@ -10,7 +10,7 @@ import { useAnnotationStore } from './store';
 export function AnnotationLayer({ pageNumber }: { pageNumber: number }) {
   const all = useAnnotationStore((s) => s.annotations);
   const annotations = useMemo(
-    () => all.filter((a) => a.pageNumber === pageNumber),
+    () => all.filter((a) => a.pageNumber === pageNumber && a.type === 'highlight'),
     [all, pageNumber],
   );
 

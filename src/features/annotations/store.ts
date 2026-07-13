@@ -30,6 +30,15 @@ interface AnnotationState {
     text: string,
     color: string,
   ): Annotation;
+  /** Drop a sticky note at a page-relative anchor, capturing nearby text. */
+  addNote(
+    pageNumber: number,
+    anchor: { x: number; y: number },
+    contextText: string,
+    color: string,
+  ): Annotation;
+  /** Move a note's anchor (drag). */
+  moveNote(id: string, anchor: { x: number; y: number }): void;
   setNote(id: string, note: string): void;
   remove(id: string): void;
 }
@@ -75,6 +84,30 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => {
       set((s) => ({ annotations: [...s.annotations, annotation] }));
       persist();
       return annotation;
+    },
+
+    addNote: (pageNumber, anchor, contextText, color) => {
+      const annotation: Annotation = {
+        id: uid(),
+        type: 'note',
+        pageNumber,
+        rects: [],
+        anchor,
+        text: contextText,
+        note: '',
+        color,
+        createdAt: Date.now(),
+      };
+      set((s) => ({ annotations: [...s.annotations, annotation] }));
+      persist();
+      return annotation;
+    },
+
+    moveNote: (id, anchor) => {
+      set((s) => ({
+        annotations: s.annotations.map((a) => (a.id === id ? { ...a, anchor } : a)),
+      }));
+      persist();
     },
 
     setNote: (id, note) => {

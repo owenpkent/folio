@@ -446,6 +446,110 @@ kbd {
   border-radius: 2px;
   mix-blend-mode: multiply;
 }
+
+/* Sticky notes sit above the text layer so pins are clickable. The layer itself
+   ignores pointer events; only pins, the editor, and the placement overlay
+   capture them. */
+.folio-notes-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+.folio-notes-place {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  cursor: crosshair;
+  background: rgba(255, 190, 11, 0.06);
+  border: 0;
+  padding: 0;
+  margin: 0;
+  appearance: none;
+}
+.folio-note-pin {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1.5px solid #fff;
+  border-radius: 50% 50% 50% 3px;
+  background: var(--folio-accent, #2f6bff);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+.folio-note-pin.is-empty {
+  background: rgba(255, 190, 11, 0.98);
+  color: #1a1400;
+}
+.folio-note-pin.is-active {
+  outline: 2px solid var(--folio-accent, #2f6bff);
+  outline-offset: 2px;
+}
+.folio-note-pin:active {
+  cursor: grabbing;
+}
+.folio-note-editor {
+  position: absolute;
+  transform: translate(-50%, 10px);
+  z-index: 5;
+  width: 240px;
+  max-width: 60vw;
+  padding: 10px;
+  background: var(--folio-surface);
+  color: var(--folio-text, inherit);
+  border: 1px solid var(--folio-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  pointer-events: auto;
+}
+.folio-note-editor__text {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  padding: 6px 8px;
+  font: inherit;
+  color: inherit;
+  background: var(--folio-surface-2);
+  border: 1px solid var(--folio-border);
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+.folio-note-editor__context {
+  margin: 6px 0 8px;
+  font-size: 11px;
+  color: var(--folio-text-muted, #8a8a8a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folio-note-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.folio-note-editor__btn {
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  border: 1px solid var(--folio-border);
+  border-radius: 6px;
+  background: var(--folio-surface-2);
+  color: inherit;
+  cursor: pointer;
+}
+.folio-note-editor__btn:hover {
+  background: var(--folio-surface-hover);
+}
+.folio-note-editor__btn--danger {
+  color: #e5484d;
+}
 .folio-viewer-message {
   position: absolute;
   top: 16px;

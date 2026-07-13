@@ -44,7 +44,7 @@ Text highlighting with sidecar (local) persistence and an annotations panel alre
 | Area | Deliverable | Status |
 | --- | --- | --- |
 | Text markup | Highlight (shipped), plus underline and strikethrough over the text layer | In progress |
-| Notes | Sticky notes anchored to a point or region | Planned |
+| Notes | Sticky notes anchored to a point or region: place, drag, edit, delete; each note captures its page, position, and nearby text so the AI layer can locate it | In progress (place/drag/edit + AI anchoring shipped; keyboard placement planned) |
 | Freehand | Ink annotations with pressure-agnostic smoothing | Planned |
 | Shapes | Rectangle, ellipse, line, and arrow tools | Planned |
 | Persistence | Sidecar storage of annotations (shipped), plus embed-into-PDF on save | In progress |
