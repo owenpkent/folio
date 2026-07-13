@@ -7,7 +7,15 @@ import jsxA11y from 'eslint-plugin-jsx-a11y';
 
 export default tseslint.config(
   {
-    ignores: ['dist', 'coverage', 'playwright-report', 'src-tauri/target', 'src-tauri/gen'],
+    ignores: [
+      'dist',
+      'coverage',
+      'playwright-report',
+      'src-tauri/target',
+      'src-tauri/gen',
+      '**/out',
+      'extensions/vscode/fuzz/_*.cjs',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -37,8 +45,9 @@ export default tseslint.config(
     },
   },
   {
-    // Node-side config files.
-    files: ['*.config.{js,ts}', 'vite.config.ts'],
+    // Node-side config, build, and script files (e.g. the VS Code extension's
+    // build.mjs and fuzz harnesses).
+    files: ['*.config.{js,ts}', 'vite.config.ts', '**/*.mjs'],
     languageOptions: { globals: { ...globals.node } },
   },
 );
