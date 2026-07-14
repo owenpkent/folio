@@ -49,7 +49,7 @@ This document describes the layer stack, the data flow for opening and rendering
 
 Read the stack top-down as: **native shell → React UI → command registry → plugin host / AI layer → Zustand state → core PDF engine → PDF.js worker**, with the Rust backend attached over Tauri IPC for anything the WebView cannot do safely (file system, OS menus, persisted window state).
 
-> Implementation status: the diagram is the intended shape. Today the Rust backend implements only file IO (`read_document`) and `app_version`; native menus, recent files, and persisted window state are planned (see "Tauri command boundary"). Likewise the command palette shown under `commands/` is planned, not yet built. Reading the diagram, treat those cells as the roadmap, not current behavior.
+> Implementation status: the diagram is the intended shape. Today the Rust backend implements file IO (`read_document`, `write_document`), the browser hand-off (`fetch_pdf`), `app_version`, and the updater/deep-link plugins; native menus, recent files, and persisted window state are planned (see "Tauri command boundary"). Likewise the command palette shown under `commands/` is planned, not yet built. Reading the diagram, treat those cells as the roadmap, not current behavior.
 
 ## Module map
 
@@ -57,7 +57,7 @@ Each layer maps to a real directory in the repository.
 
 | Layer | Directory | Responsibility |
 |---|---|---|
-| Rust backend | `src-tauri/src/` | Implemented: file read (`read_document`) and `app_version`, plus the dialog and fs plugins (save dialog and file writing). Planned: recent files, native menus, window state, secure store |
+| Rust backend | `src-tauri/src/` | Implemented: file read/write (`read_document`, `write_document`), browser hand-off (`fetch_pdf`), `app_version`, plus the dialog, updater, deep-link, single-instance, and process plugins. Planned: recent files, native menus, window state, secure store |
 | Static assets | `public/` | Files served verbatim by Vite (currently empty; the PDF.js worker is bundled via a `?url` import, not placed here) |
 | UI components | `src/components/` | `Viewer/`, `Toolbar/`, `Sidebar/`, `Search/`, `common/` (`common/` also holds `toastStore`) |
 | Command registry | `src/commands/` | Every user action as a `Command`; single dispatch point |
@@ -216,12 +216,14 @@ Folio is designed to be extended without forking. The stable surfaces are:
 
 The Rust backend in `src-tauri/src/` exists to do what a WebView should not do itself. It is intentionally thin: it owns native capabilities and exposes them as Tauri commands the frontend calls via `invoke()`.
 
-Implemented today (`src-tauri/src/lib.rs`), the two registered commands are:
+Implemented today (`src-tauri/src/lib.rs`), the registered commands are:
 
 - **`read_document(path)`.** Read a PDF from disk and return its raw bytes to the frontend. It returns a Tauri `Response` (a binary body the frontend receives as an `ArrayBuffer`) rather than a JSON array, so a multi-megabyte PDF is not serialized number-by-number. It rejects paths that do not end in `.pdf`. The frontend receives bytes, never raw file-system access.
+- **`write_document(path, contents)`.** Write a filled/signed copy to the path the user chose in the native save dialog. Living on the Rust side (it mirrors `read_document`) means the frontend needs **no** broad filesystem capability — the previous `fs:allow-write-file` (`$HOME/**`) scope was removed. Rejects non-`.pdf` paths.
+- **`fetch_pdf(url)`.** Download a PDF handed off from the browser extension's `folio://` deep link. Validates the scheme (http/https only), refuses local/private hosts (an SSRF guard), and caps the response size. Cookie-gated PDFs are out of scope here (no browser session) — the extension's in-browser viewer covers those.
 - **`app_version()`.** Return the running version string, sourced from `Cargo.toml`.
 
-The native open and save pickers are provided by `tauri-plugin-dialog`, and file writing (saving a filled/signed copy) by `tauri-plugin-fs` (`writeFile`), both registered in `run()` rather than as custom commands. The fs write capability is scoped to the user's home directory tree in `capabilities/default.json`. The document is prepared for saving in the frontend: PDF.js `saveDocument()` writes filled form values, then pdf-lib stamps placed signatures (see `src/features/export/`).
+The native open and save pickers are provided by `tauri-plugin-dialog`; the document is prepared for saving in the frontend (PDF.js `saveDocument()` writes filled form values, then pdf-lib stamps placed signatures — see `src/features/export/`) and the bytes are written by `write_document`. Also registered in `run()`: `tauri-plugin-updater` (in-app updates, desktop only), `tauri-plugin-deep-link` + `tauri-plugin-single-instance` (the `folio://` scheme and single-window URL routing), and `tauri-plugin-process` (relaunch after an update). See `docs/releasing.md` for the signing and update-manifest flow.
 
 Planned Rust-side responsibilities (documented in the `lib.rs` module comment, not yet built):
 
@@ -234,9 +236,10 @@ Everything else, including all PDF parsing, rendering, text extraction, search, 
 
 ## Security
 
-- **Content Security Policy.** The desktop shell's CSP (`app.security.csp` in `src-tauri/tauri.conf.json`) is currently `null`, i.e. intentionally relaxed for the scaffold. **Tighten it before release**: define an explicit policy that permits only what the WebView needs (the bundled assets and the PDF.js worker) and no remote origins.
+- **Content Security Policy.** The desktop shell defines a strict `app.security.csp` (`src-tauri/tauri.conf.json`): `default-src 'self'` with narrowly scoped `script`/`style`/`img`/`font`/`connect`/`worker` sources and `object-src 'none'`. It permits the bundled assets, the PDF.js worker (`worker-src 'self' blob:`) and its wasm image codecs (`'wasm-unsafe-eval'`), plus the opt-in Anthropic API (`connect-src https://api.anthropic.com`) — no other remote origins.
 - **VS Code extension.** The [VS Code extension](../extensions/vscode/README.md) renders in a webview under a strict, nonce-locked CSP (`default-src 'none'`, `script-src 'nonce-…'`). Attacker-controlled input (an opened PDF's filename) reaches the webview HTML only through `escapeHtml` or `asWebviewUri` encoding; both paths are fuzzed (see `extensions/vscode/fuzz/`).
-- **Native boundary.** The `read_document` command rejects non-`.pdf` paths and the fs write capability is scoped to the home directory tree (see the Tauri command boundary above).
+- **Chrome extension.** The [Chrome extension](../extensions/chrome/README.md) runs under an MV3 extension CSP (`script-src 'self' 'wasm-unsafe-eval'`). It either hands PDFs to the desktop app via `folio://` or renders them in Folio's bundled viewer; the desktop side validates the handed-off URL in `fetch_pdf`.
+- **Native boundary.** File IO is confined to Rust commands: `read_document` and `write_document` reject non-`.pdf` paths, there is no broad frontend filesystem capability, and `fetch_pdf` validates the URL and blocks local/private hosts (see the Tauri command boundary above).
 
 ## Related documents
 

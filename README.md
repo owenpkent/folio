@@ -70,6 +70,10 @@ Folio rendering a two-page form PDF, in light and dark:
 - A plugin system: contribute commands, toolbar items, sidebar panels, and tools
 - Every action flows through a command registry, so plugins get shortcuts for free
 
+**Desktop and distribution**
+- EV-signed Windows installer; installs per-user and **auto-updates** from GitHub Releases
+- Open PDFs from your browser: a Chrome extension renders them in Folio, or hands off to the desktop app via a `folio://` deep link
+
 **AI-ready**
 - A provider-agnostic AI layer with an experimental, opt-in Claude provider (bring-your-own-key)
 - Summarize, ask-about-the-document, and structured extraction (experimental)
@@ -182,6 +186,7 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Testing](docs/testing.md)
 - [Releasing](docs/releasing.md) (signed installer + auto-updater)
 - [VS Code extension](extensions/vscode/README.md) (preview: view PDFs in an editor tab)
+- [Chrome extension](extensions/chrome/README.md) (preview: open PDFs in Folio from the browser)
 - [Roadmap](ROADMAP.md)
 
 ## Contributing

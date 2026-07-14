@@ -8,6 +8,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Windows distribution: an **EV-signed NSIS installer** (OK Studio Inc. cert on a
+  SafeNet eToken) via `scripts/sign-windows.ps1` wired through
+  `bundle.windows.signCommand`, plus per-release CycloneDX SBOMs (npm + cargo)
+  and a dependency lockfile. See docs/releasing.md.
+- **Auto-update**: an in-app updater (`tauri-plugin-updater`) that checks GitHub
+  Releases on launch and installs minisign-verified updates; per-user install so
+  updates apply without a UAC prompt. `scripts/generate-latest.mjs` emits the
+  update manifest.
+- **Open PDFs in Folio from the browser**: a Chrome extension
+  (`extensions/chrome`) that renders PDFs in Folio's in-browser viewer or hands
+  them off to the desktop app via a new `folio://` deep link. Adds the deep-link,
+  single-instance, updater, and process plugins and a URL-validated `fetch_pdf`
+  command.
 - Test suites: a Vitest unit suite (49 tests across stores, the command
   registry, the plugin host, keyboard shortcuts, and signing) and a Playwright
   end-to-end smoke suite (open, render, fill a form field, and digitally sign),
@@ -30,7 +43,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     then place, drag, and resize on the page. Stored per document.
   - Save a copy with form values written (PDF.js `saveDocument`) and signatures
     stamped in (pdf-lib), via a native save dialog or browser download
-    (`Ctrl/Cmd + S`). Adds the Tauri fs plugin and a scoped write capability.
+    (`Ctrl/Cmd + S`). Writing goes through the Rust `write_document` command
+    (see Changed).
   - Certificate-based digital signatures remain planned (phase 2).
 - Initial project foundation (v0.1 scaffold):
   - Tauri 2 desktop shell with a React 18 + TypeScript frontend (Vite).
@@ -48,5 +62,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     skip link, and live-region announcements.
   - Provider-agnostic AI layer (Claude, opt-in) with MCP client/server stubs.
   - Documentation set, CI, and community-health files.
+
+### Changed
+
+- PDF writes moved to a Rust `write_document` command; the frontend no longer
+  uses the fs plugin's `writeFile`, and the broad `fs:allow-write-file`
+  (`$HOME/**`) capability was removed. Save-anywhere still works via the
+  dialog-chosen path.
+- Bumped Vite 5 to 7 and Vitest 2 to 4 (clears the vite/vitest/esbuild dev-only
+  advisories).
+
+### Security
+
+- Added a strict Tauri Content Security Policy (`app.security.csp`), replacing
+  the previous unset policy.
+- Pinned GitHub Actions to commit SHAs with `persist-credentials: false`; added
+  a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
+  cargo-deny policy.
 
 [Unreleased]: https://github.com/owenpkent/folio/commits/main
