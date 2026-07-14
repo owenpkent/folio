@@ -44,9 +44,18 @@ fn app_version() -> String {
 /// Application entry point, shared by the desktop `main.rs` and mobile targets.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_process::init());
+
+    // tauri-plugin-updater only supports desktop targets.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+
+    builder
         .invoke_handler(tauri::generate_handler![read_document, write_document, app_version])
         .run(tauri::generate_context!())
         .expect("error while running the Folio application");

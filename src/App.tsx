@@ -14,6 +14,7 @@ import { registerAnnotationCommands } from '@/features/annotations';
 import { registerExportCommands } from '@/features/export';
 import { registerSignatureCommands, SignatureModal } from '@/features/signatures';
 import { registerSigningCommands, SigningModal } from '@/features/signing';
+import { checkForUpdates } from '@/features/updates';
 import { activateBuiltinPlugins } from '@/plugins';
 import { loadSource } from '@/state/actions';
 import { useViewerStore } from '@/state/viewerStore';
@@ -32,6 +33,11 @@ export function App() {
     registerSigningCommands();
     registerExportCommands();
     void activateBuiltinPlugins();
+  }, []);
+
+  // Check for updates on launch (desktop only; no-op in the browser build).
+  useEffect(() => {
+    void checkForUpdates(true);
   }, []);
 
   // Native desktop drag-and-drop of PDF files.

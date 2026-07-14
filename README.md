@@ -180,6 +180,7 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Writing plugins](docs/plugins.md)
 - [AI and MCP](docs/ai.md)
 - [Testing](docs/testing.md)
+- [Releasing](docs/releasing.md) (signed installer + auto-updater)
 - [VS Code extension](extensions/vscode/README.md) (preview: view PDFs in an editor tab)
 - [Roadmap](ROADMAP.md)
 

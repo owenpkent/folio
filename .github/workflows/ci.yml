@@ -130,5 +130,8 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      - name: Tauri debug build
-        run: npm run tauri -- build --debug
+      # --no-bundle: compile-only smoke test across all three desktop OSes.
+      # Bundling is skipped in CI because the installer needs the EV cert +
+      # updater signing key, which live only on the release host.
+      - name: Tauri debug build (no bundle)
+        run: npm run tauri -- build --debug --no-bundle
