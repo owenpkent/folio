@@ -104,6 +104,13 @@ const ICONS = {
       <path d="M21 16l-5-5L5 20" />
     </>
   ),
+  type: (
+    <>
+      <path d="M4 7V5h16v2" />
+      <path d="M12 5v14" />
+      <path d="M9 19h6" />
+    </>
+  ),
   list: (
     <>
       <line x1="8" y1="6" x2="20" y2="6" />

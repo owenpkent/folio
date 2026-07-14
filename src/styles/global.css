@@ -793,6 +793,134 @@ kbd {
   display: block;
 }
 
+/* ---- Editing (text boxes + placed images) ---- */
+.folio-edit-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.folio-edit {
+  position: absolute;
+  pointer-events: auto;
+  border: 1px solid transparent;
+  border-radius: 2px;
+}
+.folio-edit.is-selected,
+.folio-edit--text:hover {
+  border-color: var(--folio-accent);
+}
+.folio-edit__text {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 2px 3px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.15;
+  cursor: text;
+  outline: none;
+}
+.folio-edit--text:not(.is-selected) .folio-edit__text {
+  cursor: default;
+}
+.folio-edit__text:empty::before {
+  content: 'Text';
+  opacity: 0.4;
+}
+.folio-edit__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: move;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.folio-edit__grip {
+  position: absolute;
+  top: -10px;
+  left: -1px;
+  width: 22px;
+  height: 10px;
+  border-radius: 3px 3px 0 0;
+  background: var(--folio-accent);
+  cursor: move;
+}
+.folio-edit__delete {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--folio-border);
+  border-radius: 50%;
+  background: var(--folio-surface);
+  color: var(--folio-text);
+  cursor: pointer;
+}
+.folio-edit__resize {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--folio-accent);
+  border-radius: 50%;
+  background: var(--folio-surface);
+  cursor: nwse-resize;
+}
+.folio-edit__inspector {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--folio-border);
+  border-radius: 6px;
+  background: var(--folio-surface);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+  z-index: 1;
+}
+.folio-edit__inspector select,
+.folio-edit__inspector input {
+  font-size: 12px;
+}
+.folio-edit__size {
+  width: 46px;
+}
+.folio-edit__bold {
+  width: 26px;
+  height: 24px;
+  font-weight: 700;
+  border: 1px solid var(--folio-border);
+  border-radius: 4px;
+  background: var(--folio-surface);
+  color: var(--folio-text);
+  cursor: pointer;
+}
+.folio-edit__bold.is-on {
+  background: var(--folio-accent);
+  color: #fff;
+  border-color: var(--folio-accent);
+}
+.folio-edit__inspector input[type='color'] {
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--folio-border);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
 /* ---- Modal (signature creation) ---- */
 .folio-modal-backdrop {
   position: fixed;

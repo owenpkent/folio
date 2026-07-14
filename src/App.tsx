@@ -13,6 +13,7 @@ import { isTauri, readPath } from '@/core/document/openDocument';
 import { openFromQueryParam } from '@/core/document/openFromQuery';
 import { registerAnnotationCommands } from '@/features/annotations';
 import { registerDeepLinks } from '@/features/deeplink';
+import { registerEditCommands } from '@/features/editing';
 import { registerExportCommands } from '@/features/export';
 import { registerFileOpen } from '@/features/fileopen';
 import { registerSignatureCommands, SignatureModal } from '@/features/signatures';
@@ -32,6 +33,7 @@ export function App() {
   useEffect(() => {
     registerDefaultCommands();
     registerAnnotationCommands();
+    registerEditCommands();
     registerSignatureCommands();
     registerSigningCommands();
     registerExportCommands();

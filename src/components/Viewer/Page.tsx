@@ -5,6 +5,7 @@ import 'pdfjs-dist/web/pdf_viewer.css';
 
 import { getEngine } from '@/core/pdf';
 import { AnnotationLayer, NotesLayer } from '@/features/annotations';
+import { EditLayer } from '@/features/editing';
 import { SignatureLayer } from '@/features/signatures';
 import { pluginHost } from '@/plugins';
 
@@ -106,6 +107,7 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
       <AnnotationLayer pageNumber={pageNumber} />
       <NotesLayer pageNumber={pageNumber} />
       <SignatureLayer pageNumber={pageNumber} />
+      <EditLayer pageNumber={pageNumber} />
     </div>
   );
 });

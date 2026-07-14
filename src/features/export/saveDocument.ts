@@ -1,29 +1,36 @@
 import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, type PDFPage } from 'pdf-lib';
 
 import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { pushToast } from '@/components/common';
 import { isTauri } from '@/core/document/openDocument';
 import { getEngine } from '@/core/pdf';
+import { stampEdits, useEditStore } from '@/features/editing';
 import { useSignatureStore, type Signature } from '@/features/signatures';
 import { useDocumentStore } from '@/state/documentStore';
 
 /**
- * Produce the final PDF bytes: PDF.js writes any filled form values, then
- * pdf-lib stamps the placed signatures onto the pages.
+ * Produce the final PDF bytes. PDF.js writes any filled form values, then
+ * pdf-lib is loaded once to stamp placed edits (text boxes + images) and
+ * signatures onto the pages, in that order. Crypto signing (if any) wraps this
+ * result last, in the signing feature.
  */
 export async function exportDocument(): Promise<Uint8Array> {
   const base = await getEngine().saveDocument();
+  const edits = useEditStore.getState().edits;
   const signatures = useSignatureStore.getState().signatures;
-  if (signatures.length === 0) return base;
-  return stampSignatures(base, signatures);
+  if (edits.length === 0 && signatures.length === 0) return base;
+
+  const pdf = await PDFDocument.load(base);
+  if (edits.length > 0) await stampEdits(pdf, edits);
+  if (signatures.length > 0) await stampSignatures(pdf, signatures);
+  return pdf.save();
 }
 
-async function stampSignatures(bytes: Uint8Array, signatures: Signature[]): Promise<Uint8Array> {
-  const pdf = await PDFDocument.load(bytes);
-  const pages = pdf.getPages();
+async function stampSignatures(pdf: PDFDocument, signatures: Signature[]): Promise<void> {
+  const pages: PDFPage[] = pdf.getPages();
 
   for (const sig of signatures) {
     const page = pages[sig.pageNumber - 1];
@@ -37,8 +44,6 @@ async function stampSignatures(bytes: Uint8Array, signatures: Signature[]): Prom
     const y = ph - sig.rect.y * ph - h;
     page.drawImage(png, { x, y, width: w, height: h });
   }
-
-  return pdf.save();
 }
 
 /** Export the filled/signed document and save it as a copy (dialog or download). */
@@ -57,7 +62,12 @@ export async function saveDocumentToFile(): Promise<void> {
   }
 
   const base = info.name.replace(/\.pdf$/i, '');
-  const suffix = useSignatureStore.getState().signatures.length > 0 ? 'signed' : 'filled';
+  const suffix =
+    useSignatureStore.getState().signatures.length > 0
+      ? 'signed'
+      : useEditStore.getState().edits.length > 0
+        ? 'edited'
+        : 'filled';
   await saveBytes(bytes, `${base} (${suffix}).pdf`);
 }
 

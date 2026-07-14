@@ -115,6 +115,18 @@ export function Toolbar() {
           onClick={() => run('annotate.highlight')}
         />
         <IconButton
+          icon="type"
+          label="Add text box"
+          disabled={!hasDoc}
+          onClick={() => run('edit.addText')}
+        />
+        <IconButton
+          icon="image"
+          label="Add image"
+          disabled={!hasDoc}
+          onClick={() => run('edit.addImage')}
+        />
+        <IconButton
           icon="signature"
           label="Add signature"
           disabled={!hasDoc}
