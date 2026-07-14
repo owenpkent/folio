@@ -12,15 +12,12 @@ Windows is **built locally**, not in CI: both keys live only on the release host
 CI compiles with `--no-bundle` (no cert/key needed).
 
 > [!IMPORTANT]
-> The current updater key was generated as a **passwordless setup key** to wire
-> things up. Before the first public release, regenerate it with a password and
-> keep it safe:
-> ```
-> npx tauri signer generate -w $HOME/.tauri/folio.key
-> ```
-> Then replace `plugins.updater.pubkey` in `src-tauri/tauri.conf.json` with the
-> new public key it prints. If the private key or password is lost, you can no
-> longer ship updates that existing installs will accept.
+> The updater signing key (`~/.tauri/folio.key`) is password-protected and lives
+> only on the release host. Keep the key file **and** its password in a password
+> manager: if either is lost you can no longer ship updates that existing installs
+> will accept. To rotate it, run
+> `npx tauri signer generate -w $HOME/.tauri/folio.key --force`, then replace
+> `plugins.updater.pubkey` in `src-tauri/tauri.conf.json` with the new public key.
 
 ## Steps
 
