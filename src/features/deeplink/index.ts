@@ -1,0 +1,1 @@
+export { registerDeepLinks } from './openFromDeepLink';

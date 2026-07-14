@@ -15,6 +15,8 @@ export default tseslint.config(
       'src-tauri/gen',
       '**/out',
       'extensions/vscode/fuzz/_*.cjs',
+      'extensions/chrome/dist',
+      'extensions/chrome/icons',
     ],
   },
   js.configs.recommended,
@@ -49,5 +51,10 @@ export default tseslint.config(
     // build.mjs and fuzz harnesses).
     files: ['*.config.{js,ts}', 'vite.config.ts', '**/*.mjs'],
     languageOptions: { globals: { ...globals.node } },
+  },
+  {
+    // Chrome extension service worker: webextension + service worker globals.
+    files: ['extensions/chrome/**/*.js'],
+    languageOptions: { globals: { ...globals.serviceworker, ...globals.webextensions } },
   },
 );

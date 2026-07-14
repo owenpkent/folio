@@ -10,7 +10,9 @@ import { Sidebar } from '@/components/Sidebar/Sidebar';
 import { Toolbar } from '@/components/Toolbar/Toolbar';
 import { PdfViewer } from '@/components/Viewer/PdfViewer';
 import { isTauri, readPath } from '@/core/document/openDocument';
+import { openFromQueryParam } from '@/core/document/openFromQuery';
 import { registerAnnotationCommands } from '@/features/annotations';
+import { registerDeepLinks } from '@/features/deeplink';
 import { registerExportCommands } from '@/features/export';
 import { registerSignatureCommands, SignatureModal } from '@/features/signatures';
 import { registerSigningCommands, SigningModal } from '@/features/signing';
@@ -38,6 +40,20 @@ export function App() {
   // Check for updates on launch (desktop only; no-op in the browser build).
   useEffect(() => {
     void checkForUpdates(true);
+  }, []);
+
+  // Handle folio:// deep links from the browser extension (desktop only).
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    void registerDeepLinks().then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, []);
+
+  // Open a PDF passed as #file= / ?file= (the browser extension's in-page viewer).
+  useEffect(() => {
+    void openFromQueryParam();
   }, []);
 
   // Native desktop drag-and-drop of PDF files.
