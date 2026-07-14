@@ -144,6 +144,30 @@ Install the app first (the `.pdf` association is written by the installer, not b
   viewer*. Windows *Settings -> Default apps* opens so you can pick Folio for
   `.pdf`.
 
+### Editing (text boxes + images)
+
+Works in both the browser build (`npm run dev`) and the desktop app.
+
+- **Text:** toolbar *Add text box* (the `T`), type into it, then use the inline
+  inspector (font, size, **B**, color) and drag the grip / corner to move and
+  resize. Click empty space or press Escape to deselect.
+- **Image:** toolbar *Add image*, pick a PNG/JPEG, drag/resize it.
+- **Round-trip:** Save a copy (Ctrl+S), reopen in Folio **and** a third-party
+  reader; the text and image should sit where you placed them.
+
+### OCR (scanned pages)
+
+Needs the self-hosted assets (`npm run setup:ocr`, or just run the app once).
+Use an image-only / scanned PDF (no embedded text).
+
+- Toolbar *Recognize text (OCR)* -> a progress modal counts pages (Cancel works).
+- After it finishes: **select** text on the page and copy it; **find** (Ctrl+F)
+  a word from the scan and confirm it hits.
+- Save a copy, open it in another reader, and confirm the text is now
+  selectable/searchable there (an invisible layer over the image).
+- **Offline/CSP:** with the desktop app, disconnect the network after the first
+  run and confirm OCR still works (assets are served from `/tesseract/`, no CDN).
+
 ### Chrome extension
 
 ```bash

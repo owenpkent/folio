@@ -8,6 +8,7 @@ import { pushToast } from '@/components/common';
 import { isTauri } from '@/core/document/openDocument';
 import { getEngine } from '@/core/pdf';
 import { stampEdits, useEditStore } from '@/features/editing';
+import { stampOcrLayer, useOcrStore } from '@/features/ocr';
 import { useSignatureStore, type Signature } from '@/features/signatures';
 import { useDocumentStore } from '@/state/documentStore';
 
@@ -21,9 +22,13 @@ export async function exportDocument(): Promise<Uint8Array> {
   const base = await getEngine().saveDocument();
   const edits = useEditStore.getState().edits;
   const signatures = useSignatureStore.getState().signatures;
-  if (edits.length === 0 && signatures.length === 0) return base;
+  const ocrPages = Object.values(useOcrStore.getState().pages);
+  if (edits.length === 0 && signatures.length === 0 && ocrPages.length === 0) return base;
 
   const pdf = await PDFDocument.load(base);
+  // OCR text goes down first (invisible, underneath), then visible edits, then
+  // signatures on top.
+  if (ocrPages.length > 0) await stampOcrLayer(pdf, ocrPages);
   if (edits.length > 0) await stampEdits(pdf, edits);
   if (signatures.length > 0) await stampSignatures(pdf, signatures);
   return pdf.save();

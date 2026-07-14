@@ -127,6 +127,12 @@ export function Toolbar() {
           onClick={() => run('edit.addImage')}
         />
         <IconButton
+          icon="scan"
+          label="Recognize text (OCR)"
+          disabled={!hasDoc}
+          onClick={() => run('ocr.recognizeDocument')}
+        />
+        <IconButton
           icon="signature"
           label="Add signature"
           disabled={!hasDoc}

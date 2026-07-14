@@ -3,6 +3,7 @@ import { getEngine, type DocumentSource } from '@/core/pdf';
 import { announce } from '@/a11y/announcer';
 import { useAnnotationStore } from '@/features/annotations';
 import { useEditStore } from '@/features/editing';
+import { useOcrStore } from '@/features/ocr';
 import { useSignatureStore } from '@/features/signatures';
 import { detectSignatures, useSigningStore } from '@/features/signing';
 import { pluginHost } from '@/plugins/PluginHost';
@@ -37,6 +38,7 @@ export async function loadSource(source: DocumentSource): Promise<void> {
     useAnnotationStore.getState().loadForDocument(info.fingerprint);
     useSignatureStore.getState().loadForDocument(info.fingerprint);
     useEditStore.getState().loadForDocument(info.fingerprint);
+    useOcrStore.getState().loadForDocument(info.fingerprint);
     try {
       const original = engine.getOriginalBytes();
       useSigningStore.getState().setDetected(original ? detectSignatures(original) : []);
@@ -65,6 +67,7 @@ export async function closeDocument(): Promise<void> {
   useAnnotationStore.getState().reset();
   useSignatureStore.getState().reset();
   useEditStore.getState().reset();
+  useOcrStore.getState().reset();
   useSigningStore.getState().setDetected([]);
   document.title = 'Folio';
   announce('Closed document');

@@ -90,6 +90,10 @@ npm install
 
 `npm install` installs the frontend dependencies, including `pdfjs-dist` (v4), React, Zustand, and the Tauri JavaScript API. The first Tauri run will additionally compile the Rust backend, which takes a few minutes the first time and is cached afterward.
 
+### OCR assets
+
+OCR runs fully offline via a self-hosted `tesseract.js` (worker + WebAssembly core + English model). Those files are large and derived, so they are git-ignored and populated into `public/tesseract/` by `scripts/setup-ocr-assets.mjs`. The `predev` / `prebuild` npm hooks run it automatically, so `npm run dev`, `npm run build`, and `npm run tauri dev|build` just work; the first run downloads the ~2 MB English model once (network required) and caches it. To fetch them by hand: `npm run setup:ocr`.
+
 ## Develop
 
 ```bash

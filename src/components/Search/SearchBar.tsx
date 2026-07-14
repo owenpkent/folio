@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { Icon, IconButton } from '@/components/common';
-import { getEngine, type SearchMatch } from '@/core/pdf';
+import { type SearchMatch } from '@/core/pdf';
+import { searchWithOcr } from '@/features/ocr';
 import { useViewerStore } from '@/state/viewerStore';
 
 /** Find-in-document bar with a results list. */
@@ -29,7 +30,7 @@ export function SearchBar() {
     setSearching(true);
     const timer = window.setTimeout(async () => {
       try {
-        const results = await getEngine().search(q, { limit: 100 });
+        const results = await searchWithOcr(q, { limit: 100 });
         if (!cancelled) {
           setMatches(results);
           setActiveIndex(0);

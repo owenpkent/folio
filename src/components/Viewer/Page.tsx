@@ -6,6 +6,7 @@ import 'pdfjs-dist/web/pdf_viewer.css';
 import { getEngine } from '@/core/pdf';
 import { AnnotationLayer, NotesLayer } from '@/features/annotations';
 import { EditLayer } from '@/features/editing';
+import { OcrTextLayer } from '@/features/ocr';
 import { SignatureLayer } from '@/features/signatures';
 import { pluginHost } from '@/plugins';
 
@@ -104,6 +105,7 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
       <canvas ref={canvasRef} className="folio-page-canvas" />
       <div ref={textLayerRef} className="textLayer folio-text-layer" />
       <div ref={formsLayerRef} className="annotationLayer folio-forms-layer" />
+      <OcrTextLayer pageNumber={pageNumber} />
       <AnnotationLayer pageNumber={pageNumber} />
       <NotesLayer pageNumber={pageNumber} />
       <SignatureLayer pageNumber={pageNumber} />

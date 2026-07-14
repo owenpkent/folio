@@ -921,6 +921,38 @@ kbd {
   cursor: pointer;
 }
 
+/* ---- OCR (selectable text overlay + progress) ---- */
+.folio-ocr-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  user-select: text;
+}
+.folio-ocr-word {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  overflow: hidden;
+  line-height: 1;
+  cursor: text;
+  /* Selection highlight still shows even though the glyphs are transparent. */
+}
+.folio-ocr-progress {
+  margin-top: 12px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--folio-border);
+  overflow: hidden;
+}
+.folio-ocr-progress__bar {
+  height: 100%;
+  background: var(--folio-accent);
+  transition: width 0.2s ease;
+}
+.folio-modal--narrow {
+  max-width: 380px;
+}
+
 /* ---- Modal (signature creation) ---- */
 .folio-modal-backdrop {
   position: fixed;

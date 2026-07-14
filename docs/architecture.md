@@ -66,9 +66,11 @@ Each layer maps to a real directory in the repository.
 | Theming | `src/theme/` | `ThemeProvider`, design tokens (`tokens.css`), reading modes, `themeStore` |
 | Accessibility | `src/a11y/` | Announcer (live region), focus trap, keyboard shortcut dispatch, skip link |
 | Annotations | `src/features/annotations/` | Annotation model, `store` (localStorage sidecar), and tools |
+| Editing | `src/features/editing/` | Add text boxes and images (typewriter tool + placement), per-document `store`, and pdf-lib baking (`stampEdits`) |
+| OCR | `src/features/ocr/` | tesseract.js recognition (self-hosted, lazy-loaded), per-document `store`, selectable on-screen text layer, invisible baked layer (`stampOcrLayer`), and the search fallback |
 | Signatures | `src/features/signatures/` | Visual signature creation (draw/type/upload), on-page placement, per-document `store` |
 | Digital signing | `src/features/signing/` | Certificate identities (create/import .p12 via node-forge), PKCS#7 signing (@signpdf), and signature detection. Runs in the WebView today; a Rust/keychain backend is planned |
-| Save / export | `src/features/export/` | Writes the filled PDF (PDF.js `saveDocument`) and stamps signatures with pdf-lib |
+| Save / export | `src/features/export/` | Writes the filled PDF (PDF.js `saveDocument`), then loads pdf-lib once to bake the OCR layer, edits, and signatures |
 | Plugins | `src/plugins/` | Plugin host, SDK types, `contributionStore`, `builtins/` |
 | AI layer | `src/ai/` | `aiStore`, `providers/` (`AIProvider` impls, Claude default), `mcp/` (experimental MCP transport) |
 
@@ -123,6 +125,7 @@ interface PdfEngine {
   closeDocument(): Promise<void>;
   getPageDimensions(pageNumber: number, scale: number): Promise<PageDimensions>;
   renderPage(pageNumber: number, options: RenderPageOptions): Promise<void>;
+  renderPageToImage(pageNumber: number, scale: number): Promise<PageImage>; // rasterize for OCR
   renderTextLayer(pageNumber: number, container: HTMLElement, scale: number): Promise<void>;
   renderAnnotationLayer(pageNumber: number, container: HTMLElement, scale: number): Promise<void>;
   getPageText(pageNumber: number): Promise<string>;
@@ -225,7 +228,7 @@ Implemented today (`src-tauri/src/lib.rs`), the registered commands are:
 - **`take_launch_file()`.** Return (and clear) the PDF path Folio was launched with as the default `.pdf` handler. The path is captured from the process arguments at startup, validated (must end in `.pdf` and exist on disk), and consumed exactly once by the frontend on mount, so an in-app reload does not silently re-open it.
 - **`open_default_apps_settings()`.** Open the OS "Default apps" settings so the user can make Folio the default PDF viewer. Windows launches the fixed `ms-settings:defaultapps` URI (no user input is interpolated); modern Windows does not permit an app to seize a default handler silently, so this is a guided deep link rather than a silent switch.
 
-The native open and save pickers are provided by `tauri-plugin-dialog`; the document is prepared for saving in the frontend (PDF.js `saveDocument()` writes filled form values, then pdf-lib stamps placed signatures — see `src/features/export/`) and the bytes are written by `write_document`. Also registered in `run()`: `tauri-plugin-updater` (in-app updates, desktop only), `tauri-plugin-deep-link` + `tauri-plugin-single-instance` (the `folio://` scheme and single-window URL routing), and `tauri-plugin-process` (relaunch after an update). See `docs/releasing.md` for the signing and update-manifest flow.
+The native open and save pickers are provided by `tauri-plugin-dialog`; the document is prepared for saving in the frontend (PDF.js `saveDocument()` writes filled form values, then pdf-lib is loaded once to bake the invisible OCR text layer, placed edits, and signatures in that order — see `src/features/export/`) and the bytes are written by `write_document`. Also registered in `run()`: `tauri-plugin-updater` (in-app updates, desktop only), `tauri-plugin-deep-link` + `tauri-plugin-single-instance` (the `folio://` scheme and single-window URL routing), and `tauri-plugin-process` (relaunch after an update). See `docs/releasing.md` for the signing and update-manifest flow.
 
 Opening a PDF as the **default viewer** has two entry points, handled in `src/features/fileopen/`. On a cold start the OS launches Folio with the file path in `argv`; `run()` captures it and the frontend pulls it via `take_launch_file`. When Folio is already running, a second launch is intercepted by `tauri-plugin-single-instance`, which forwards the path to the existing window as a `folio:open-pdf` event (macOS delivers the file as an `Opened` run event instead of argv; that branch is wired but untested). The `.pdf` association itself is registered by the installer from `bundle.fileAssociations` in `tauri.conf.json`.
 

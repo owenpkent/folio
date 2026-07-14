@@ -16,6 +16,7 @@ import { registerDeepLinks } from '@/features/deeplink';
 import { registerEditCommands } from '@/features/editing';
 import { registerExportCommands } from '@/features/export';
 import { registerFileOpen } from '@/features/fileopen';
+import { OcrProgressModal, registerOcrCommands } from '@/features/ocr';
 import { registerSignatureCommands, SignatureModal } from '@/features/signatures';
 import { registerSigningCommands, SigningModal } from '@/features/signing';
 import { checkForUpdates } from '@/features/updates';
@@ -34,6 +35,7 @@ export function App() {
     registerDefaultCommands();
     registerAnnotationCommands();
     registerEditCommands();
+    registerOcrCommands();
     registerSignatureCommands();
     registerSigningCommands();
     registerExportCommands();
@@ -100,6 +102,7 @@ export function App() {
       {searchOpen && <SearchBar />}
       <SignatureModal />
       <SigningModal />
+      <OcrProgressModal />
       <ToastHost />
     </div>
   );

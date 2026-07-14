@@ -2,6 +2,7 @@ import type {
   DocumentSource,
   OutlineNode,
   PageDimensions,
+  PageImage,
   PdfDocumentInfo,
   PdfMetadata,
   RenderPageOptions,
@@ -30,6 +31,12 @@ export interface PdfEngine {
 
   /** Paint a page onto a canvas. Resolves when the render completes. */
   renderPage(pageNumber: number, options: RenderPageOptions): Promise<void>;
+
+  /**
+   * Rasterise a page to a standalone PNG image at the given scale (no HiDPI
+   * multiplier). Used by OCR to recognise scanned pages.
+   */
+  renderPageToImage(pageNumber: number, scale: number): Promise<PageImage>;
 
   /**
    * Build the selectable, screen-reader-readable text overlay for a page into

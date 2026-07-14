@@ -7,6 +7,7 @@ import type {
   DocumentSource,
   OutlineNode,
   PageDimensions,
+  PageImage,
   PdfDocumentInfo,
   PdfMetadata,
   RenderPageOptions,
@@ -99,6 +100,22 @@ export class PdfJsEngine implements PdfEngine {
         throw error;
       }
     }
+  }
+
+  async renderPageToImage(pageNumber: number, scale: number): Promise<PageImage> {
+    const page = await this.getPage(pageNumber);
+    const viewport = page.getViewport({ scale });
+
+    // A detached canvas rendered at exactly `scale` (no devicePixelRatio
+    // multiplier) so OCR sees a predictable pixel grid for its bounding boxes.
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Could not acquire a 2D canvas context');
+
+    await page.render({ canvasContext: context, viewport }).promise;
+    return { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
   }
 
   async renderTextLayer(pageNumber: number, container: HTMLElement, scale: number): Promise<void> {

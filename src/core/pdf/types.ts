@@ -51,6 +51,13 @@ export interface RenderPageOptions {
   signal?: AbortSignal;
 }
 
+/** A rasterised page image (e.g. for OCR): a PNG data URL plus its pixel size. */
+export interface PageImage {
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
 /** A text-search hit. */
 export interface SearchMatch {
   /** 1-based page number. */

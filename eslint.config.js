@@ -14,6 +14,8 @@ export default tseslint.config(
       'src-tauri/target',
       'src-tauri/gen',
       '**/out',
+      // Vendored, self-hosted OCR runtime (minified worker + wasm glue).
+      'public/tesseract',
       'extensions/vscode/fuzz/_*.cjs',
       'extensions/chrome/dist',
       'extensions/chrome/icons',

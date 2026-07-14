@@ -8,6 +8,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Editing toolkit (v0.4, phase 1)**: add **text boxes** (a typewriter tool with
+  a font / size / bold / color inspector) and place **images** (PNG/JPEG) on a
+  page, drag/resize both, and bake them into a saved copy (`stampEdits` via
+  pdf-lib `drawText`/`drawImage`). Additive only: existing PDF text is not
+  modified. New `src/features/editing` module and toolbar buttons.
+- **OCR (v0.4)**: recognize text in scanned pages with **tesseract.js** (English),
+  run fully offline and under the app CSP (worker + wasm core + model self-hosted
+  under `public/tesseract/`, populated by `scripts/setup-ocr-assets.mjs`, no CDN).
+  Recognized text is selectable on screen, feeds in-app search (find falls back to
+  OCR text on image-only pages), and is baked into a saved copy as an invisible,
+  searchable text layer. New `renderPageToImage` engine method and
+  `src/features/ocr` module (lazy-loaded so tesseract.js stays out of the initial
+  bundle).
+
 - Windows distribution: an **EV-signed NSIS installer** (OK Studio Inc. cert on a
   SafeNet eToken) via `scripts/sign-windows.ps1` wired through
   `bundle.windows.signCommand`, plus per-release CycloneDX SBOMs (npm + cargo)

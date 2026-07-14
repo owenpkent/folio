@@ -59,6 +59,15 @@ Folio rendering a two-page form PDF, in light and dark:
   when the document is handed to the AI layer it knows exactly where every note
   applies, for grounded comments and feedback
 
+**Editing and OCR**
+- Add **text boxes** (typewriter tool with font, size, bold, and color) and place
+  **images** (PNG/JPEG); drag, resize, and bake them into a saved copy
+- **OCR** scanned pages with a bundled, offline English engine (tesseract.js): the
+  recognized text becomes selectable on screen, is searchable in-app, and is baked
+  into the saved PDF as an invisible searchable layer
+- Additive editing only for now: existing PDF text is not modified (see the
+  [roadmap](ROADMAP.md))
+
 **Forms and signing**
 - Fill interactive AcroForm fields (text, checkbox, radio, dropdown)
 - Sign by drawing, typing, or uploading a signature; place, drag, and resize it
