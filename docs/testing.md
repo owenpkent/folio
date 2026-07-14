@@ -90,13 +90,79 @@ npm run test:e2e -- --debug     # step through with the inspector
 npx playwright show-report      # open the last HTML report
 ```
 
+## Manual testing (desktop and browser integrations)
+
+Signing, the updater, the `folio://` deep link, and the Chrome extension can't
+run in the automated suite; verify them by hand.
+
+### Run the app
+
+```bash
+npm run tauri dev     # native desktop app, hot reload
+npm run dev           # browser-only viewer (no native shell)
+```
+
+Click through: open (Ctrl+O), scroll/zoom, search (Ctrl+F), highlight
+(Ctrl+Shift+H), fill a form, digitally sign, save a copy (Ctrl+S), toggle dark
+mode (Ctrl+Shift+L).
+
+### Signed installer
+
+From a non-elevated shell with the eToken plugged in and the updater key env set
+(see [releasing.md](releasing.md)):
+
+```powershell
+npx tauri build --bundles nsis
+Get-AuthenticodeSignature .\src-tauri\target\release\bundle\nsis\Folio_0.1.0_x64-setup.exe | Format-List Status, SignerCertificate
+```
+
+Status should be `Valid` with signer `CN=OK Studio Inc.`. Run the installer and
+confirm it installs to `%LOCALAPPDATA%\Folio` and launches.
+
+### folio:// deep link
+
+Install the app first so the scheme is registered, then:
+
+```powershell
+Start-Process "folio://open?url=https://<any-public>.pdf"   # opens in Folio
+Start-Process "folio://open?url=http://localhost/x.pdf"     # refused (SSRF guard)
+```
+
+### Chrome extension
+
+```bash
+node extensions/chrome/build.mjs
+```
+
+Load `extensions/chrome` as an unpacked extension at `chrome://extensions`
+(Developer mode on). Then:
+
+- Navigate to a PDF URL: it should render in Folio's in-browser viewer.
+- Right-click a PDF link, or click the toolbar icon: **Open in Folio (desktop)**
+  should launch the app.
+
+See [extensions/chrome/README.md](../extensions/chrome/README.md) for full notes.
+
+### CSP / rendering
+
+Open an image-heavy (ideally JPEG2000) PDF in the desktop build. If it renders,
+the CSP's worker/wasm directives are correct.
+
+### Auto-updater
+
+Requires two versions: install one, publish a higher version to GitHub Releases
+with a `latest.json` (see [releasing.md](releasing.md)), relaunch, and confirm
+the update prompt. It can't be exercised from a single local build.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs three jobs on every push and pull request:
 
 - **quality**: lint, typecheck, and unit tests on Ubuntu across Node 20 and 22.
 - **e2e**: installs Chromium and runs the Playwright suite, uploading the report.
-- **build**: a debug Tauri build across Ubuntu, macOS, and Windows.
+- **build**: a `--no-bundle` Tauri compile across Ubuntu, macOS, and Windows
+  (bundling + signing need the release host's EV cert and updater key, so CI
+  compiles only).
 
 ## Not yet covered (planned)
 
