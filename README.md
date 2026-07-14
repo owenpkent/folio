@@ -168,7 +168,7 @@ folio/
 │  ├─ core/pdf/          PdfEngine interface + PDF.js implementation
 │  ├─ commands/          command registry (every user action)
 │  ├─ components/        Viewer, Toolbar, Sidebar, Search, common
-│  ├─ features/          annotations, signatures, forms, and save/export
+│  ├─ features/          annotations, editing, ocr, signatures, forms, save/export
 │  ├─ plugins/           plugin host, SDK types, built-in Word Count plugin
 │  ├─ ai/                provider-agnostic AI layer (Claude, experimental) + MCP stubs
 │  ├─ theme/             tokens, ThemeProvider, reading modes
@@ -189,6 +189,7 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Getting started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
 - [Accessibility](docs/accessibility.md)
+- [Editing and OCR](docs/editing-and-ocr.md)
 - [Forms and signatures](docs/forms-and-signatures.md)
 - [Theming](docs/theming.md)
 - [Writing plugins](docs/plugins.md)
