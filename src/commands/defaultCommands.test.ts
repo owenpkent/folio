@@ -17,6 +17,7 @@ describe('default commands', () => {
     for (const id of [
       'file.open',
       'file.close',
+      'file.setDefaultViewer',
       'view.zoomIn',
       'view.zoomOut',
       'view.fitWidth',

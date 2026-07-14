@@ -72,6 +72,7 @@ Folio rendering a two-page form PDF, in light and dark:
 
 **Desktop and distribution**
 - EV-signed Windows installer; installs per-user and **auto-updates** from GitHub Releases
+- Set Folio as your **default PDF viewer**: double-click a `.pdf` to open it in Folio (there's a one-click "make default" action on the start screen)
 - Open PDFs from your browser: a Chrome extension renders them in Folio, or hands off to the desktop app via a `folio://` deep link
 
 **AI-ready**

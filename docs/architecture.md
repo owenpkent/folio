@@ -49,7 +49,7 @@ This document describes the layer stack, the data flow for opening and rendering
 
 Read the stack top-down as: **native shell → React UI → command registry → plugin host / AI layer → Zustand state → core PDF engine → PDF.js worker**, with the Rust backend attached over Tauri IPC for anything the WebView cannot do safely (file system, OS menus, persisted window state).
 
-> Implementation status: the diagram is the intended shape. Today the Rust backend implements file IO (`read_document`, `write_document`), the browser hand-off (`fetch_pdf`), `app_version`, and the updater/deep-link plugins; native menus, recent files, and persisted window state are planned (see "Tauri command boundary"). Likewise the command palette shown under `commands/` is planned, not yet built. Reading the diagram, treat those cells as the roadmap, not current behavior.
+> Implementation status: the diagram is the intended shape. Today the Rust backend implements file IO (`read_document`, `write_document`), the browser hand-off (`fetch_pdf`), `app_version`, the default-viewer launch handling (`take_launch_file`, `open_default_apps_settings`), and the updater/deep-link plugins; native menus, recent files, and persisted window state are planned (see "Tauri command boundary"). Likewise the command palette shown under `commands/` is planned, not yet built. Reading the diagram, treat those cells as the roadmap, not current behavior.
 
 ## Module map
 
@@ -57,7 +57,7 @@ Each layer maps to a real directory in the repository.
 
 | Layer | Directory | Responsibility |
 |---|---|---|
-| Rust backend | `src-tauri/src/` | Implemented: file read/write (`read_document`, `write_document`), browser hand-off (`fetch_pdf`), `app_version`, plus the dialog, updater, deep-link, single-instance, and process plugins. Planned: recent files, native menus, window state, secure store |
+| Rust backend | `src-tauri/src/` | Implemented: file read/write (`read_document`, `write_document`), browser hand-off (`fetch_pdf`), `app_version`, default-viewer launch handling (`take_launch_file`, `open_default_apps_settings`), plus the dialog, updater, deep-link, single-instance, and process plugins. Planned: recent files, native menus, window state, secure store |
 | Static assets | `public/` | Files served verbatim by Vite (currently empty; the PDF.js worker is bundled via a `?url` import, not placed here) |
 | UI components | `src/components/` | `Viewer/`, `Toolbar/`, `Sidebar/`, `Search/`, `common/` (`common/` also holds `toastStore`) |
 | Command registry | `src/commands/` | Every user action as a `Command`; single dispatch point |
@@ -222,8 +222,12 @@ Implemented today (`src-tauri/src/lib.rs`), the registered commands are:
 - **`write_document(path, contents)`.** Write a filled/signed copy to the path the user chose in the native save dialog. Living on the Rust side (it mirrors `read_document`) means the frontend needs **no** broad filesystem capability — the previous `fs:allow-write-file` (`$HOME/**`) scope was removed. Rejects non-`.pdf` paths.
 - **`fetch_pdf(url)`.** Download a PDF handed off from the browser extension's `folio://` deep link. Validates the scheme (http/https only), refuses local/private hosts (an SSRF guard), and caps the response size. Cookie-gated PDFs are out of scope here (no browser session) — the extension's in-browser viewer covers those.
 - **`app_version()`.** Return the running version string, sourced from `Cargo.toml`.
+- **`take_launch_file()`.** Return (and clear) the PDF path Folio was launched with as the default `.pdf` handler. The path is captured from the process arguments at startup, validated (must end in `.pdf` and exist on disk), and consumed exactly once by the frontend on mount, so an in-app reload does not silently re-open it.
+- **`open_default_apps_settings()`.** Open the OS "Default apps" settings so the user can make Folio the default PDF viewer. Windows launches the fixed `ms-settings:defaultapps` URI (no user input is interpolated); modern Windows does not permit an app to seize a default handler silently, so this is a guided deep link rather than a silent switch.
 
 The native open and save pickers are provided by `tauri-plugin-dialog`; the document is prepared for saving in the frontend (PDF.js `saveDocument()` writes filled form values, then pdf-lib stamps placed signatures — see `src/features/export/`) and the bytes are written by `write_document`. Also registered in `run()`: `tauri-plugin-updater` (in-app updates, desktop only), `tauri-plugin-deep-link` + `tauri-plugin-single-instance` (the `folio://` scheme and single-window URL routing), and `tauri-plugin-process` (relaunch after an update). See `docs/releasing.md` for the signing and update-manifest flow.
+
+Opening a PDF as the **default viewer** has two entry points, handled in `src/features/fileopen/`. On a cold start the OS launches Folio with the file path in `argv`; `run()` captures it and the frontend pulls it via `take_launch_file`. When Folio is already running, a second launch is intercepted by `tauri-plugin-single-instance`, which forwards the path to the existing window as a `folio:open-pdf` event (macOS delivers the file as an `Opened` run event instead of argv; that branch is wired but untested). The `.pdf` association itself is registered by the installer from `bundle.fileAssociations` in `tauri.conf.json`.
 
 Planned Rust-side responsibilities (documented in the `lib.rs` module comment, not yet built):
 

@@ -1,4 +1,8 @@
+import { invoke } from '@tauri-apps/api/core';
+
 import { announce } from '@/a11y/announcer';
+import { pushToast } from '@/components/common';
+import { isTauri } from '@/core/document/openDocument';
 import { closeDocument, openDocumentViaPicker } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
@@ -32,6 +36,23 @@ const commands: Command[] = [
     category: 'File',
     when: hasDocument,
     run: () => closeDocument(),
+  },
+  {
+    id: 'file.setDefaultViewer',
+    title: 'Set Folio as default PDF viewer',
+    category: 'File',
+    // Desktop only: opens the OS "Default apps" settings. Modern Windows will
+    // not let an app seize a default handler silently, so we guide the user.
+    when: () => isTauri(),
+    run: async () => {
+      try {
+        await invoke('open_default_apps_settings');
+        pushToast('Choose Folio for ".pdf" in the Settings window that opened.', 'info');
+      } catch (error) {
+        const messageText = error instanceof Error ? error.message : String(error);
+        pushToast(messageText, 'error');
+      }
+    },
   },
 
   // View / zoom

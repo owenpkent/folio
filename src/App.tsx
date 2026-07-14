@@ -14,6 +14,7 @@ import { openFromQueryParam } from '@/core/document/openFromQuery';
 import { registerAnnotationCommands } from '@/features/annotations';
 import { registerDeepLinks } from '@/features/deeplink';
 import { registerExportCommands } from '@/features/export';
+import { registerFileOpen } from '@/features/fileopen';
 import { registerSignatureCommands, SignatureModal } from '@/features/signatures';
 import { registerSigningCommands, SigningModal } from '@/features/signing';
 import { checkForUpdates } from '@/features/updates';
@@ -46,6 +47,16 @@ export function App() {
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     void registerDeepLinks().then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, []);
+
+  // Open a PDF the OS handed to Folio as the default viewer (desktop only):
+  // the launch file on cold start, and forwarded files while already running.
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    void registerFileOpen().then((fn) => {
       cleanup = fn;
     });
     return () => cleanup?.();

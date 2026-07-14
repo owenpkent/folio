@@ -128,6 +128,22 @@ Start-Process "folio://open?url=https://<any-public>.pdf"   # opens in Folio
 Start-Process "folio://open?url=http://localhost/x.pdf"     # refused (SSRF guard)
 ```
 
+### Default PDF viewer (file association)
+
+Install the app first (the `.pdf` association is written by the installer, not by
+`tauri dev`), then:
+
+- **Appears as a handler:** right-click any `.pdf` -> *Open with* -> *Choose
+  another app*. **Folio** should be listed.
+- **Cold start:** with Folio closed, double-click a `.pdf` (or
+  `Start-Process folio-set-default.pdf`). Folio launches **and renders that
+  document**, not the empty state.
+- **Already running:** with Folio open, double-click a *different* `.pdf`. The
+  existing window focuses and loads the new file (no second window).
+- **In-app action:** on the empty state, click *Make Folio your default PDF
+  viewer*. Windows *Settings -> Default apps* opens so you can pick Folio for
+  `.pdf`.
+
 ### Chrome extension
 
 ```bash

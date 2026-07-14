@@ -21,6 +21,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   them off to the desktop app via a new `folio://` deep link. Adds the deep-link,
   single-instance, updater, and process plugins and a URL-validated `fetch_pdf`
   command.
+- **Default PDF viewer**: a `.pdf` file association (`bundle.fileAssociations`)
+  so the OS can open PDFs with Folio. Double-clicking a PDF opens it in Folio,
+  whether Folio is closed (launched with the file path via argv) or already
+  running (the file is routed to the existing window through single-instance).
+  Adds a "Make Folio your default PDF viewer" action on the start screen that
+  opens the OS Default apps settings, plus the `take_launch_file` and
+  `open_default_apps_settings` commands. Windows and Linux use the launch argv;
+  the macOS `Opened`-event path is wired but untested. See docs/testing.md.
 - Test suites: a Vitest unit suite (49 tests across stores, the command
   registry, the plugin host, keyboard shortcuts, and signing) and a Playwright
   end-to-end smoke suite (open, render, fill a form field, and digitally sign),
