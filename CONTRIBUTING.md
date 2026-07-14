@@ -22,6 +22,7 @@ expect from a pull request. If anything is unclear, open a
 - [Developer Certificate of Origin (DCO sign-off)](#developer-certificate-of-origin-dco-sign-off)
 - [Code style](#code-style)
 - [Testing expectations](#testing-expectations)
+- [Dependencies](#dependencies)
 - [Proposing plugins and AI features](#proposing-plugins-and-ai-features)
 - [Good first issues](#good-first-issues)
 - [Review process](#review-process)
@@ -291,6 +292,25 @@ a round trip.
 
 See [docs/testing.md](docs/testing.md) for how the unit and e2e suites are
 organized and what is covered. All tests must pass in CI before a PR can merge.
+
+---
+
+## Dependencies
+
+- Use the package manager and commit the lockfile: `npm install <pkg>` for the
+  frontend (`package-lock.json`), `cargo add` for the Tauri backend. Pin to a
+  specific version or a narrow range; don't hand-edit the lockfile.
+- Verify a package exists on its registry before adding it, and prefer
+  well-vetted libraries over obscure ones (see the security rules in
+  [CLAUDE.md](CLAUDE.md)). Run `npm audit` and treat new high/critical findings
+  as blocking.
+- **Dependabot** opens monthly update PRs (npm, cargo, GitHub Actions), grouped
+  to cut noise. For npm, **minor and patch** bumps are grouped into a single PR
+  that should stay green and be easy to merge. **Major** bumps are intentionally
+  *not* grouped: each opens as its own PR, because a breaking upgrade (for
+  example `pdfjs-dist`, `react`, or `eslint`) needs an individual, tested
+  migration rather than a batch merge. Never merge a dependency PR with failing
+  CI.
 
 ---
 
