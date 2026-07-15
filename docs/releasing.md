@@ -55,6 +55,10 @@ export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='<your key password>'
 npx tauri build --bundles nsis
 ```
 
+The two signing vars are documented in [`.env.example`](../.env.example) — copy
+it to `.env` and load it, or set them inline as above (PowerShell:
+`$env:TAURI_SIGNING_PRIVATE_KEY = "$env:USERPROFILE\.tauri\folio.key"`).
+
 Produces, in `src-tauri/target/release/bundle/nsis/`:
 - `Folio_<ver>_x64-setup.exe` — EV-signed installer (also the updater payload)
 - `Folio_<ver>_x64-setup.exe.sig` — minisign signature for the updater
