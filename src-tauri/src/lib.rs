@@ -134,8 +134,13 @@ fn take_launch_file(state: tauri::State<LaunchFile>) -> Option<String> {
 fn open_default_apps_settings() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
+        // Deep-link straight to Folio's page in Default apps (via the
+        // RegisteredApplications entry the installer writes), so the user lands
+        // on the .pdf association without having to search for it. Falls back to
+        // the generic Default apps page on Windows builds that don't honor the
+        // query. Fixed URI, no user input -> no injection surface.
         std::process::Command::new("explorer.exe")
-            .arg("ms-settings:defaultapps")
+            .arg("ms-settings:defaultapps?registeredAppUser=Folio")
             .spawn()
             .map(|_| ())
             .map_err(|e| format!("Failed to open Settings: {e}"))

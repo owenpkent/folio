@@ -110,6 +110,16 @@ const commands: Command[] = [
     keybinding: 'Mod+B',
     run: () => useViewerStore.getState().toggleSidebar(),
   },
+  {
+    id: 'view.toggleHandMode',
+    title: 'Hand tool (pan to scroll)',
+    category: 'View',
+    when: hasDocument,
+    run: () => {
+      useViewerStore.getState().toggleHandMode();
+      announce(useViewerStore.getState().handMode ? 'Hand tool on' : 'Hand tool off');
+    },
+  },
 
   // Navigation
   {

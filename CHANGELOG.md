@@ -6,6 +6,26 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Hand (pan) tool**: a grab tool in the toolbar (and the `view.toggleHandMode`
+  command) that lets you click-drag the page to scroll. Text selection is
+  suppressed while it is active; form fields and placed edits still work.
+
+### Fixed
+
+- **Fit-to-width** no longer overflows or flickers a horizontal scrollbar. The
+  viewer reserves the scrollbar gutter (`scrollbar-gutter: stable`), so the fit
+  width stays stable even when the vertical scrollbar appears after a fit.
+
+### Changed
+
+- The in-app **"Set as default PDF viewer"** action now deep-links straight to
+  Folio's page in *Settings > Default apps* (via a `RegisteredApplications`
+  Capabilities entry written by the installer, `src-tauri/installer.nsh`), so you
+  no longer have to type ".pdf" to find the association. Takes effect on a fresh
+  install.
+
 ## [0.2.0] - 2026-07-14
 
 ### Added

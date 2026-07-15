@@ -408,6 +408,18 @@ kbd {
   overflow: auto;
   padding: 24px;
   scroll-behavior: smooth;
+  /* Always reserve the vertical scrollbar gutter so fit-to-width computes a
+     stable width: without this, the scrollbar appearing after a fit shrinks the
+     client width, making the page overflow and a horizontal scrollbar flicker. */
+  scrollbar-gutter: stable;
+}
+/* Hand (pan) tool: grab the page and drag to scroll. */
+.folio-viewer.is-hand {
+  cursor: grab;
+  user-select: none;
+}
+.folio-viewer.is-hand.is-grabbing {
+  cursor: grabbing;
 }
 .folio-pages {
   display: flex;

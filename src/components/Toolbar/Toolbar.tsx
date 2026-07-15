@@ -17,6 +17,7 @@ export function Toolbar() {
   const numPages = useViewerStore((s) => s.numPages);
   const scale = useViewerStore((s) => s.scale);
   const sidebarOpen = useViewerStore((s) => s.sidebarOpen);
+  const handMode = useViewerStore((s) => s.handMode);
   const goToPage = useViewerStore((s) => s.goToPage);
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme);
   const readingMode = useThemeStore((s) => s.readingMode);
@@ -85,6 +86,13 @@ export function Toolbar() {
           label="Fit page"
           disabled={!hasDoc}
           onClick={() => run('view.fitPage')}
+        />
+        <IconButton
+          icon="hand"
+          label="Hand tool (pan to scroll)"
+          active={handMode}
+          disabled={!hasDoc}
+          onClick={() => run('view.toggleHandMode')}
         />
       </div>
 

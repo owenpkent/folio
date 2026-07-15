@@ -50,7 +50,10 @@
       }
     ],
     "windows": {
-      "signCommand": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ../scripts/sign-windows.ps1 -Path %1"
+      "signCommand": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ../scripts/sign-windows.ps1 -Path %1",
+      "nsis": {
+        "installerHooks": "./installer.nsh"
+      }
     }
   },
   "plugins": {

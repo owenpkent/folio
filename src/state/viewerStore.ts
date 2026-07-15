@@ -14,6 +14,8 @@ interface ViewerState {
   sidebarTab: SidebarTab;
   searchOpen: boolean;
   signatureModalOpen: boolean;
+  /** Hand (pan) tool: click-drag scrolls the document instead of selecting text. */
+  handMode: boolean;
   /** Set when something requests a scroll-to-page; the viewer clears it. */
   pendingScrollPage: number | null;
 
@@ -31,6 +33,8 @@ interface ViewerState {
   toggleSearch(): void;
   setSearchOpen(open: boolean): void;
   setSignatureModalOpen(open: boolean): void;
+  toggleHandMode(): void;
+  setHandMode(on: boolean): void;
   clearPendingScroll(): void;
   reset(): void;
 }
@@ -50,6 +54,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   sidebarTab: 'thumbnails',
   searchOpen: false,
   signatureModalOpen: false,
+  handMode: false,
   pendingScrollPage: null,
 
   setScale: (scale) => set({ scale: clampScale(scale), fitMode: 'custom' }),
@@ -70,6 +75,8 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   toggleSearch: () => set((s) => ({ searchOpen: !s.searchOpen })),
   setSearchOpen: (searchOpen) => set({ searchOpen }),
   setSignatureModalOpen: (signatureModalOpen) => set({ signatureModalOpen }),
+  toggleHandMode: () => set((s) => ({ handMode: !s.handMode })),
+  setHandMode: (handMode) => set({ handMode }),
   clearPendingScroll: () => set({ pendingScrollPage: null }),
   reset: () =>
     set({
@@ -79,6 +86,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       numPages: 0,
       searchOpen: false,
       signatureModalOpen: false,
+      handMode: false,
       pendingScrollPage: null,
     }),
 }));

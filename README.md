@@ -35,6 +35,7 @@ Folio rendering a two-page form PDF, in light and dark:
 **Reading**
 - Open, render, and navigate PDFs with a continuous, lazily-rendered page view
 - Zoom, fit-to-width, fit-to-page, and a live page indicator
+- Hand (pan) tool: grab and drag the page to scroll
 - Thumbnail strip and document outline (bookmarks)
 - Fast in-document text search with a results list
 

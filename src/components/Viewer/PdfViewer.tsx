@@ -16,10 +16,12 @@ export function PdfViewer() {
   const numPages = useViewerStore((s) => s.numPages);
   const scale = useViewerStore((s) => s.scale);
   const fitMode = useViewerStore((s) => s.fitMode);
+  const handMode = useViewerStore((s) => s.handMode);
   const pendingScrollPage = useViewerStore((s) => s.pendingScrollPage);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const naturalRef = useRef<{ width: number; height: number } | null>(null);
+  const panRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
 
   const recomputeFit = useCallback(() => {
     const container = containerRef.current;
@@ -138,6 +140,41 @@ export function PdfViewer() {
     useViewerStore.getState().clearPendingScroll();
   }, [pendingScrollPage]);
 
+  // Hand (pan) tool: click-drag scrolls the document. Interactive overlays keep
+  // their own drag behavior; everything else pans.
+  const onPanStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!handMode || e.button !== 0) return;
+    const target = e.target as Element;
+    if (target.closest('input, textarea, button, a, .folio-edit, .folio-signature, .folio-forms-layer')) {
+      return;
+    }
+    const container = containerRef.current;
+    if (!container) return;
+    e.preventDefault();
+    panRef.current = { x: e.clientX, y: e.clientY, left: container.scrollLeft, top: container.scrollTop };
+    container.classList.add('is-grabbing');
+    container.setPointerCapture(e.pointerId);
+  };
+  const onPanMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const pan = panRef.current;
+    const container = containerRef.current;
+    if (!pan || !container) return;
+    container.scrollLeft = pan.left - (e.clientX - pan.x);
+    container.scrollTop = pan.top - (e.clientY - pan.y);
+  };
+  const onPanEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!panRef.current) return;
+    panRef.current = null;
+    const container = containerRef.current;
+    if (!container) return;
+    container.classList.remove('is-grabbing');
+    try {
+      container.releasePointerCapture(e.pointerId);
+    } catch {
+      /* capture may already be released */
+    }
+  };
+
   if (status === 'empty') return <EmptyState />;
   if (status === 'error') {
     return (
@@ -150,10 +187,14 @@ export function PdfViewer() {
   return (
     <div
       ref={containerRef}
-      className="folio-viewer"
+      className={`folio-viewer${handMode ? ' is-hand' : ''}`}
       role="region"
       aria-label="Document pages"
       aria-busy={status === 'loading'}
+      onPointerDown={onPanStart}
+      onPointerMove={onPanMove}
+      onPointerUp={onPanEnd}
+      onLostPointerCapture={onPanEnd}
       // A scrollable region must be keyboard focusable so it can be scrolled
       // with the arrow keys (WCAG 2.1.1).
       // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
