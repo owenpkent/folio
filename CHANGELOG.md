@@ -6,13 +6,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-14
+
 ### Added
 
+- **Default PDF viewer**: a `.pdf` file association (`bundle.fileAssociations`)
+  so the OS can open PDFs with Folio. Double-clicking a PDF opens it in Folio,
+  whether Folio is closed (launched with the file path via argv) or already
+  running (the file is routed to the existing window through single-instance).
+  Adds a "Make Folio your default PDF viewer" action on the start screen that
+  opens the OS Default apps settings, plus the `take_launch_file` and
+  `open_default_apps_settings` commands. Windows and Linux use the launch argv;
+  the macOS `Opened`-event path is wired but untested. See docs/testing.md.
 - **Editing toolkit (v0.4, phase 1)**: add **text boxes** (a typewriter tool with
   a font / size / bold / color inspector) and place **images** (PNG/JPEG) on a
   page, drag/resize both, and bake them into a saved copy (`stampEdits` via
   pdf-lib `drawText`/`drawImage`). Additive only: existing PDF text is not
-  modified. New `src/features/editing` module and toolbar buttons.
+  modified. New `src/features/editing` module and toolbar buttons. See
+  docs/editing-and-ocr.md.
 - **OCR (v0.4)**: recognize text in scanned pages with **tesseract.js** (English),
   run fully offline and under the app CSP (worker + wasm core + model self-hosted
   under `public/tesseract/`, populated by `scripts/setup-ocr-assets.mjs`, no CDN).
@@ -20,7 +31,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   OCR text on image-only pages), and is baked into a saved copy as an invisible,
   searchable text layer. New `renderPageToImage` engine method and
   `src/features/ocr` module (lazy-loaded so tesseract.js stays out of the initial
-  bundle).
+  bundle). See docs/editing-and-ocr.md.
+
+## [0.1.0] - 2026-07-14
+
+### Added
 
 - Windows distribution: an **EV-signed NSIS installer** (OK Studio Inc. cert on a
   SafeNet eToken) via `scripts/sign-windows.ps1` wired through
@@ -35,14 +50,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   them off to the desktop app via a new `folio://` deep link. Adds the deep-link,
   single-instance, updater, and process plugins and a URL-validated `fetch_pdf`
   command.
-- **Default PDF viewer**: a `.pdf` file association (`bundle.fileAssociations`)
-  so the OS can open PDFs with Folio. Double-clicking a PDF opens it in Folio,
-  whether Folio is closed (launched with the file path via argv) or already
-  running (the file is routed to the existing window through single-instance).
-  Adds a "Make Folio your default PDF viewer" action on the start screen that
-  opens the OS Default apps settings, plus the `take_launch_file` and
-  `open_default_apps_settings` commands. Windows and Linux use the launch argv;
-  the macOS `Opened`-event path is wired but untested. See docs/testing.md.
 - Test suites: a Vitest unit suite (49 tests across stores, the command
   registry, the plugin host, keyboard shortcuts, and signing) and a Playwright
   end-to-end smoke suite (open, render, fill a form field, and digitally sign),
@@ -102,4 +109,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
   cargo-deny policy.
 
-[Unreleased]: https://github.com/owenpkent/folio/commits/main
+[Unreleased]: https://github.com/owenpkent/folio/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/owenpkent/folio/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/owenpkent/folio/releases/tag/v0.1.0
