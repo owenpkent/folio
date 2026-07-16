@@ -15,7 +15,7 @@ body {
   background: var(--folio-bg);
   color: var(--folio-text);
   font-family: var(--folio-font);
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -545,7 +545,7 @@ kbd {
 }
 .folio-note-editor__context {
   margin: 6px 0 8px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--folio-text-muted, #8a8a8a);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -559,7 +559,7 @@ kbd {
 .folio-note-editor__btn {
   padding: 4px 10px;
   font: inherit;
-  font-size: 12px;
+  font-size: 0.75rem;
   border: 1px solid var(--folio-border);
   border-radius: 6px;
   background: var(--folio-surface-2);
@@ -607,7 +607,7 @@ kbd {
 }
 .folio-empty__title {
   margin: 0;
-  font-size: 40px;
+  font-size: 2.5rem;
   font-weight: 650;
   letter-spacing: -0.02em;
 }
@@ -618,11 +618,11 @@ kbd {
 .folio-empty__hint {
   margin-top: 4px;
   color: var(--folio-text-muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .folio-empty__default {
   margin-top: 4px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--folio-text-muted);
 }
 
@@ -738,7 +738,7 @@ kbd {
   background: transparent;
   color: var(--folio-text-muted);
   cursor: pointer;
-  font-size: 18px;
+  font-size: 1.125rem;
   line-height: 1;
   padding: 0 2px;
 }
@@ -903,7 +903,7 @@ kbd {
 }
 .folio-edit__inspector select,
 .folio-edit__inspector input {
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .folio-edit__size {
   width: 46px;
@@ -995,7 +995,7 @@ kbd {
 }
 .folio-modal__title {
   margin: 0;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
 }
 .folio-modal__tabs {
@@ -1029,7 +1029,7 @@ kbd {
 }
 .folio-modal__hint {
   color: var(--folio-text-muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .folio-modal__footer {
   display: flex;
@@ -1074,7 +1074,7 @@ kbd {
   background: #ffffff;
   color: #111111;
   cursor: pointer;
-  font-size: 28px;
+  font-size: 1.75rem;
   text-align: left;
   overflow: hidden;
   white-space: nowrap;
@@ -1156,7 +1156,7 @@ kbd {
   margin-bottom: 12px;
 }
 .folio-field__label {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--folio-text-muted);
 }
 .folio-link-button {
@@ -1190,7 +1190,7 @@ kbd {
 }
 .folio-sidebar__heading {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--folio-text-muted);
@@ -1217,14 +1217,14 @@ kbd {
 .folio-digsig__time {
   color: var(--folio-text-muted);
   font-variant-numeric: tabular-nums;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .folio-digsig__badge {
   align-self: flex-start;
   margin-top: 2px;
   padding: 2px 8px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .folio-digsig__badge.is-ok {
   background: color-mix(in srgb, #34c759 20%, transparent);
@@ -1236,7 +1236,7 @@ kbd {
 }
 .folio-digsig__note {
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--folio-text-muted);
 }
 

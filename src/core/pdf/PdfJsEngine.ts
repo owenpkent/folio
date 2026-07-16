@@ -196,6 +196,8 @@ export class PdfJsEngine implements PdfEngine {
         enableScripting: false,
         hasJSActions: false,
       } as unknown as Parameters<pdfjsLib.AnnotationLayer['render']>[0]);
+
+      nameFormWidgets(container, annotations);
     });
   }
 
@@ -293,6 +295,50 @@ export class PdfJsEngine implements PdfEngine {
     const page = await this.requireDoc().getPage(pageNumber);
     this.pageCache.set(pageNumber, page);
     return page;
+  }
+}
+
+/** The subset of PDF.js's annotation data this file relies on. */
+interface AnnotationData {
+  id: string;
+  /** The field's /TU entry: the human-readable label its author gave it. */
+  alternativeText?: string;
+  /** The field's /T entry, e.g. "topmostSubform[0].Page1[0].name[0]". */
+  fieldName?: string;
+}
+
+/**
+ * Give each form control an accessible name taken from its PDF field.
+ *
+ * PDF.js does not do this itself. It applies ARIA to a widget in exactly one
+ * place — `AnnotationLayer.#appendElement`, from
+ * `structTreeLayer.getAriaAttributes()` — which is inert for us because we
+ * render without a structure tree. Its only other use of the label is
+ * `container.title = data.alternativeText`, and that lands on the wrapping
+ * `<section>`: `title` on an *ancestor* is not an accessible-name source, so the
+ * `<input>` inside is left anonymous even when the PDF names the field properly.
+ * Without this pass every field in a document reads as an unlabeled edit box,
+ * which fails WCAG 2.2 SC 4.1.2 (Name, Role, Value, Level A).
+ *
+ * Widgets are found via the rendered controls rather than by testing
+ * `annotationType === AnnotationType.WIDGET`, since PDF.js does not export that
+ * enum: an annotation with a form control in its section is a widget.
+ */
+function nameFormWidgets(container: HTMLElement, annotations: AnnotationData[]): void {
+  const byId = new Map(annotations.map((a) => [a.id, a]));
+
+  for (const section of container.querySelectorAll<HTMLElement>('[data-annotation-id]')) {
+    const control = section.querySelector<HTMLElement>('input, select, textarea');
+    const annotation = byId.get(section.dataset.annotationId ?? '');
+    if (!control || !annotation) continue;
+    // Never override a name PDF.js (or a future struct-tree pass) already set.
+    if (control.hasAttribute('aria-label') || control.hasAttribute('aria-labelledby')) continue;
+
+    // /TU is the author's own label and the entry PDF/UA leans on for fields
+    // (ISO 32000-1 14.9.3, via Matterhorn 28-005). /T is a fallback: often
+    // machine-ish ("Text1"), but a poor name beats no name.
+    const name = annotation.alternativeText?.trim() || annotation.fieldName?.trim();
+    if (name) control.setAttribute('aria-label', name);
   }
 }
 

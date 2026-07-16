@@ -22,9 +22,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   whose label is replaced by the typed name.
 - **The sidebar, page and zoom buttons now name their shortcut** in their
   tooltip, like the rest of the toolbar already did.
+- **Windows High Contrast (and any forced-colors mode) is now supported.**
+  Design tokens resolve to the user's own system colors, shadows are dropped,
+  toggled controls keep an outline so their state survives the palette being
+  flattened, and the rendered page opts out of recoloring so a document still
+  looks like its author wrote it.
+- **UI text scales with the OS/browser font-size preference.** Font sizes moved
+  from hardcoded `px` to `rem`; the default appearance is unchanged. Together
+  with the above this covers Section 508 **503.2**, which requires honoring
+  platform color, contrast and font settings and has no WCAG equivalent.
 
 ### Fixed
 
+- **Form fields are no longer unlabeled.** PDF.js renders AcroForm widgets as
+  native inputs but never names them: it applies ARIA only from a structure tree
+  (which Folio does not use), and the field's `/TU` lands on the wrapping
+  `<section>` as a `title`, which does not name the input inside it. Every field
+  was an anonymous edit box to a screen reader, even in a correctly authored PDF
+  — a WCAG 2.2 SC 4.1.2 (Level A) failure. Each control now takes its
+  `aria-label` from the field's `/TU`, falling back to `/T`.
+- **The page canvas is now `aria-hidden`**, as the accessibility guide always
+  claimed it was. The text layer over it is the accessible representation.
 - **Filled form fields no longer render doubled and unreadable.** Field values
   were rasterised into the page canvas *and* rendered as HTML inputs on top of
   it, so both copies showed at once. The canvas render now passes

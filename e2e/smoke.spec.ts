@@ -71,6 +71,21 @@ test('does not paint filled field values into the page canvas', async ({ page })
   expect(values).toContain('Jonathan Q. Fillingsworth');
 });
 
+test('form fields expose the label the PDF gave them', async ({ page }) => {
+  await page.goto('/');
+  await openFixture(page, FILLED_FORM_PDF);
+
+  // getByRole(..., { name }) runs the real accessible-name computation, which is
+  // the point: PDF.js puts /TU on the wrapping <section> as a title, and a title
+  // on an ancestor does not name the input. Asserting on the attribute alone
+  // would pass while a screen reader still announced an unlabeled edit box.
+  await expect(page.getByRole('textbox', { name: 'Full legal name' })).toHaveValue(
+    'Jonathan Q. Fillingsworth',
+  );
+  await expect(page.getByRole('textbox', { name: 'Street address' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'City and state' })).toBeVisible();
+});
+
 test('Page Up and Page Down scroll the document', async ({ page }) => {
   await page.goto('/');
   await openFixture(page);

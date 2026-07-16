@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
-import { PDFDocument, StandardFonts } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFString, StandardFonts } from 'pdf-lib';
 
 /**
  * Generate the test fixtures into e2e/fixtures. Regenerated on every run so
@@ -45,6 +45,10 @@ async function buildEmptyForm(): Promise<Uint8Array> {
  * The page deliberately carries no other content, so any ink on the rendered
  * canvas is a form widget that should have been left to the annotation layer.
  * See the "does not paint filled field values" test in smoke.spec.ts.
+ *
+ * Each field also carries a /TU entry — the human-readable label a real
+ * authoring tool writes when its author labels the field — so the suite can
+ * assert the fields get accessible names from it.
  */
 async function buildFilledForm(): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -52,15 +56,21 @@ async function buildFilledForm(): Promise<Uint8Array> {
   const page = doc.addPage([612, 792]);
   const form = doc.getForm();
 
-  const fields: [string, string, number][] = [
-    ['fullName', 'Jonathan Q. Fillingsworth', 650],
-    ['address', '1600 Pennsylvania Avenue NW', 600],
-    ['city', 'Washington, District of Columbia', 550],
+  const fields: [string, string, string, number][] = [
+    ['fullName', 'Full legal name', 'Jonathan Q. Fillingsworth', 650],
+    ['address', 'Street address', '1600 Pennsylvania Avenue NW', 600],
+    ['city', 'City and state', 'Washington, District of Columbia', 550],
   ];
-  for (const [name, value, y] of fields) {
+  for (const [name, label, value, y] of fields) {
     const field = form.createTextField(name);
     field.setText(value);
     field.addToPage(page, { x: 60, y, width: 480, height: 28, font });
+    // PDF.js reads /TU off the widget annotation with a plain (non-inherited)
+    // lookup, so it has to sit on the widget, not only on the parent field.
+    for (const widget of field.acroField.getWidgets()) {
+      widget.dict.set(PDFName.of('TU'), PDFString.of(label));
+    }
+    field.acroField.dict.set(PDFName.of('TU'), PDFString.of(label));
   }
   form.updateFieldAppearances(font);
 
