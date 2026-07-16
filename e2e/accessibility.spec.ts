@@ -11,6 +11,42 @@ import { expect, test } from '@playwright/test';
  * against unstyled defaults.
  */
 
+test.describe('sidebar tabs (WCAG 2.1.1 Keyboard)', () => {
+  test('every panel is reachable with the arrow keys', async ({ page }) => {
+    await page.goto('/');
+    const tabs = page.getByRole('tab');
+    const count = await tabs.count();
+    expect(count).toBeGreaterThan(1);
+
+    // A tablist uses a roving tabindex, so Tab steps over the rail entirely and
+    // the arrows are the only route to the other tabs. Without a key handler
+    // every unselected panel is unreachable by keyboard — the rail looks fine
+    // and is simply a dead end.
+    await tabs.first().focus();
+    for (let i = 1; i < count; i++) {
+      await page.keyboard.press('ArrowDown');
+      await expect(tabs.nth(i)).toBeFocused();
+      await expect(tabs.nth(i)).toHaveAttribute('aria-selected', 'true');
+    }
+
+    // And it wraps, so a user cannot get stuck at the end.
+    await page.keyboard.press('ArrowDown');
+    await expect(tabs.first()).toBeFocused();
+  });
+
+  test('Home and End jump to the first and last panel', async ({ page }) => {
+    await page.goto('/');
+    const tabs = page.getByRole('tab');
+    const last = (await tabs.count()) - 1;
+
+    await tabs.first().focus();
+    await page.keyboard.press('End');
+    await expect(tabs.nth(last)).toBeFocused();
+    await page.keyboard.press('Home');
+    await expect(tabs.first()).toBeFocused();
+  });
+});
+
 test.describe('platform font size (503.2)', () => {
   test('UI text scales with the user’s root font size', async ({ page }) => {
     await page.goto('/');

@@ -78,26 +78,74 @@ already hold values. The latter is deliberately otherwise blank, so any ink on
 the rendered canvas is a form widget that should have been left to the
 annotation layer, which is what makes the doubled-text assertion below possible.
 
-The smoke suite (`e2e/smoke.spec.ts`) covers:
+There are three specs.
+
+**`e2e/smoke.spec.ts`** — the core document flows:
 
 1. The empty state renders on launch.
 2. Toggling dark mode sets `data-theme="dark"`.
 3. Opening a PDF renders its pages and updates the page count.
 4. A filled form's values are not painted into the page canvas (they belong to
    the DOM inputs alone; both copies at once is the doubled-text bug).
-5. `Page Up` / `Page Down` scroll the document, including after focus has left it
+5. Form fields expose the label the PDF gave them (`/TU`, falling back to `/T`).
+6. `Page Up` / `Page Down` scroll the document, including after focus has left it
    for the toolbar.
-6. Closing the find bar hands focus back to the document, so the scroll keys
+7. Closing the find bar hands focus back to the document, so the scroll keys
    keep working.
-7. Filling an AcroForm field and digitally signing produces a downloaded
+8. Filling an AcroForm field and digitally signing produces a downloaded
    `(signed)` copy.
 
-Tests 4 to 6 pin behavior that fails silently rather than loudly: a wrong
-`annotationMode` renders every field twice, and the scroll keys simply do nothing
-if focus is not where they need it. When changing any of them, check the test
-actually fails against the unfixed code first. The `annotationMode` one is the
-cautionary case: the plausible-looking `ENABLE_STORAGE` leaves the duplicate text
-exactly where it was, and only a canvas-pixel assertion catches that.
+**`e2e/accessibility.spec.ts`** — platform settings, which Section 508 503.2
+requires and WCAG does not: UI text scales with the user's root font size, and
+under forced colors (Windows High Contrast) the design tokens resolve to system
+colors, toggled buttons stay distinguishable from untoggled ones, and the page
+canvas opts out of recoloring.
+
+**`e2e/annotations.spec.ts`** — that a saved copy really contains what you
+marked up: a highlight round-trips as a real `/Highlight` annotation carrying its
+text in `/Contents`, annotated pages declare `Tabs = S` while untouched pages do
+not, and the document's original form field survives alongside the new
+annotation. It also writes its export to `test-results/exports/`, which is what
+the CI job feeds to veraPDF (see [Measuring PDF/UA](#measuring-pdfua)).
+
+### Tests that pin silent failures
+
+Most of the suite guards behaviour that fails *quietly*, which is why these tests
+are worth more than their line count and why you should be careful editing them:
+
+- **A wrong `annotationMode` renders every field twice** and looks like a
+  rendering quirk. This is the cautionary one: the plausible-looking
+  `ENABLE_STORAGE` leaves the duplicate text exactly where it was, and **only a
+  canvas-pixel assertion catches it** — every DOM-level check passes.
+- **The scroll keys simply do nothing** when focus is not where they need it.
+  There is no error, just a dead key.
+- **Form labels**: the test asserts through `getByRole(..., { name })`, the real
+  accessible-name computation, not the attribute. An attribute check would pass
+  while a screen reader still announced an unlabeled edit box.
+- **Annotation export**: the test parses the saved copy with pdf-lib rather than
+  searching the bytes. pdf-lib writes object streams, so a compressed annotation
+  dict is invisible to a text search and the assertions would happily pass
+  against a file containing nothing.
+- **Forced colors** are emulated with `page.emulateMedia`, not the `forcedColors`
+  fixture — the fixture does not take effect here, the media query never
+  matches, and every assertion passes vacuously against unstyled defaults.
+
+The rule these share: **when you touch one of these, first check it actually
+fails against the unfixed code.** A test that cannot fail is worse than no test,
+because it reads like a guarantee.
+
+### Measuring PDF/UA
+
+The `e2e` CI job runs veraPDF (`--flavour ua1`, pinned by digest) over the
+exports the annotation spec produces, and uploads the result as the
+`pdfua-report` artifact.
+
+It is **informational and non-blocking on purpose**: PDF/UA export is a known
+"Does Not Support" (see [508-conformance.md](508-conformance.md)), so it reports
+failures today. The point is that the gap is a tracked number rather than a
+guess, and that a regression in the parts we *do* satisfy shows up. Note veraPDF
+implements only the machine-checkable subset of PDF/UA — a clean run would still
+say nothing about reading order, which is human-judged.
 
 Useful flags:
 
@@ -216,7 +264,10 @@ the update prompt. It can't be exercised from a single local build.
 `.github/workflows/ci.yml` runs three jobs on every push and pull request:
 
 - **quality**: lint, typecheck, and unit tests on Ubuntu across Node 20 and 22.
-- **e2e**: installs Chromium and runs the Playwright suite, uploading the report.
+- **e2e**: installs Chromium and runs the Playwright suite, then measures the
+  exported PDFs against PDF/UA-1 with veraPDF. Uploads both the Playwright report
+  and the `pdfua-report` artifact. The veraPDF step is non-blocking; see
+  [Measuring PDF/UA](#measuring-pdfua).
 - **build**: a `--no-bundle` Tauri compile across Ubuntu, macOS, and Windows
   (bundling + signing need the release host's EV cert and updater key, so CI
   compiles only).
@@ -227,4 +278,7 @@ the update prompt. It can't be exercised from a single local build.
   [accessibility.md](accessibility.md)).
 - Component tests for the viewer, toolbar, sidebar, and modals.
 - Engine-level rendering and text-extraction tests against sample PDFs.
-- More e2e flows: annotations, search, thumbnails, and outline navigation.
+- More e2e flows: search, thumbnails, and outline navigation.
+- Screen-reader verification is still manual (NVDA on Windows, VoiceOver on
+  macOS). The e2e suite asserts accessible names and roles, which is not the
+  same as confirming a document reads well.

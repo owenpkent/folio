@@ -42,6 +42,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   graphics — so other readers can see, edit and reply to them, and assistive
   technology can read them. Annotated pages also get `/Tabs S` (ISO 14289-1
   7.18.3).
+- **The sidebar panels are reachable by keyboard again.** The tab rail used a
+  roving tabindex (only the selected tab in the tab sequence) but had no
+  arrow-key handler, so `Tab` stepped over the whole rail and nothing moved
+  between tabs: four of the five panels could not be reached by keyboard at all,
+  a WCAG 2.2 SC 2.1.1 (Level A) failure. `↑`/`↓`, `←`/`→` and `Home`/`End` now
+  move between tabs, with selection following focus.
 - **Form fields are no longer unlabeled.** PDF.js renders AcroForm widgets as
   native inputs but never names them: it applies ARIA only from a structure tree
   (which Folio does not use), and the field's `/TU` lands on the wrapping
