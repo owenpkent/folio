@@ -72,6 +72,41 @@ jobs:
       - name: Run e2e tests
         run: npm run test:e2e
 
+      # Measure how far a saved copy sits from PDF/UA-1, which Section 508
+      # 504.2.2 asks an authoring tool to be capable of exporting.
+      #
+      # Informational on purpose. PDF/UA export is a known "Does Not Support"
+      # (docs/508-conformance.md): no JS library can author a structure tree into
+      # an existing PDF, so this WILL report failures and must never block the
+      # build. It exists so the gap is a tracked number rather than a guess, and
+      # so a regression on the parts we do satisfy (/Contents on annotations,
+      # Tabs=S on annotated pages) shows up in the report.
+      #
+      # veraPDF implements only the machine-checkable subset of PDF/UA — a clean
+      # run would still say nothing about reading order, which is human-judged.
+      - name: Measure PDF/UA-1 conformance of exports (informational)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          mkdir -p test-results/exports pdfua-report
+          if [ -z "$(ls -A test-results/exports)" ]; then
+            echo "No exports were produced; skipping." | tee pdfua-report/report.txt
+            exit 0
+          fi
+          docker run --rm \
+            -v "${{ github.workspace }}/test-results/exports:/data:ro" \
+            verapdf/cli@sha256:d5ee329657cf9bc4b2400392dd54c7d0a0ce9980ff6fa2da5590eebeec007cdb \
+            --flavour ua1 --format text -r /data \
+            | tee pdfua-report/report.txt
+
+      - name: Upload PDF/UA report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pdfua-report
+          path: pdfua-report/
+          retention-days: 7
+
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
