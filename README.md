@@ -18,9 +18,10 @@ native [Tauri](https://tauri.app) shell, and is designed from the first commit
 around three things Acrobat treats as afterthoughts: **accessibility**,
 **a real dark mode**, and **extensibility**.
 
-> Status: early foundation (v0.1). The core viewer, text highlighting, theming,
-> accessibility, the plugin system, and the AI/MCP scaffolding are in place. See
-> the [roadmap](ROADMAP.md).
+> Status: early foundation (v0.2). The core viewer, forms, annotations that
+> embed into a saved copy, editing, OCR, visual and cryptographic signing,
+> theming, accessibility (Section 508), the plugin system, and the AI/MCP
+> scaffolding are in place. See the [roadmap](ROADMAP.md).
 
 ## Screenshots
 
@@ -74,7 +75,8 @@ Folio rendering a two-page form PDF, in light and dark:
 - Sign by drawing, typing, or uploading a signature; place, drag, and resize it
 - Cryptographic digital signatures (PKCS#7): import a `.p12` or create a
   self-signed identity; opened signed PDFs show the signer and tamper status
-- Save a copy with form values and signatures baked in (original untouched)
+- Save a copy with form values, edits, OCR text, signatures, and annotations
+  baked in (original untouched)
 
 **Extensible**
 - A plugin system: contribute commands, toolbar items, sidebar panels, and tools

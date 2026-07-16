@@ -362,10 +362,12 @@ Tips for a smooth first contribution:
   normal and healthy.
 - Address comments by pushing additional commits (we squash on merge, so you do
   not need to rewrite history for every round). Re-request review when ready.
-- CI must be green: lint, typecheck, unit tests, the Tauri build matrix, and the
-  DCO check all need to pass.
-- At least one maintainer approval is required to merge. Maintainers may merge
-  with a squash commit that preserves a Conventional Commit summary.
+- CI must be green: lint, typecheck, unit tests (Node 20 and 22), the end-to-end
+  (Playwright) run, and the Tauri build matrix (ubuntu/windows/macos) are
+  required status checks enforced by branch protection on `main` — a PR cannot
+  be merged until they pass. The DCO check must also pass.
+- Maintainer review is expected before merge. Maintainers squash-merge with a
+  commit that preserves a Conventional Commit summary.
 
 Thank you for helping build Folio. We are glad you are here.
 

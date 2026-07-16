@@ -70,17 +70,23 @@ stamped.
 ## Saving
 
 Run **Save a copy** (`Ctrl/Cmd + S`), the toolbar Save button, or the
-`file.save` command. Folio produces the output in two steps (see
+`file.save` command. Folio produces the output in two stages (see
 `src/features/export/saveDocument.ts`):
 
 1. PDF.js `saveDocument()` writes the filled form values into a fresh PDF.
-2. If any signatures are placed, [pdf-lib](https://pdf-lib.js.org) loads those
-   bytes and stamps each signature image onto its page.
+2. If there is anything else to bake, [pdf-lib](https://pdf-lib.js.org) loads
+   those bytes once and stamps, in order: the invisible OCR text layer, placed
+   edits (text boxes and images), signature images, and review annotations
+   (highlights and sticky notes, written as real `/Highlight` and `/Text`
+   annotations, not flattened graphics). When none of those are present, the
+   step-1 bytes are returned as-is.
 
-The result is written through a native Save dialog in the desktop app (via the
-Tauri `dialog` and `fs` plugins) or downloaded in the browser dev build. The
-suggested filename is the original name with a `(filled)` or `(signed)` suffix;
-the original document is never overwritten.
+The result is written to whatever path you pick in the native Save dialog in the
+desktop app (through the Tauri `dialog` plugin plus the Rust `write_document`
+command, so the frontend needs no broad filesystem capability) or downloaded in
+the browser dev build. The suggested filename is the original name with a
+`(filled)`, `(edited)`, or `(signed)` suffix; the original document is never
+overwritten.
 
 ## Cryptographic digital signatures
 
@@ -148,8 +154,6 @@ app.
   signing time, and whether the file changed after signing.
 - Signing runs in the WebView today; a Rust/OS-keychain backend is planned.
 - Visual-signature stamping assumes unrotated pages (rotation support is planned).
-- Saving targets the user's home directory tree in the desktop app (the write
-  capability scope). This will be broadened.
 
 ## Roadmap
 
