@@ -43,7 +43,7 @@ These commands exist but have **no keyboard binding**; they are reachable from t
 
 Planned, **not yet implemented** (no command is registered for these today): a command palette (`Ctrl/Cmd+Shift+P`) and an in-app keyboard-shortcuts help overlay (`?`). Every toolbar button whose command has a binding names it in the button's label, which is both its `aria-label` and its tooltip (`IconButton` sets the two from one `label` prop), so bindings stay discoverable until the help overlay lands. If you give an existing command a binding, add it to that label too.
 
-Form fields and signatures: filled AcroForm fields are native HTML inputs, so they are keyboard-operable and labeled from the PDF. The signature dialog is a focus-trapped modal (dismiss with `Escape`), and placed signatures expose a keyboard-focusable delete button; keyboard placement and resizing of signatures are planned. See [forms-and-signatures.md](forms-and-signatures.md).
+Form fields and signatures: filled AcroForm fields are native HTML inputs, so they are keyboard-operable, and Folio names each one from the field's `/TU` (falling back to `/T`) — see [The text layer and screen readers](#the-text-layer-and-screen-readers) for why PDF.js does not do this on its own. A field with neither entry has no name to give, which is a defect in the source PDF rather than in the viewer. The signature dialog is a focus-trapped modal (dismiss with `Escape`), and placed signatures expose a keyboard-focusable delete button; keyboard placement and resizing of signatures are planned. Signatures and placed images carry **no alternative text** in the exported file, and there is no UI to supply one — a known gap, tracked in [508-conformance.md](508-conformance.md). See [forms-and-signatures.md](forms-and-signatures.md).
 
 Everything reachable by mouse is reachable by keyboard. If you add a feature, add its command with a `keybinding` rather than wiring a bespoke key handler.
 
@@ -88,12 +88,13 @@ Nothing enforces the pairing, so two rules are worth keeping in mind:
 
 ## The text layer and screen readers
 
-Each rendered page is a `<canvas>` (the visual raster) with a **positioned text layer** overlaid on top, built by `PdfEngine.renderTextLayer(pageNumber, container, scale)` from PDF.js text content (the same text is available to search and the AI layer via `getPageText`). This is the core of Folio's accessibility.
+Each rendered page is a `<canvas>` (the visual raster) with a **positioned text layer** overlaid on top, built by `PdfEngine.renderTextLayer(pageNumber, container, { scale })` from PDF.js text content (the same text is available to search and the AI layer via `getPageText`). This is the core of Folio's accessibility.
 
 - **Real text, not an image.** The text layer contains the document's actual glyphs positioned over the canvas. Screen readers read this text; users select and copy it; find-in-page highlights it.
 - **Selection matches the visual page.** Because text spans are positioned to align with the raster, a selection drag looks correct and yields the correct copied text.
-- **Reading order.** Folio uses the document's text order from PDF.js. For tagged PDFs this reflects the logical structure; for untagged PDFs it follows the content stream order.
-- **The canvas is decorative to assistive tech.** The raster carries `aria-hidden` semantics so screen readers do not announce it as an image; the text layer is the accessible representation.
+- **Reading order is content-stream order, not logical order.** Folio does not currently read the PDF's structure tree: `renderAnnotationLayer` passes `structTreeLayer: null`, `page.getStructTree()` is never called, and the text layer is positioned spans with no structure attached. So the order comes from `getTextContent()`, which follows the content stream, **even for a tagged PDF whose tags describe a different logical order**. For most documents the two coincide; for multi-column layouts, sidebars and floated figures they do not. Closing this means wiring PDF.js's `StructTreeLayerBuilder` and accessibility manager, and is the largest open item in this guide. See [508-conformance.md](508-conformance.md).
+- **The canvas is decorative to assistive tech.** The raster carries `aria-hidden="true"` (`src/components/Viewer/Page.tsx`) so screen readers do not announce it as an image; the text layer is the accessible representation.
+- **Form fields are named from the PDF.** PDF.js renders AcroForm widgets as native inputs but leaves them unnamed — it only applies ARIA from a structure tree, and the field's `/TU` goes on the wrapping `<section>` as a `title`, which does not name the input inside it. `nameFormWidgets` (`src/core/pdf/PdfJsEngine.ts`) sets `aria-label` on each control from the field's `/TU`, falling back to `/T`. An end-to-end test asserts this through the accessible-name computation rather than the attribute.
 
 ## Live-region announcements
 
