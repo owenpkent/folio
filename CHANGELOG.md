@@ -6,6 +6,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **Hardened the `fetch_pdf` browser hand-off against SSRF.** The `folio://`
+  deep link can be triggered by any web page, so the download command now
+  resolves the target host and rejects the request if any resolved IP is
+  loopback, private, link-local (including the `169.254.169.254` cloud-metadata
+  endpoint), carrier-grade NAT, benchmarking, reserved, or multicast — across
+  IPv4, IPv6, and IPv4-mapped IPv6. Validating resolved IPs rather than the URL
+  string defeats decimal/hex/octal encodings and DNS names that point at private
+  space. The connection is pinned to the pre-validated IPs (closing the
+  DNS-rebinding window), follows no redirects (so a public URL cannot bounce to
+  an internal host), and enforces connect/read timeouts.
+- **Tightened the desktop Content Security Policy** with `frame-ancestors 'none'`
+  and `form-action 'none'`, closing the framing and form-submission vectors.
+
 ### Added
 
 - **Hand (pan) tool**: a grab tool in the toolbar (and the `view.toggleHandMode`
