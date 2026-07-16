@@ -35,6 +35,7 @@ export function SignaturesPanel() {
                 <button
                   type="button"
                   className="folio-signatures-list__jump"
+                  title={`Go to page ${sig.pageNumber}`}
                   onClick={() => goToPage(sig.pageNumber)}
                 >
                   <img className="folio-signatures-list__thumb" src={sig.dataUrl} alt="" />

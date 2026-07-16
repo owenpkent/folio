@@ -49,6 +49,24 @@ export interface RenderPageOptions {
   canvas: HTMLCanvasElement;
   /** Abort an in-flight render (e.g. when the page scrolls out of view). */
   signal?: AbortSignal;
+  /**
+   * Set when the caller overlays interactive form widgets as DOM inputs (see
+   * {@link PdfEngine.renderAnnotationLayer}). Field values are then left out of
+   * the canvas, since the inputs already show them and painting both renders
+   * the same text twice. Leave unset for standalone rasterisations such as
+   * thumbnails, which have no overlay and do need the values painted in.
+   */
+  overlayForms?: boolean;
+}
+
+/** Options for the DOM overlay renders (text layer, annotation layer). */
+export interface RenderLayerOptions {
+  scale: number;
+  /**
+   * Abort a superseded layer render. Without this a stale pass can interleave
+   * its appends with a newer one and leave duplicated elements behind.
+   */
+  signal?: AbortSignal;
 }
 
 /** A rasterised page image (e.g. for OCR): a PNG data URL plus its pixel size. */

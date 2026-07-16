@@ -17,9 +17,15 @@ PDFs with an AcroForm (text fields, checkboxes, radio buttons, dropdowns, list
 boxes) render as real, interactive fields directly over the page.
 
 - Rendering is handled by PDF.js. For each page the engine calls
-  `renderAnnotationLayer(pageNumber, container, scale)`, which builds the PDF.js
-  annotation layer with `renderForms: true`. The fields are native HTML inputs,
-  so they are focusable, keyboard-operable, and exposed to screen readers.
+  `renderAnnotationLayer(pageNumber, container, { scale, signal })`, which builds
+  the PDF.js annotation layer with `renderForms: true`. The fields are native
+  HTML inputs, so they are focusable, keyboard-operable, and exposed to screen
+  readers.
+- Because those inputs already display each field's value, the page raster must
+  leave the widgets out, which is what `renderPage({ overlayForms: true })` does.
+  Otherwise PDF.js paints the value into the canvas as well and the two copies
+  show through each other as doubled text. Thumbnails have no input overlay, so
+  they omit the flag and keep the values in the raster.
 - Field edits are written into the document's `annotationStorage` (managed by
   PDF.js) as you type or toggle. Nothing is written to disk until you save.
 - The field layer sits above the text layer (`z-index: 3`) so fields are

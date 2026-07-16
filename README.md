@@ -153,9 +153,11 @@ npm run typecheck    # tsc --noEmit
 | Zoom in / out     | `Ctrl/Cmd + =` / `Ctrl/Cmd + -` |
 | Actual size       | `Ctrl/Cmd + 0`              |
 | Next / prev page  | `→` / `←`                   |
+| Scroll up / down  | `Page Up` / `Page Down`     |
 | First / last page | `Ctrl/Cmd + Home` / `End`   |
 | Toggle sidebar    | `Ctrl/Cmd + B`              |
 | Highlight text    | `Ctrl/Cmd + Shift + H`      |
+| Add sticky note   | `Ctrl/Cmd + Shift + M`      |
 | Toggle dark mode  | `Ctrl/Cmd + Shift + L`      |
 
 The complete list, plus the accessibility model, is in

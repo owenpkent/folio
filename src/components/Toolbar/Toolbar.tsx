@@ -5,6 +5,7 @@ import { IconButton, type IconName } from '@/components/common';
 import { useNotesUi } from '@/features/annotations';
 import { useContributionStore } from '@/plugins';
 import { useDocumentStore } from '@/state/documentStore';
+import { focusViewer } from '@/state/viewerElement';
 import { useViewerStore } from '@/state/viewerStore';
 import { useThemeStore } from '@/theme/themeStore';
 
@@ -29,7 +30,7 @@ export function Toolbar() {
       <div className="folio-toolbar__group">
         <IconButton
           icon="sidebar"
-          label="Toggle sidebar"
+          label="Toggle sidebar (Ctrl/Cmd + B)"
           active={sidebarOpen}
           onClick={() => run('view.toggleSidebar')}
         />
@@ -43,7 +44,7 @@ export function Toolbar() {
       <div className="folio-toolbar__group folio-toolbar__group--center">
         <IconButton
           icon="chevron-left"
-          label="Previous page"
+          label="Previous page (←)"
           disabled={!hasDoc || currentPage <= 1}
           onClick={() => run('nav.prevPage')}
         />
@@ -55,14 +56,14 @@ export function Toolbar() {
         />
         <IconButton
           icon="chevron-right"
-          label="Next page"
+          label="Next page (→)"
           disabled={!hasDoc || currentPage >= numPages}
           onClick={() => run('nav.nextPage')}
         />
         <span className="folio-toolbar__divider" aria-hidden="true" />
         <IconButton
           icon="zoom-out"
-          label="Zoom out"
+          label="Zoom out (Ctrl/Cmd + -)"
           disabled={!hasDoc}
           onClick={() => run('view.zoomOut')}
         />
@@ -71,7 +72,7 @@ export function Toolbar() {
         </span>
         <IconButton
           icon="zoom-in"
-          label="Zoom in"
+          label="Zoom in (Ctrl/Cmd + =)"
           disabled={!hasDoc}
           onClick={() => run('view.zoomIn')}
         />
@@ -210,10 +211,12 @@ function PageBox({ currentPage, numPages, disabled, onSubmit }: PageBoxProps) {
           if (e.key === 'Enter') {
             const n = parseInt(value, 10);
             if (!Number.isNaN(n)) onSubmit(n);
-            e.currentTarget.blur();
+            // Move focus to the document rather than blurring to <body>, which
+            // would leave the scroll keys with no scrollable element to act on.
+            focusViewer();
           } else if (e.key === 'Escape') {
             setValue(String(currentPage));
-            e.currentTarget.blur();
+            focusViewer();
           }
         }}
       />

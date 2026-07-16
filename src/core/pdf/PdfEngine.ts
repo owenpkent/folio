@@ -5,6 +5,7 @@ import type {
   PageImage,
   PdfDocumentInfo,
   PdfMetadata,
+  RenderLayerOptions,
   RenderPageOptions,
   SearchMatch,
 } from './types';
@@ -43,7 +44,11 @@ export interface PdfEngine {
    * `container`. This is what makes the viewer accessible: real DOM text
    * positioned over the rasterised page.
    */
-  renderTextLayer(pageNumber: number, container: HTMLElement, scale: number): Promise<void>;
+  renderTextLayer(
+    pageNumber: number,
+    container: HTMLElement,
+    options: RenderLayerOptions,
+  ): Promise<void>;
 
   /**
    * Render the interactive annotation layer for a page: fillable AcroForm
@@ -51,7 +56,11 @@ export interface PdfEngine {
    * Edits flow into the engine's annotation storage and are written out by
    * {@link saveDocument}.
    */
-  renderAnnotationLayer(pageNumber: number, container: HTMLElement, scale: number): Promise<void>;
+  renderAnnotationLayer(
+    pageNumber: number,
+    container: HTMLElement,
+    options: RenderLayerOptions,
+  ): Promise<void>;
 
   /** Whether the document contains fillable AcroForm fields. */
   hasFormFields(): Promise<boolean>;

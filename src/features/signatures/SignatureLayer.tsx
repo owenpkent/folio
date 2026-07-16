@@ -108,11 +108,17 @@ function SignatureItem({ sig }: { sig: Signature }) {
         type="button"
         className="folio-signature__delete"
         aria-label="Delete signature"
+        title="Delete signature"
         onClick={() => remove(sig.id)}
       >
         <Icon name="x" size={13} />
       </button>
-      <span className="folio-signature__resize" aria-hidden="true" onPointerDown={startResize} />
+      <span
+        className="folio-signature__resize"
+        aria-hidden="true"
+        title="Drag to resize"
+        onPointerDown={startResize}
+      />
     </div>
   );
 }

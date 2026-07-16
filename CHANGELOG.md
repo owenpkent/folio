@@ -11,9 +11,39 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Hand (pan) tool**: a grab tool in the toolbar (and the `view.toggleHandMode`
   command) that lets you click-drag the page to scroll. Text selection is
   suppressed while it is active; form fields and placed edits still work.
+- **`Page Up` / `Page Down` scroll the document**, as the `nav.scrollUp` /
+  `nav.scrollDown` commands. They are bound as commands rather than left to the
+  browser so they keep working wherever focus happens to be.
+- **Tooltips on the remaining controls**: both modal close buttons, the toast
+  dismiss, the text/image/signature delete and resize handles, the text
+  inspector's font, size, bold and color controls, note pins, thumbnails and the
+  outline chevron. Rows whose text is clipped (search results, outline entries,
+  annotation rows) now reveal it on hover, as does the signature font picker,
+  whose label is replaced by the typed name.
+- **The sidebar, page and zoom buttons now name their shortcut** in their
+  tooltip, like the rest of the toolbar already did.
 
 ### Fixed
 
+- **Filled form fields no longer render doubled and unreadable.** Field values
+  were rasterised into the page canvas *and* rendered as HTML inputs on top of
+  it, so both copies showed at once. The canvas render now passes
+  `annotationMode: ENABLE_FORMS`, which is what makes PDF.js leave widgets to the
+  annotation layer. Thumbnails, which have no input overlay, still paint values
+  into the canvas as before.
+- **Form fields could also be duplicated outright on a cold open.** Nothing
+  cancelled or serialised annotation-layer renders, so the fit-to-width scale
+  change landing mid-render let two passes interleave their appends into one
+  container and leave duplicate widgets stacked on each other. Layer renders are
+  now serialised per container and skip superseded passes. This was timing
+  dependent, which is why it tended to appear on a first open and not a reopen.
+- **The scroll keys did nothing until you clicked the page.** Focus stayed on
+  `<body>`, which cannot scroll, so arrows, `Home`/`End` and `Space` were dead on
+  arrival; opening find or the page box took focus away and never gave it back.
+  The viewer now takes focus when a document opens and gets it back when those
+  close, and the skip link points at the scroller instead of its non-scrolling
+  `<main>` wrapper.
+- **`Ctrl+F` could not close the find bar** from inside its own input.
 - **Fit-to-width** no longer overflows or flickers a horizontal scrollbar. The
   viewer reserves the scrollbar gutter (`scrollbar-gutter: stable`), so the fit
   width stays stable even when the vertical scrollbar appears after a fit.

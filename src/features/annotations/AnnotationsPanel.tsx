@@ -30,6 +30,9 @@ export function AnnotationsPanel() {
           <button
             type="button"
             className="folio-annotations-list__jump"
+            // Highlighted passages are usually longer than the row; without
+            // this there is no way to tell two clipped highlights apart.
+            title={annotation.text || undefined}
             onClick={() => goToPage(annotation.pageNumber)}
           >
             <span

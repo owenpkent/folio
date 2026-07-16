@@ -5,6 +5,7 @@ import { pushToast } from '@/components/common';
 import { isTauri } from '@/core/document/openDocument';
 import { closeDocument, openDocumentViaPicker } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
+import { scrollViewerByPage } from '@/state/viewerElement';
 import { useViewerStore } from '@/state/viewerStore';
 import { READING_MODE_LABELS, useThemeStore } from '@/theme/themeStore';
 
@@ -145,6 +146,25 @@ const commands: Command[] = [
       v.goToPage(v.currentPage - 1);
       announcePage();
     },
+  },
+  // Scrolling is bound as commands rather than left to the browser: the keys
+  // only scroll natively while the viewer holds focus, and any trip to the
+  // toolbar or the find box takes that away.
+  {
+    id: 'nav.scrollDown',
+    title: 'Scroll down one screen',
+    category: 'Navigate',
+    keybinding: 'PageDown',
+    when: hasDocument,
+    run: () => scrollViewerByPage(1),
+  },
+  {
+    id: 'nav.scrollUp',
+    title: 'Scroll up one screen',
+    category: 'Navigate',
+    keybinding: 'PageUp',
+    when: hasDocument,
+    run: () => scrollViewerByPage(-1),
   },
   {
     id: 'nav.firstPage',
