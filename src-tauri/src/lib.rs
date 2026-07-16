@@ -27,6 +27,9 @@ fn is_disallowed_ip(ip: IpAddr) -> bool {
                 || v4.is_broadcast()
                 || v4.is_documentation()
                 || v4.is_multicast()
+                // 0.0.0.0/8 "this network" (RFC 1122); some stacks route it to
+                // loopback. is_unspecified() only matches 0.0.0.0 itself.
+                || a == 0
                 // 100.64.0.0/10 carrier-grade NAT (RFC 6598).
                 || (a == 100 && (b & 0xc0) == 64)
                 // 198.18.0.0/15 benchmarking (RFC 2544).
@@ -35,10 +38,23 @@ fn is_disallowed_ip(ip: IpAddr) -> bool {
                 || a >= 240
         }
         IpAddr::V6(v6) => {
+            // Unwrap both embedded-IPv4 forms and re-check the v4 address:
+            // ::ffff:a.b.c.d (mapped) and the deprecated ::a.b.c.d (compatible,
+            // segments 0..6 zero, last two the v4). Otherwise ::127.0.0.1 would
+            // slip past every check below.
             if let Some(v4) = v6.to_ipv4_mapped() {
                 return is_disallowed_ip(IpAddr::V4(v4));
             }
-            let first = v6.segments()[0];
+            let segs = v6.segments();
+            if segs[..6].iter().all(|&s| s == 0) && (segs[6] != 0 || segs[7] > 1) {
+                return is_disallowed_ip(IpAddr::V4(std::net::Ipv4Addr::new(
+                    (segs[6] >> 8) as u8,
+                    segs[6] as u8,
+                    (segs[7] >> 8) as u8,
+                    segs[7] as u8,
+                )));
+            }
+            let first = segs[0];
             v6.is_unspecified()
                 || v6.is_loopback()
                 || v6.is_multicast()
@@ -327,10 +343,12 @@ mod tests {
             "0.0.0.0",         // unspecified
             "255.255.255.255", // broadcast
             "224.0.0.1",       // multicast
+            "0.1.2.3",         // 0.0.0.0/8 "this network"
             "::1",             // IPv6 loopback
             "fc00::1",         // IPv6 unique-local
             "fe80::1",         // IPv6 link-local
             "::ffff:127.0.0.1", // IPv4-mapped loopback
+            "::127.0.0.1",     // IPv4-compatible loopback (deprecated)
         ] {
             assert!(is_disallowed_ip(ip(s)), "{s} should be disallowed");
         }
