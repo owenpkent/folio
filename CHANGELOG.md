@@ -34,6 +34,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Highlights and sticky notes are no longer dropped when you save.** The export
+  read the edit, signature and OCR stores but never the annotation store, so
+  every highlight and note stayed in browser-local storage and never reached the
+  file. They are now written as real `/Highlight` and `/Text` annotations
+  carrying their text in `/Contents`, rather than flattened into the page
+  graphics — so other readers can see, edit and reply to them, and assistive
+  technology can read them. Annotated pages also get `/Tabs S` (ISO 14289-1
+  7.18.3).
 - **Form fields are no longer unlabeled.** PDF.js renders AcroForm widgets as
   native inputs but never names them: it applies ARIA only from a structure tree
   (which Folio does not use), and the field's `/TU` lands on the wrapping

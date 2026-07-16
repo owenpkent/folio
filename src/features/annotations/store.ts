@@ -4,8 +4,9 @@ import type { Annotation, NormalizedRect } from './types';
 
 /**
  * Annotations are stored per document, keyed by the PDF fingerprint, in a
- * local sidecar (localStorage today). This keeps the original PDF untouched.
- * Embedding annotations back into the PDF is planned for v0.2 (see ROADMAP.md).
+ * local sidecar (localStorage today), which keeps the open PDF untouched while
+ * you review. Saving a copy writes them into that copy as real PDF annotations
+ * — see `stampAnnotations` in ./bake.ts.
  */
 
 function uid(): string {

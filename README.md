@@ -192,6 +192,7 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Getting started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
 - [Accessibility](docs/accessibility.md)
+- [Section 508 conformance](docs/508-conformance.md) (what is supported, and the open gaps)
 - [Editing and OCR](docs/editing-and-ocr.md)
 - [Forms and signatures](docs/forms-and-signatures.md)
 - [Theming](docs/theming.md)

@@ -188,5 +188,6 @@ The table maps Folio features to the success criteria they satisfy. This is a wo
 
 ## Related documents
 
+- `docs/508-conformance.md`: how Folio maps to the Revised 508 Standards, which incorporate WCAG 2.0 A/AA by reference, plus the provisions WCAG does not cover (platform settings, authoring tools, support documentation) and the open gaps.
 - `docs/architecture.md`: the command registry and a11y layer in context.
 - `docs/theming.md`: token values, contrast, and reading-mode filters.
