@@ -7,6 +7,7 @@ import { commandRegistry } from '@/commands';
 import { pushToast } from '@/components/common';
 import { isTauri } from '@/core/document/openDocument';
 import { getEngine } from '@/core/pdf';
+import { stampAnnotations, useAnnotationStore } from '@/features/annotations';
 import { stampEdits, useEditStore } from '@/features/editing';
 import { stampOcrLayer, useOcrStore } from '@/features/ocr';
 import { useSignatureStore, type Signature } from '@/features/signatures';
@@ -14,16 +15,24 @@ import { useDocumentStore } from '@/state/documentStore';
 
 /**
  * Produce the final PDF bytes. PDF.js writes any filled form values, then
- * pdf-lib is loaded once to stamp placed edits (text boxes + images) and
- * signatures onto the pages, in that order. Crypto signing (if any) wraps this
- * result last, in the signing feature.
+ * pdf-lib is loaded once to stamp placed edits (text boxes + images),
+ * signatures, and review annotations onto the pages. Crypto signing (if any)
+ * wraps this result last, in the signing feature.
  */
 export async function exportDocument(): Promise<Uint8Array> {
   const base = await getEngine().saveDocument();
   const edits = useEditStore.getState().edits;
   const signatures = useSignatureStore.getState().signatures;
   const ocrPages = Object.values(useOcrStore.getState().pages);
-  if (edits.length === 0 && signatures.length === 0 && ocrPages.length === 0) return base;
+  const annotations = useAnnotationStore.getState().annotations;
+  if (
+    edits.length === 0 &&
+    signatures.length === 0 &&
+    ocrPages.length === 0 &&
+    annotations.length === 0
+  ) {
+    return base;
+  }
 
   const pdf = await PDFDocument.load(base);
   // OCR text goes down first (invisible, underneath), then visible edits, then
@@ -31,6 +40,9 @@ export async function exportDocument(): Promise<Uint8Array> {
   if (ocrPages.length > 0) await stampOcrLayer(pdf, ocrPages);
   if (edits.length > 0) await stampEdits(pdf, edits);
   if (signatures.length > 0) await stampSignatures(pdf, signatures);
+  // Highlights and notes are real PDF annotations rather than stamped graphics,
+  // so drawing order does not apply to them.
+  if (annotations.length > 0) stampAnnotations(pdf, annotations);
   return pdf.save();
 }
 

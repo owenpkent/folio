@@ -90,7 +90,8 @@ Folio rendering a two-page form PDF, in light and dark:
 - Summarize, ask-about-the-document, and structured extraction (experimental)
 - Model Context Protocol (MCP) client/server support planned; the tool surface is stubbed out
 
-See [`docs/`](docs/) for the full documentation set.
+See [`docs/`](docs/README.md) for the full documentation set, indexed by what you
+are trying to do.
 
 ## Tech stack
 
@@ -192,6 +193,7 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Getting started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
 - [Accessibility](docs/accessibility.md)
+- [Section 508 conformance](docs/508-conformance.md) (what is supported, and the open gaps)
 - [Editing and OCR](docs/editing-and-ocr.md)
 - [Forms and signatures](docs/forms-and-signatures.md)
 - [Theming](docs/theming.md)

@@ -6,6 +6,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **Hardened the `fetch_pdf` browser hand-off against SSRF.** The `folio://`
+  deep link can be triggered by any web page, so the download command now
+  resolves the target host and rejects the request if any resolved IP is
+  loopback, private, link-local (including the `169.254.169.254` cloud-metadata
+  endpoint), carrier-grade NAT, benchmarking, reserved, or multicast — across
+  IPv4, IPv6, and IPv4-mapped IPv6. Validating resolved IPs rather than the URL
+  string defeats decimal/hex/octal encodings and DNS names that point at private
+  space. The connection is pinned to the pre-validated IPs (closing the
+  DNS-rebinding window), follows no redirects (so a public URL cannot bounce to
+  an internal host), and enforces connect/read timeouts.
+- **Tightened the desktop Content Security Policy** with `frame-ancestors 'none'`
+  and `form-action 'none'`, closing the framing and form-submission vectors.
+
 ### Added
 
 - **Hand (pan) tool**: a grab tool in the toolbar (and the `view.toggleHandMode`
@@ -22,9 +37,41 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   whose label is replaced by the typed name.
 - **The sidebar, page and zoom buttons now name their shortcut** in their
   tooltip, like the rest of the toolbar already did.
+- **Windows High Contrast (and any forced-colors mode) is now supported.**
+  Design tokens resolve to the user's own system colors, shadows are dropped,
+  toggled controls keep an outline so their state survives the palette being
+  flattened, and the rendered page opts out of recoloring so a document still
+  looks like its author wrote it.
+- **UI text scales with the OS/browser font-size preference.** Font sizes moved
+  from hardcoded `px` to `rem`; the default appearance is unchanged. Together
+  with the above this covers Section 508 **503.2**, which requires honoring
+  platform color, contrast and font settings and has no WCAG equivalent.
 
 ### Fixed
 
+- **Highlights and sticky notes are no longer dropped when you save.** The export
+  read the edit, signature and OCR stores but never the annotation store, so
+  every highlight and note stayed in browser-local storage and never reached the
+  file. They are now written as real `/Highlight` and `/Text` annotations
+  carrying their text in `/Contents`, rather than flattened into the page
+  graphics — so other readers can see, edit and reply to them, and assistive
+  technology can read them. Annotated pages also get `/Tabs S` (ISO 14289-1
+  7.18.3).
+- **The sidebar panels are reachable by keyboard again.** The tab rail used a
+  roving tabindex (only the selected tab in the tab sequence) but had no
+  arrow-key handler, so `Tab` stepped over the whole rail and nothing moved
+  between tabs: four of the five panels could not be reached by keyboard at all,
+  a WCAG 2.2 SC 2.1.1 (Level A) failure. `↑`/`↓`, `←`/`→` and `Home`/`End` now
+  move between tabs, with selection following focus.
+- **Form fields are no longer unlabeled.** PDF.js renders AcroForm widgets as
+  native inputs but never names them: it applies ARIA only from a structure tree
+  (which Folio does not use), and the field's `/TU` lands on the wrapping
+  `<section>` as a `title`, which does not name the input inside it. Every field
+  was an anonymous edit box to a screen reader, even in a correctly authored PDF
+  — a WCAG 2.2 SC 4.1.2 (Level A) failure. Each control now takes its
+  `aria-label` from the field's `/TU`, falling back to `/T`.
+- **The page canvas is now `aria-hidden`**, as the accessibility guide always
+  claimed it was. The text layer over it is the accessible representation.
 - **Filled form fields no longer render doubled and unreadable.** Field values
   were rasterised into the page canvas *and* rendered as HTML inputs on top of
   it, so both copies showed at once. The canvas render now passes

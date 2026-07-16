@@ -6,7 +6,9 @@ The accessibility utilities live in `src/a11y/` (announcer, focus trap, keyboard
 
 ## Keyboard shortcuts
 
-All shortcuts dispatch through the command registry (`useKeyboardShortcuts` matches the pressed chord against each command's declared `keybinding`). Bindings use `Mod`, which resolves to `Cmd` on macOS and `Ctrl` elsewhere, so the two platform columns differ only in that modifier. Each binding below is exactly what is declared in `src/commands/defaultCommands.ts` and `src/features/annotations/commands.ts`.
+All shortcuts dispatch through the command registry (`useKeyboardShortcuts` matches the pressed chord against each command's declared `keybinding`). Bindings use `Mod`, which resolves to `Cmd` on macOS and `Ctrl` elsewhere, so the two platform columns differ only in that modifier.
+
+Bindings are declared on the command, wherever that command lives — mostly `src/commands/defaultCommands.ts` and `src/features/annotations/commands.ts`, but `file.save` is declared in `src/features/export/saveDocument.ts`. `grep -rn "keybinding:" src/` is the complete list.
 
 | Action | Command id | Windows/Linux | macOS |
 |---|---|---|---|
@@ -28,22 +30,33 @@ All shortcuts dispatch through the command registry (`useKeyboardShortcuts` matc
 | Add sticky note | `annotate.addNote` | `Ctrl+Shift+M` | `Cmd+Shift+M` |
 | Toggle UI theme (light/dark) | `theme.toggle` | `Ctrl+Shift+L` | `Cmd+Shift+L` |
 
-`Page Up`/`Page Down` are dispatched as commands rather than left to the browser. Native scrolling only acts on the focused element's nearest scrollable ancestor, so it stops working the moment focus moves to the toolbar or the find box; binding the keys keeps them working wherever focus happens to be. The arrow keys, `Home`/`End` and `Space` do scroll natively, which works because the viewer takes focus when a document opens and gets it back when the find bar closes.
+`Page Up`/`Page Down` are dispatched as commands rather than left to the browser. Native scrolling only acts on the focused element's nearest scrollable ancestor, so it stops working the moment focus moves to the toolbar or the find box; binding the keys keeps them working wherever focus happens to be.
+
+`↑`/`↓`, unmodified `Home`/`End` and `Space` are unbound and scroll natively, which works because the viewer takes focus when a document opens and gets it back when the find bar closes. `←`/`→` do **not** scroll: they are bound to page navigation and the dispatcher calls `preventDefault()`, so they never reach the browser's own scrolling. That is a deliberate trade — paging is the more useful binding — but it means horizontal scrolling at high zoom needs the scrollbar, the hand tool, or shift-scroll.
 
 These commands exist but have **no keyboard binding**; they are reachable from the toolbar (and via the registry) only:
 
 | Action | Command id | Trigger |
 |---|---|---|
 | Close document | `file.close` | Command / menu |
+| Set Folio as default PDF viewer | `file.setDefaultViewer` | Command (desktop only) |
 | Fit width | `view.fitWidth` | Toolbar button |
 | Fit page | `view.fitPage` | Toolbar button |
+| Hand tool (pan to scroll) | `view.toggleHandMode` | Toolbar button |
 | Cycle reading mode | `theme.cycleReadingMode` | Toolbar button |
+| Add text box | `edit.addText` | Toolbar button |
+| Add image | `edit.addImage` | Toolbar button |
+| Recognize text (OCR) | `ocr.recognizeDocument` | Toolbar button |
+| Recognize text on this page | `ocr.recognizePage` | Command |
 | Add signature | `sign.addSignature` | Toolbar button / Signatures panel |
 | Digitally sign | `sign.digitallySign` | Toolbar button / Signatures panel |
+| Word Count (built-in plugin) | `plugin.wordCount.show` | Sidebar panel |
+
+Every one of these is reachable by keyboard through its toolbar button or panel, so no functionality is keyboard-inaccessible (WCAG 2.1.1); they simply have no dedicated chord. The planned command palette is what makes them all directly reachable.
 
 Planned, **not yet implemented** (no command is registered for these today): a command palette (`Ctrl/Cmd+Shift+P`) and an in-app keyboard-shortcuts help overlay (`?`). Every toolbar button whose command has a binding names it in the button's label, which is both its `aria-label` and its tooltip (`IconButton` sets the two from one `label` prop), so bindings stay discoverable until the help overlay lands. If you give an existing command a binding, add it to that label too.
 
-Form fields and signatures: filled AcroForm fields are native HTML inputs, so they are keyboard-operable and labeled from the PDF. The signature dialog is a focus-trapped modal (dismiss with `Escape`), and placed signatures expose a keyboard-focusable delete button; keyboard placement and resizing of signatures are planned. See [forms-and-signatures.md](forms-and-signatures.md).
+Form fields and signatures: filled AcroForm fields are native HTML inputs, so they are keyboard-operable, and Folio names each one from the field's `/TU` (falling back to `/T`) — see [The text layer and screen readers](#the-text-layer-and-screen-readers) for why PDF.js does not do this on its own. A field with neither entry has no name to give, which is a defect in the source PDF rather than in the viewer. The signature dialog is a focus-trapped modal (dismiss with `Escape`), and placed signatures expose a keyboard-focusable delete button; keyboard placement and resizing of signatures are planned. Signatures and placed images carry **no alternative text** in the exported file, and there is no UI to supply one — a known gap, tracked in [508-conformance.md](508-conformance.md). See [forms-and-signatures.md](forms-and-signatures.md).
 
 Everything reachable by mouse is reachable by keyboard. If you add a feature, add its command with a `keybinding` rather than wiring a bespoke key handler.
 
@@ -67,7 +80,7 @@ Folio exposes a stable landmark structure so screen-reader users can navigate by
 | Region | Element/role | ARIA |
 |---|---|---|
 | Top toolbar | `<header role="banner">` | icon buttons carry `aria-label` (for example "Toggle sidebar (Ctrl/Cmd + B)", "Zoom in (Ctrl/Cmd + =)"); the live zoom readout uses `aria-live="polite"` |
-| Sidebar (outline, thumbnails, annotations) | `<aside>` (complementary) | `aria-label="Document tools"`; the rail is `role="tablist"`, each tab is `role="tab"` with `aria-selected`, and the body is `role="tabpanel"` |
+| Sidebar (outline, thumbnails, annotations) | `<aside>` (complementary) | `aria-label="Document tools"`; the rail is `role="tablist"` with `aria-orientation="vertical"`, each tab is `role="tab"` with `aria-selected` and a roving tabindex, and the body is `role="tabpanel"` |
 | Page viewport | `<main>` | `aria-label="Document"` |
 | Search bar | `role="search"` | labeled input, `aria-live` result count |
 | Announcer (polite) | visually hidden `role="status"` | `aria-live="polite"`, `aria-atomic="true"` |
@@ -75,7 +88,11 @@ Folio exposes a stable landmark structure so screen-reader users can navigate by
 
 There is no separate status-bar landmark today: the current page (an editable page box) and the current zoom percentage live in the toolbar, with the zoom readout in an `aria-live="polite"` region. A dedicated status bar is planned.
 
-Additional roles in the sidebar panels: the outline tree uses `role="tree"` / `role="treeitem"` with `aria-expanded`; thumbnails present a selectable list; toolbar toggles expose their active state; the reading-mode control exposes its current mode in its label.
+Additional roles in the sidebar panels: thumbnails present a selectable list, each with `aria-current="page"` for the page in view; toolbar toggles expose their state via `aria-pressed`; the reading-mode control exposes its current mode in its label.
+
+The sidebar rail is a real tablist: it uses a roving tabindex, so `Tab` steps over the rail as one stop and `↑`/`↓` (and `←`/`→`, and `Home`/`End`) move between tabs, with selection following focus. That handler is load-bearing rather than a nicety — a roving tabindex without it leaves every unselected panel unreachable by keyboard.
+
+**Known gap — the outline is not a tree.** `Outline.tsx` renders nested `<ul>`/`<li>` with a button per entry and `aria-expanded` on the expand/collapse toggle, not `role="tree"` / `role="treeitem"`. It is fully keyboard navigable and every control is named, but a screen reader announces it as a list rather than a tree, so it carries no level or set-position information. Making it a real tree means the ARIA roles plus arrow-key navigation over the same roving-tabindex pattern the rail now uses.
 
 ## Names and tooltips
 
@@ -88,30 +105,40 @@ Nothing enforces the pairing, so two rules are worth keeping in mind:
 
 ## The text layer and screen readers
 
-Each rendered page is a `<canvas>` (the visual raster) with a **positioned text layer** overlaid on top, built by `PdfEngine.renderTextLayer(pageNumber, container, scale)` from PDF.js text content (the same text is available to search and the AI layer via `getPageText`). This is the core of Folio's accessibility.
+Each rendered page is a `<canvas>` (the visual raster) with a **positioned text layer** overlaid on top, built by `PdfEngine.renderTextLayer(pageNumber, container, { scale })` from PDF.js text content (the same text is available to search and the AI layer via `getPageText`). This is the core of Folio's accessibility.
 
 - **Real text, not an image.** The text layer contains the document's actual glyphs positioned over the canvas. Screen readers read this text; users select and copy it; find-in-page highlights it.
 - **Selection matches the visual page.** Because text spans are positioned to align with the raster, a selection drag looks correct and yields the correct copied text.
-- **Reading order.** Folio uses the document's text order from PDF.js. For tagged PDFs this reflects the logical structure; for untagged PDFs it follows the content stream order.
-- **The canvas is decorative to assistive tech.** The raster carries `aria-hidden` semantics so screen readers do not announce it as an image; the text layer is the accessible representation.
+- **Reading order is content-stream order, not logical order.** Folio does not currently read the PDF's structure tree: `renderAnnotationLayer` passes `structTreeLayer: null`, `page.getStructTree()` is never called, and the text layer is positioned spans with no structure attached. So the order comes from `getTextContent()`, which follows the content stream, **even for a tagged PDF whose tags describe a different logical order**. For most documents the two coincide; for multi-column layouts, sidebars and floated figures they do not. Closing this means wiring PDF.js's `StructTreeLayerBuilder` and accessibility manager, and is the largest open item in this guide. See [508-conformance.md](508-conformance.md).
+- **The canvas is decorative to assistive tech.** The raster carries `aria-hidden="true"` (`src/components/Viewer/Page.tsx`) so screen readers do not announce it as an image; the text layer is the accessible representation.
+- **Form fields are named from the PDF.** PDF.js renders AcroForm widgets as native inputs but leaves them unnamed — it only applies ARIA from a structure tree, and the field's `/TU` goes on the wrapping `<section>` as a `title`, which does not name the input inside it. `nameFormWidgets` (`src/core/pdf/PdfJsEngine.ts`) sets `aria-label` on each control from the field's `/TU`, falling back to `/T`. An end-to-end test asserts this through the accessible-name computation rather than the attribute.
 
 ## Live-region announcements
 
-State changes that are obvious visually but silent to a screen reader are announced through the polite live region in `src/a11y/announcer.ts`. Each call clears the region first and writes the new text on the next animation frame, so an identical consecutive message is still re-announced and a burst of rapid updates coalesces to the latest value.
+State changes that are obvious visually but silent to a screen reader are announced through the live regions in `src/a11y/announcer.ts`. Each call clears the region first and writes the new text on the next animation frame, so an identical consecutive message is still re-announced and a burst of rapid updates coalesces to the latest value.
 
-Messages that are actually announced today, with their exact wording:
+There are around three dozen announcements; `grep -rn "announce(" src/` is the authoritative list, since any table here would drift. Representative examples, with their exact wording:
 
-- Page change: `Page 5 of 24`
-- Zoom change: `Zoom 150 percent`
-- Reading mode: `Reading mode: Night` (the capitalized mode label)
-- Theme change: `dark theme` / `light theme` (the resolved theme)
-- Document loaded: `Opened report.pdf, 24 pages`
-- Document closed: `Closed document`
-- Highlight added: `Highlight added` (or, with no selection, `Select some text first, then add a highlight`)
+| Event | Announcement |
+|---|---|
+| Page change | `Page 5 of 24` |
+| Zoom change | `Zoom 150 percent` |
+| Reading mode | `Reading mode: Night` (the capitalized mode label) |
+| Theme change | `dark theme` / `light theme` (the resolved theme) |
+| Document opened via the picker | `Opened report.pdf, 24 pages` |
+| Document closed | `Closed document` |
+| Highlight added | `Highlight added` |
+| Hand tool toggled | `Hand tool on` / `Hand tool off` |
+| Note placed | `Note added on page 3` |
+| Signature placed | `Signature placed. Drag it to reposition…` |
+| Saved a copy | `Saved report (filled).pdf` / `Downloaded report (filled).pdf` |
+| OCR finished | `Text recognition complete` |
+
+One inconsistency worth knowing: a document opened from a **deep link or an OS file association** announces `Opened report.pdf` without the page count (`openFromDeepLink.ts`, `openFromLaunch.ts`), where the picker path includes it.
+
+The polite region (`role="status"`, `aria-live="polite"`) never interrupts the user mid-sentence. Messages that need attention go to a separate assertive region (`role="alert"`, `aria-live="assertive"`) instead — that is what the `true` second argument to `announce()` selects. Assertive today: failures (`Could not open document: …`, `Could not save the document: …`, `Could not create the certificate`) and instructions the user must act on before anything happens (`Select some text first, then add a highlight`, `Create a signature first`, `Enter a name and a passphrase`).
 
 The find-in-page result count is a separate `aria-live="polite"` region inside the search bar (not routed through the announcer); it reads `3 of 17`, `Searching…`, or `No results`. Fit-mode changes and sidebar toggles are not currently announced.
-
-The announcer uses `aria-live="polite"` so it never interrupts the user mid-sentence. Errors that require attention (for example, a file that failed to open, `Could not open document: ...`) are written to a separate `role="alert"`, `aria-live="assertive"` region instead.
 
 ## Reading modes and contrast
 
@@ -187,5 +214,6 @@ The table maps Folio features to the success criteria they satisfy. This is a wo
 
 ## Related documents
 
+- `docs/508-conformance.md`: how Folio maps to the Revised 508 Standards, which incorporate WCAG 2.0 A/AA by reference, plus the provisions WCAG does not cover (platform settings, authoring tools, support documentation) and the open gaps.
 - `docs/architecture.md`: the command registry and a11y layer in context.
 - `docs/theming.md`: token values, contrast, and reading-mode filters.

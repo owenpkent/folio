@@ -47,7 +47,7 @@ Text highlighting with sidecar (local) persistence and an annotations panel alre
 | Notes | Sticky notes anchored to a point or region: place, drag, edit, delete; each note captures its page, position, and nearby text so the AI layer can locate it | In progress (place/drag/edit + AI anchoring shipped; keyboard placement planned) |
 | Freehand | Ink annotations with pressure-agnostic smoothing | Planned |
 | Shapes | Rectangle, ellipse, line, and arrow tools | Planned |
-| Persistence | Sidecar storage of annotations (shipped), plus embed-into-PDF on save | In progress |
+| Persistence | Sidecar storage of annotations (shipped), plus embed-into-PDF on save: highlights and notes are written as real `/Highlight` and `/Text` annotations (shipped); ink, shapes and underline/strikethrough follow their tools | In progress |
 | Plugin tools | `registerAnnotationTool` so plugins add custom annotation tools | Planned |
 | Accessibility | Keyboard-createable and editable annotations; annotations list panel (shipped); screen-reader descriptions | In progress |
 

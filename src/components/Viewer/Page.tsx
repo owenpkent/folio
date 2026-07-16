@@ -108,7 +108,9 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
       aria-label={`Page ${pageNumber}`}
       style={dims ? { width: dims.width, height: dims.height } : undefined}
     >
-      <canvas ref={canvasRef} className="folio-page-canvas" />
+      {/* The raster is the visual copy only; the text layer over it is the
+          accessible one, so keep the canvas out of the accessibility tree. */}
+      <canvas ref={canvasRef} className="folio-page-canvas" aria-hidden="true" />
       <div ref={textLayerRef} className="textLayer folio-text-layer" />
       <div ref={formsLayerRef} className="annotationLayer folio-forms-layer" />
       <OcrTextLayer pageNumber={pageNumber} />
