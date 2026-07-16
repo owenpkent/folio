@@ -66,6 +66,38 @@ fn is_disallowed_ip(ip: IpAddr) -> bool {
     }
 }
 
+/// A ureq [`Resolver`] that always returns a fixed, pre-validated address list
+/// and ignores the request URI.
+///
+/// `fetch_pdf` resolves and vets the target host's IPs itself, then hands them
+/// here so ureq connects only to those exact addresses. Without this, ureq's
+/// own resolver would run again at connect time and could pick up a different,
+/// now-private address in the DNS-rebinding gap between our check and the dial.
+///
+/// [`Resolver`]: ureq::unversioned::resolver::Resolver
+#[derive(Debug)]
+struct PinnedResolver(Vec<SocketAddr>);
+
+impl ureq::unversioned::resolver::Resolver for PinnedResolver {
+    fn resolve(
+        &self,
+        _uri: &ureq::http::Uri,
+        _config: &ureq::config::Config,
+        _timeout: ureq::unversioned::transport::NextTimeout,
+    ) -> Result<ureq::unversioned::resolver::ResolvedSocketAddrs, ureq::Error> {
+        // `empty()` yields a zero-length ArrayVec; push up to its 16-slot cap.
+        let mut result = self.empty();
+        for addr in self.0.iter().copied().take(16) {
+            result.push(addr);
+        }
+        if result.is_empty() {
+            Err(ureq::Error::HostNotFound)
+        } else {
+            Ok(result)
+        }
+    }
+}
+
 /// Read a PDF from disk and hand its raw bytes to the frontend.
 ///
 /// Returning a [`Response`] (instead of `Vec<u8>`) ships the payload as a raw
@@ -127,8 +159,6 @@ async fn fetch_pdf(url: String) -> Result<Response, String> {
         .ok_or_else(|| "URL has no port".to_string())?;
 
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
-        use std::io::Read;
-
         // Resolve the host ourselves so we validate the addresses we will
         // actually connect to (defeats decimal/hex/octal IP encodings and
         // DNS names that point at private space) rather than the URL string.
@@ -146,29 +176,35 @@ async fn fetch_pdf(url: String) -> Result<Response, String> {
             ));
         }
 
-        // Pin the connection to the exact addresses we validated. ureq would
-        // otherwise re-resolve `host`, reopening a DNS-rebinding window.
-        let pinned = addrs.clone();
-        let agent = ureq::AgentBuilder::new()
-            .redirects(0)
-            .timeout_connect(CONNECT_TIMEOUT)
-            .timeout_read(READ_TIMEOUT)
-            .resolver(move |_: &str| Ok(pinned.clone()))
+        // Pin the connection to the exact addresses we validated via a fixed
+        // resolver. Left to itself ureq would re-resolve `host` when connecting,
+        // reopening the DNS-rebinding window between our check and the connect.
+        let config = ureq::config::Config::builder()
+            .max_redirects(0)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_recv_response(Some(READ_TIMEOUT))
+            .timeout_recv_body(Some(READ_TIMEOUT))
             .build();
+        let agent = ureq::Agent::with_parts(
+            config,
+            ureq::unversioned::transport::DefaultConnector::new(),
+            PinnedResolver(addrs),
+        );
 
-        let resp = agent.get(&url).call().map_err(|e| e.to_string())?;
-        // With redirects disabled, a 3xx comes back as a non-error response;
-        // reject anything that isn't a success rather than handing the viewer
-        // an empty or redirect body.
-        if !(200..300).contains(&resp.status()) {
-            return Err(format!("Server returned HTTP {}", resp.status()));
+        let mut resp = agent.get(&url).call().map_err(|e| e.to_string())?;
+        // max_redirects(0) returns a 3xx rather than following it; reject
+        // anything that isn't a success so the viewer never gets a redirect or
+        // error body in place of a PDF.
+        if !resp.status().is_success() {
+            return Err(format!("Server returned HTTP {}", resp.status().as_u16()));
         }
-        let mut buf = Vec::new();
-        resp.into_reader()
-            .take(MAX_BYTES)
-            .read_to_end(&mut buf)
-            .map_err(|e| e.to_string())?;
-        Ok(buf)
+        // limit() caps the body: a response larger than MAX_BYTES errors out
+        // rather than being read into memory.
+        resp.body_mut()
+            .with_config()
+            .limit(MAX_BYTES)
+            .read_to_vec()
+            .map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())??;
