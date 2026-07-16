@@ -99,7 +99,9 @@ Because everything keys off a single `data-theme` attribute on `<html>`, there i
 
 ## Reading modes and canvas filters
 
-Reading modes affect **only the rendered PDF page**, not the chrome. They are applied as CSS `filter` values on the page canvas element, driven by a `data-reading-mode` attribute (or an equivalent class) on the page container. Using filters means the page raster is untouched: nothing is re-rendered, so switching modes is instant and reversible.
+Reading modes affect **only the rendered PDF page**, not the chrome. `ThemeProvider` sets a `data-reading-mode` attribute on the root `<html>` element, and `tokens.css` selects the page raster beneath it (`[data-reading-mode='night'] .folio-page-canvas`), applying the mode as a CSS `filter`. Using filters means the raster itself is untouched: nothing is re-rendered, so switching modes is instant and reversible.
+
+Under forced colors (Windows High Contrast) the canvas sets `forced-color-adjust: none`, so the document keeps its authored colors and reading modes still apply — see [508-conformance.md](508-conformance.md).
 
 Normal mode has no rule (the absence of a filter is faithful color). The other three are defined in `tokens.css`:
 
@@ -150,7 +152,7 @@ You do not need to touch component code to add a theme. You add a token block an
 
 2. **Register the option** in `themeStore` so the value is allowed and persisted, and add it to the theme picker in the UI. The theme toggle/cycle command will include it automatically once it is a registered value.
 
-3. **Verify contrast.** Run the accessibility checks (axe-core in the e2e suite) with the new theme active; confirm text and focus meet the AA targets. Adding a theme is a data change, so the automated a11y coverage applies to it unchanged.
+3. **Verify contrast by hand.** Confirm text and focus meet the AA targets with the new theme active: 4.5:1 for normal text, 3:1 for large text and non-text UI, and 3:1 for focus rings against what sits next to them. There is **no automated contrast check** — axe-core is planned but not wired up (see [testing.md](testing.md)), so a new theme's contrast is only as good as the person who checked it.
 
 That is the whole process: no component edits, because components only ever read `--folio-*` tokens.
 
