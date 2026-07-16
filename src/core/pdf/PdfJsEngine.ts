@@ -10,6 +10,7 @@ import type {
   PageImage,
   PdfDocumentInfo,
   PdfMetadata,
+  RenderLayerOptions,
   RenderPageOptions,
   SearchMatch,
 } from './types';
@@ -74,7 +75,7 @@ export class PdfJsEngine implements PdfEngine {
   }
 
   async renderPage(pageNumber: number, options: RenderPageOptions): Promise<void> {
-    const { scale, canvas, signal } = options;
+    const { scale, canvas, signal, overlayForms = false } = options;
     const page = await this.getPage(pageNumber);
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Could not acquire a 2D canvas context');
@@ -89,8 +90,24 @@ export class PdfJsEngine implements PdfEngine {
     canvas.style.height = `${Math.floor(viewport.height)}px`;
 
     const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
-    const task = page.render({ canvasContext: context, viewport, transform });
-    signal?.addEventListener('abort', () => task.cancel(), { once: true });
+    const task = page.render({
+      canvasContext: context,
+      viewport,
+      transform,
+      // ENABLE_FORMS is what makes PDF.js skip the widgets it expects the
+      // annotation layer to draw as DOM inputs; plain ENABLE bakes their values
+      // into the canvas, where they show through the inputs as doubled text.
+      // It has to be ENABLE_FORMS specifically: the worker gates that skip on
+      // the ANNOTATIONS_FORMS intent flag, and ENABLE_STORAGE sets a different
+      // flag (ANNOTATIONS_STORAGE), so it would paint the widgets after all.
+      annotationMode: overlayForms
+        ? pdfjsLib.AnnotationMode.ENABLE_FORMS
+        : pdfjsLib.AnnotationMode.ENABLE,
+    });
+    // Registered after the awaits above, so a signal that aborted while we were
+    // fetching the page would never reach the task.
+    if (signal?.aborted) task.cancel();
+    else signal?.addEventListener('abort', () => task.cancel(), { once: true });
 
     try {
       await task.promise;
@@ -118,56 +135,68 @@ export class PdfJsEngine implements PdfEngine {
     return { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
   }
 
-  async renderTextLayer(pageNumber: number, container: HTMLElement, scale: number): Promise<void> {
-    const page = await this.getPage(pageNumber);
-    const viewport = page.getViewport({ scale });
+  async renderTextLayer(
+    pageNumber: number,
+    container: HTMLElement,
+    options: RenderLayerOptions,
+  ): Promise<void> {
+    const { scale, signal } = options;
+    await serializePerContainer(container, async () => {
+      const page = await this.getPage(pageNumber);
+      const viewport = page.getViewport({ scale });
+      const textContentSource = await page.getTextContent();
+      if (signal?.aborted) return;
 
-    container.replaceChildren();
-    // PDF.js positions text-layer spans relative to this custom property.
-    container.style.setProperty('--scale-factor', String(scale));
+      container.replaceChildren();
+      // PDF.js positions text-layer spans relative to this custom property.
+      container.style.setProperty('--scale-factor', String(scale));
 
-    const textLayer = new pdfjsLib.TextLayer({
-      textContentSource: await page.getTextContent(),
-      container,
-      viewport,
+      const textLayer = new pdfjsLib.TextLayer({ textContentSource, container, viewport });
+      await textLayer.render();
     });
-    await textLayer.render();
   }
 
   async renderAnnotationLayer(
     pageNumber: number,
     container: HTMLElement,
-    scale: number,
+    options: RenderLayerOptions,
   ): Promise<void> {
-    const doc = this.requireDoc();
-    const page = await this.getPage(pageNumber);
-    const viewport = page.getViewport({ scale });
-    const annotations = await page.getAnnotations({ intent: 'display' });
+    const { scale, signal } = options;
+    await serializePerContainer(container, async () => {
+      const doc = this.requireDoc();
+      const page = await this.getPage(pageNumber);
+      const viewport = page.getViewport({ scale });
+      const annotations = await page.getAnnotations({ intent: 'display' });
+      // A superseded pass must not start appending: AnnotationLayer.render()
+      // appends across await points, so two passes sharing this div would
+      // interleave and leave duplicate widgets behind.
+      if (signal?.aborted) return;
 
-    container.replaceChildren();
-    container.style.setProperty('--scale-factor', String(scale));
+      container.replaceChildren();
+      container.style.setProperty('--scale-factor', String(scale));
 
-    const layer = new pdfjsLib.AnnotationLayer({
-      div: container as HTMLDivElement,
-      accessibilityManager: null,
-      annotationCanvasMap: null,
-      annotationEditorUIManager: null,
-      page,
-      viewport: viewport.clone({ dontFlip: true }),
-      structTreeLayer: null,
+      const layer = new pdfjsLib.AnnotationLayer({
+        div: container as HTMLDivElement,
+        accessibilityManager: null,
+        annotationCanvasMap: null,
+        annotationEditorUIManager: null,
+        page,
+        viewport: viewport.clone({ dontFlip: true }),
+        structTreeLayer: null,
+      });
+
+      await layer.render({
+        annotations,
+        div: container as HTMLDivElement,
+        page,
+        viewport: viewport.clone({ dontFlip: true }),
+        linkService: this.linkService,
+        annotationStorage: doc.annotationStorage,
+        renderForms: true,
+        enableScripting: false,
+        hasJSActions: false,
+      } as unknown as Parameters<pdfjsLib.AnnotationLayer['render']>[0]);
     });
-
-    await layer.render({
-      annotations,
-      div: container as HTMLDivElement,
-      page,
-      viewport: viewport.clone({ dontFlip: true }),
-      linkService: this.linkService,
-      annotationStorage: doc.annotationStorage,
-      renderForms: true,
-      enableScripting: false,
-      hasJSActions: false,
-    } as unknown as Parameters<pdfjsLib.AnnotationLayer['render']>[0]);
   }
 
   async hasFormFields(): Promise<boolean> {
@@ -265,6 +294,28 @@ export class PdfJsEngine implements PdfEngine {
     this.pageCache.set(pageNumber, page);
     return page;
   }
+}
+
+/**
+ * In-flight layer render per container element.
+ *
+ * PDF.js builds the text and annotation layers by appending across `await`
+ * points, so two overlapping renders into one element interleave: the newer
+ * one's `replaceChildren()` lands mid-loop and the older one's remaining
+ * appends survive it, leaving duplicated widgets stacked at the same
+ * coordinates. Neither layer API exposes a way to cancel mid-loop, so renders
+ * are queued instead: the next pass starts only once the previous has finished
+ * (and then bails immediately if its signal aborted in the meantime).
+ */
+const layerRenders = new WeakMap<HTMLElement, Promise<void>>();
+
+function serializePerContainer(container: HTMLElement, run: () => Promise<void>): Promise<void> {
+  const previous = layerRenders.get(container) ?? Promise.resolve();
+  // Errors are the caller's to handle; they must not break the chain for the
+  // renders queued behind this one.
+  const next = previous.catch(() => {}).then(run);
+  layerRenders.set(container, next.catch(() => {}));
+  return next;
 }
 
 /** Resolve a PDF destination to a 1-based page number, best effort. */

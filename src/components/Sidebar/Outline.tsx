@@ -39,6 +39,7 @@ function OutlineItem({ node, onNavigate }: OutlineItemProps) {
             type="button"
             className="folio-outline__toggle"
             aria-label={open ? 'Collapse' : 'Expand'}
+            title={open ? 'Collapse' : 'Expand'}
             aria-expanded={open}
             onClick={() => setOpen((o) => !o)}
           >
@@ -50,6 +51,9 @@ function OutlineItem({ node, onNavigate }: OutlineItemProps) {
         <button
           type="button"
           className="folio-outline__link"
+          // Bookmark titles are clipped at the sidebar's width, and nested ones
+          // lose more of it to indentation.
+          title={node.title}
           disabled={node.pageNumber == null}
           onClick={() => node.pageNumber != null && onNavigate(node.pageNumber)}
         >

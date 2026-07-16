@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon, IconButton } from '@/components/common';
 import { type SearchMatch } from '@/core/pdf';
 import { searchWithOcr } from '@/features/ocr';
+import { focusViewer } from '@/state/viewerElement';
 import { useViewerStore } from '@/state/viewerStore';
 
 /** Find-in-document bar with a results list. */
@@ -18,6 +19,10 @@ export function SearchBar() {
 
   useEffect(() => {
     inputRef.current?.focus();
+    // Hand focus back to the document on close, so the scroll keys keep
+    // working. The bar unmounts whichever way it is closed, so this covers
+    // Escape, the close button and the Ctrl+F toggle alike.
+    return () => focusViewer();
   }, []);
 
   useEffect(() => {
@@ -82,6 +87,12 @@ export function SearchBar() {
               else next();
             } else if (e.key === 'Escape') {
               setSearchOpen(false);
+            } else if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
+              // Handled here because the global shortcut hook deliberately
+              // ignores chords fired from inputs, which would otherwise make
+              // Ctrl+F a one-way door once focus is in this field.
+              e.preventDefault();
+              setSearchOpen(false);
             }
           }}
         />
@@ -110,6 +121,9 @@ export function SearchBar() {
               <button
                 type="button"
                 className={`folio-search__result${i === activeIndex ? ' is-active' : ''}`}
+                // The snippet is clipped to one line; the tooltip is the only
+                // way to read the rest of the match in place.
+                title={match.snippet}
                 onClick={() => gotoMatch(i)}
               >
                 <span className="folio-search__result-page">p.{match.pageNumber}</span>

@@ -101,7 +101,7 @@ state/documentStore ← { info, metadata, outline }
 Viewer requests visible pages → PdfEngine.renderPage(n, { scale, canvas })
   │  worker decodes page content → main thread paints to <canvas>
   ▼
-PdfEngine.renderTextLayer(n, container, scale) → text layer overlaid on the canvas
+PdfEngine.renderTextLayer(n, container, { scale }) → text layer overlaid on the canvas
   │
   ▼
 a11y announcer: "Page 1 of 24"   (polite live region)
@@ -126,8 +126,8 @@ interface PdfEngine {
   getPageDimensions(pageNumber: number, scale: number): Promise<PageDimensions>;
   renderPage(pageNumber: number, options: RenderPageOptions): Promise<void>;
   renderPageToImage(pageNumber: number, scale: number): Promise<PageImage>; // rasterize for OCR
-  renderTextLayer(pageNumber: number, container: HTMLElement, scale: number): Promise<void>;
-  renderAnnotationLayer(pageNumber: number, container: HTMLElement, scale: number): Promise<void>;
+  renderTextLayer(pageNumber: number, container: HTMLElement, options: RenderLayerOptions): Promise<void>;
+  renderAnnotationLayer(pageNumber: number, container: HTMLElement, options: RenderLayerOptions): Promise<void>;
   getPageText(pageNumber: number): Promise<string>;
   getOutline(): Promise<OutlineNode[]>;
   getMetadata(): Promise<PdfMetadata>;
@@ -141,6 +141,11 @@ interface PdfEngine {
 Page count is not a method: it comes back on the `PdfDocumentInfo` that `loadDocument` resolves to (`info.numPages`), which the stores hold.
 
 `PdfJsEngine` is the sole implementation today. It wraps `pdfjs-dist` v4: `loadDocument` calls `getDocument`, `renderPage` uses `page.render`, `renderTextLayer` and `getPageText` are built from `page.getTextContent`, and so on.
+
+Two rules of the rendering contract are easy to break by accident, and both show up as garbled pages rather than as errors:
+
+- **A page is drawn by three renders that must agree, and any of them can be superseded.** `renderPage`, `renderTextLayer` and `renderAnnotationLayer` all take an `AbortSignal` (`RenderPageOptions` / `RenderLayerOptions`), and the caller re-checks staleness between them. The layer renders are also serialised per container inside the engine, because PDF.js builds a layer by appending across `await` points: two overlapping passes on one element interleave, and the older pass's leftovers survive the newer one's `replaceChildren()` as duplicated elements. Pass the signal through; do not render a layer into an element another pass may still own.
+- **Form widgets are drawn exactly once, by whoever owns them.** `renderPage({ overlayForms: true })` tells the engine that the caller will overlay real DOM inputs, so the widgets are left out of the raster (`annotationMode: ENABLE_FORMS`, which is the only mode that suppresses them — `ENABLE_STORAGE` sets a different intent flag and paints them anyway). Callers that rasterise a page on its own, like thumbnails, leave the flag unset and get the values painted in. Setting it without an annotation layer loses the values; omitting it under one doubles them.
 
 ### Why PDF.js, and why the interface
 

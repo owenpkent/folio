@@ -16,6 +16,7 @@ export function ToastHost() {
             type="button"
             className="folio-toast__close"
             aria-label="Dismiss notification"
+            title="Dismiss"
             onClick={() => dismiss(toast.id)}
           >
             <span aria-hidden="true">×</span>

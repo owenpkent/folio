@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { announce } from '@/a11y/announcer';
 import { useFocusTrap } from '@/a11y/focus';
-import { Button, Icon } from '@/components/common';
+import { Button, IconButton } from '@/components/common';
 import { useViewerStore } from '@/state/viewerStore';
 
 import { placeSignatureOnCurrentPage } from './commands';
@@ -70,9 +70,7 @@ export function SignatureModal() {
       <div ref={dialogRef} className="folio-modal" role="dialog" aria-modal="true" aria-label="Add signature">
         <div className="folio-modal__header">
           <h2 className="folio-modal__title">Add signature</h2>
-          <button type="button" className="folio-icon-button" aria-label="Close" onClick={close}>
-            <Icon name="x" />
-          </button>
+          <IconButton icon="x" label="Close" onClick={close} />
         </div>
 
         <div className="folio-modal__tabs" role="tablist" aria-label="Signature type">
@@ -118,6 +116,11 @@ export function SignatureModal() {
                     type="button"
                     className={`folio-sig-font${font === f.value ? ' is-active' : ''}`}
                     style={{ fontFamily: f.value }}
+                    // Once a name is typed it replaces the font's own name as
+                    // the label, so the tooltip is the only thing identifying
+                    // which font this swatch is.
+                    title={f.name}
+                    aria-label={f.name}
                     onClick={() => setFont(f.value)}
                   >
                     {typed || f.name}

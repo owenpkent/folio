@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import { getEngine } from '@/core/pdf';
+import { focusViewer, setViewerElement } from '@/state/viewerElement';
 import { MAX_SCALE, MIN_SCALE, useViewerStore } from '@/state/viewerStore';
 import { useDocumentStore } from '@/state/documentStore';
 
@@ -45,6 +46,20 @@ export function PdfViewer() {
     // Set scale directly so we don't flip fitMode back to "custom".
     useViewerStore.setState({ scale: next });
   }, []);
+
+  // Publish the scroller so commands can scroll and focus it. Runs on every
+  // status change because the element only exists outside the empty state.
+  useEffect(() => {
+    setViewerElement(containerRef.current);
+    return () => setViewerElement(null);
+  }, [status]);
+
+  // Focus the viewer once a document is up, so the browser's scroll keys have
+  // somewhere to act. Without this, focus stays on <body>, which cannot scroll
+  // (.folio-app is overflow:hidden) and every scroll key silently does nothing.
+  useEffect(() => {
+    if (status === 'ready') focusViewer();
+  }, [status, fingerprint]);
 
   // Grab the natural (100%) size of page 1 when a document loads.
   useEffect(() => {
@@ -151,6 +166,9 @@ export function PdfViewer() {
     const container = containerRef.current;
     if (!container) return;
     e.preventDefault();
+    // preventDefault suppresses the browser's focus-on-mousedown, which would
+    // otherwise leave the scroll keys dead after a pan.
+    container.focus({ preventScroll: true });
     panRef.current = { x: e.clientX, y: e.clientY, left: container.scrollLeft, top: container.scrollTop };
     container.classList.add('is-grabbing');
     container.setPointerCapture(e.pointerId);

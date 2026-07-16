@@ -193,11 +193,17 @@ function TextItem({ item }: { item: TextEdit }) {
             type="button"
             className="folio-edit__delete"
             aria-label="Delete text box"
+            title="Delete text box"
             onClick={() => remove(item.id)}
           >
             <Icon name="x" size={13} />
           </button>
-          <span className="folio-edit__resize" aria-hidden="true" onPointerDown={startResize} />
+          <span
+            className="folio-edit__resize"
+            aria-hidden="true"
+            title="Drag to resize"
+            onPointerDown={startResize}
+          />
         </>
       )}
     </div>
@@ -217,6 +223,7 @@ function TextInspector({
     <div className="folio-edit__inspector" onPointerDown={stop}>
       <select
         aria-label="Font"
+        title="Font"
         value={item.fontFamily}
         onChange={(e) => onChange({ fontFamily: e.target.value as FontFamily })}
       >
@@ -229,6 +236,7 @@ function TextInspector({
       <input
         type="number"
         aria-label="Font size"
+        title="Font size"
         className="folio-edit__size"
         min={6}
         max={96}
@@ -242,6 +250,7 @@ function TextInspector({
         type="button"
         className={`folio-edit__bold${item.bold ? ' is-on' : ''}`}
         aria-label="Bold"
+        title="Bold"
         aria-pressed={item.bold}
         onClick={() => onChange({ bold: !item.bold })}
       >
@@ -250,6 +259,7 @@ function TextInspector({
       <input
         type="color"
         aria-label="Text color"
+        title="Text color"
         value={item.colorHex}
         onChange={(e) => onChange({ colorHex: e.target.value })}
       />
@@ -339,11 +349,17 @@ function ImageItem({ item }: { item: ImageEdit }) {
             type="button"
             className="folio-edit__delete"
             aria-label="Delete image"
+            title="Delete image"
             onClick={() => remove(item.id)}
           >
             <Icon name="x" size={13} />
           </button>
-          <span className="folio-edit__resize" aria-hidden="true" onPointerDown={startResize} />
+          <span
+            className="folio-edit__resize"
+            aria-hidden="true"
+            title="Drag to resize"
+            onPointerDown={startResize}
+          />
         </>
       )}
     </div>

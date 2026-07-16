@@ -62,8 +62,11 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
   }, []);
 
   // Render once visible; re-render when the scale changes while visible.
+  // Deliberately not gated on `dims`: that only reserves the wrapper's layout
+  // box, and renderPage sizes the canvas itself. Waiting for it would mean two
+  // render passes per scale change (once with the stale dims, once with the new).
   useEffect(() => {
-    if (!visible || !dims) return;
+    if (!visible) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -72,15 +75,18 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
     const engine = getEngine();
 
     void (async () => {
+      const { signal } = controller;
       try {
-        await engine.renderPage(pageNumber, { scale, canvas, signal: controller.signal });
+        await engine.renderPage(pageNumber, { scale, canvas, signal, overlayForms: true });
         if (!active) return;
         if (textLayerRef.current) {
-          await engine.renderTextLayer(pageNumber, textLayerRef.current, scale);
+          await engine.renderTextLayer(pageNumber, textLayerRef.current, { scale, signal });
         }
+        if (!active) return;
         if (formsLayerRef.current) {
-          await engine.renderAnnotationLayer(pageNumber, formsLayerRef.current, scale);
+          await engine.renderAnnotationLayer(pageNumber, formsLayerRef.current, { scale, signal });
         }
+        if (!active) return;
         pluginHost.emitPageRender({ pageNumber, scale });
       } catch (error) {
         if (active) console.error(`[folio] failed to render page ${pageNumber}`, error);
@@ -91,7 +97,7 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
       active = false;
       controller.abort();
     };
-  }, [visible, dims, pageNumber, scale]);
+  }, [visible, pageNumber, scale]);
 
   return (
     <div

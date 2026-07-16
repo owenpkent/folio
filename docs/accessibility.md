@@ -14,6 +14,8 @@ All shortcuts dispatch through the command registry (`useKeyboardShortcuts` matc
 | Save a copy | `file.save` | `Ctrl+S` | `Cmd+S` |
 | Next page | `nav.nextPage` | `→` | `→` |
 | Previous page | `nav.prevPage` | `←` | `←` |
+| Scroll down one screen | `nav.scrollDown` | `Page Down` | `Page Down` |
+| Scroll up one screen | `nav.scrollUp` | `Page Up` | `Page Up` |
 | First page | `nav.firstPage` | `Ctrl+Home` | `Cmd+Home` |
 | Last page | `nav.lastPage` | `Ctrl+End` | `Cmd+End` |
 | Zoom in | `view.zoomIn` | `Ctrl+=` | `Cmd+=` |
@@ -23,7 +25,10 @@ All shortcuts dispatch through the command registry (`useKeyboardShortcuts` matc
 | Find in document | `search.toggle` | `Ctrl+F` | `Cmd+F` |
 | Close find | `search.close` | `Esc` | `Esc` |
 | Highlight selection | `annotate.highlight` | `Ctrl+Shift+H` | `Cmd+Shift+H` |
+| Add sticky note | `annotate.addNote` | `Ctrl+Shift+M` | `Cmd+Shift+M` |
 | Toggle UI theme (light/dark) | `theme.toggle` | `Ctrl+Shift+L` | `Cmd+Shift+L` |
+
+`Page Up`/`Page Down` are dispatched as commands rather than left to the browser. Native scrolling only acts on the focused element's nearest scrollable ancestor, so it stops working the moment focus moves to the toolbar or the find box; binding the keys keeps them working wherever focus happens to be. The arrow keys, `Home`/`End` and `Space` do scroll natively, which works because the viewer takes focus when a document opens and gets it back when the find bar closes.
 
 These commands exist but have **no keyboard binding**; they are reachable from the toolbar (and via the registry) only:
 
@@ -36,7 +41,7 @@ These commands exist but have **no keyboard binding**; they are reachable from t
 | Add signature | `sign.addSignature` | Toolbar button / Signatures panel |
 | Digitally sign | `sign.digitallySign` | Toolbar button / Signatures panel |
 
-Planned, **not yet implemented** (no command is registered for these today): a command palette (`Ctrl/Cmd+Shift+P`) and an in-app keyboard-shortcuts help overlay (`?`). Toolbar buttons carry their shortcut in the button tooltip so bindings stay discoverable until the help overlay lands.
+Planned, **not yet implemented** (no command is registered for these today): a command palette (`Ctrl/Cmd+Shift+P`) and an in-app keyboard-shortcuts help overlay (`?`). Every toolbar button whose command has a binding names it in the button's label, which is both its `aria-label` and its tooltip (`IconButton` sets the two from one `label` prop), so bindings stay discoverable until the help overlay lands. If you give an existing command a binding, add it to that label too.
 
 Form fields and signatures: filled AcroForm fields are native HTML inputs, so they are keyboard-operable and labeled from the PDF. The signature dialog is a focus-trapped modal (dismiss with `Escape`), and placed signatures expose a keyboard-focusable delete button; keyboard placement and resizing of signatures are planned. See [forms-and-signatures.md](forms-and-signatures.md).
 
@@ -49,7 +54,9 @@ Focus is deliberate, visible, and never lost. Rules enforced by `src/a11y` focus
 - **Visible focus rings, always.** Focus is styled with the `--folio-focus` token and is never removed (no `outline: none` without a replacement). Rings meet the 3:1 non-text contrast requirement in every theme and reading mode.
 - **Logical tab order.** DOM order matches visual order: skip link → Toolbar → Sidebar (when open) → page viewport. Tabbing never jumps unpredictably.
 - **Focus trapping in overlays.** Transient surfaces use the `useFocusTrap` helper in `src/a11y/focus.ts`, which cycles `Tab`/`Shift+Tab` within the container and restores focus to the opener on close. The search bar focuses its input when it opens and closes on `Escape`; the planned command palette will use the same helper.
-- **Focus restoration.** When an overlay closes, focus returns to the element that opened it (for example, closing search returns focus to the page viewport, not the top of the document).
+- **Focus restoration.** When an overlay closes, focus returns to the element that opened it. Closing the find bar and committing the page box both return focus to the page viewport (`focusViewer` in `src/state/viewerElement.ts`) rather than dropping it on `<body>`, which would leave the scroll keys with no scrollable element to act on.
+- **The viewport takes focus when a document opens**, for the same reason: the app shell is `overflow: hidden`, so a scroll key that reaches `<body>` does nothing at all.
+- **The skip link targets the scroller itself**, not its `<main>` wrapper. The browser scrolls the focused element's nearest scrollable *ancestor*, and `<main>` is a non-scrolling parent of the viewer, so skipping to it would land focus somewhere the scroll keys are dead.
 - **No keyboard traps in content.** The page viewport is a single focus stop; you can always `Tab` past it. Within a page you navigate text with normal caret/selection keys, not by tabbing through every word.
 - **Skip to content.** A visually-hidden "Skip to document" link is the first focus stop, letting keyboard and screen-reader users bypass the toolbar.
 
@@ -59,7 +66,7 @@ Folio exposes a stable landmark structure so screen-reader users can navigate by
 
 | Region | Element/role | ARIA |
 |---|---|---|
-| Top toolbar | `<header role="banner">` | icon buttons carry `aria-label` (for example "Toggle sidebar", "Zoom in"); the live zoom readout uses `aria-live="polite"` |
+| Top toolbar | `<header role="banner">` | icon buttons carry `aria-label` (for example "Toggle sidebar (Ctrl/Cmd + B)", "Zoom in (Ctrl/Cmd + =)"); the live zoom readout uses `aria-live="polite"` |
 | Sidebar (outline, thumbnails, annotations) | `<aside>` (complementary) | `aria-label="Document tools"`; the rail is `role="tablist"`, each tab is `role="tab"` with `aria-selected`, and the body is `role="tabpanel"` |
 | Page viewport | `<main>` | `aria-label="Document"` |
 | Search bar | `role="search"` | labeled input, `aria-live` result count |
@@ -69,6 +76,15 @@ Folio exposes a stable landmark structure so screen-reader users can navigate by
 There is no separate status-bar landmark today: the current page (an editable page box) and the current zoom percentage live in the toolbar, with the zoom readout in an `aria-live="polite"` region. A dedicated status bar is planned.
 
 Additional roles in the sidebar panels: the outline tree uses `role="tree"` / `role="treeitem"` with `aria-expanded`; thumbnails present a selectable list; toolbar toggles expose their active state; the reading-mode control exposes its current mode in its label.
+
+## Names and tooltips
+
+Folio has no tooltip component: tooltips are native `title` attributes. `IconButton` (`src/components/common/IconButton.tsx`) takes one required `label` and sets **both** `aria-label` and `title` from it, so anything rendered through it is named for screen readers and hoverable for everyone else. Prefer it over a raw `<button>` for icon-only controls; a raw button with only `aria-label` is named but silent on hover, which is the gap sighted mouse users feel.
+
+Nothing enforces the pairing, so two rules are worth keeping in mind:
+
+- **Icon-only or single-glyph controls need both.** A "B" for bold or an "×" for close does not explain itself.
+- **Text that can be clipped needs a `title` carrying the full string.** Search snippets, outline entries and annotation rows are all truncated by CSS, so hovering is the only way to read the rest. The same applies wherever a label is *replaced* by user content: the signature font picker renders your typed name in each font, which hides the font's own name, so it carries an explicit `title` and `aria-label`.
 
 ## The text layer and screen readers
 
@@ -135,7 +151,7 @@ Accessibility is verified continuously, not audited once.
 
 - **eslint-plugin-jsx-a11y** flags missing labels, unsupported ARIA, and other markup issues on every push and pull request (see the `quality` CI job).
 - **Vitest** unit tests cover keyboard-shortcut dispatch (chords, the typing-in-input guard, and `when()` gating) and the stores behind accessible state.
-- **Playwright** end-to-end tests drive real keyboard and pointer flows in a browser (open, render, fill a form, sign). See [testing.md](testing.md).
+- **Playwright** end-to-end tests drive real keyboard and pointer flows in a browser (open, render, fill a form, sign), including `Page Up`/`Page Down` scrolling both with focus in the document and after it has moved to the toolbar. See [testing.md](testing.md).
 
 Planned: **axe-core** violation scanning wired into the end-to-end suite across views (viewer, sidebar open, search open, each reading mode, light and dark), plus unit tests for the announcer (polite vs assertive) and focus trap/restore. These are not yet implemented.
 

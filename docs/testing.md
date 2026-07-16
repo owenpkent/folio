@@ -70,17 +70,34 @@ opening a document uses a file input and saving triggers a download, which is
 exactly what the tests drive. `playwright.config.ts` starts `npm run dev` and
 points the tests at `http://localhost:1420`.
 
-`e2e/global-setup.ts` generates the fixture, a two-page PDF with a fillable text
-field, using pdf-lib and writes it to `e2e/fixtures/` (gitignored, regenerated
-each run). Nothing binary is committed.
+`e2e/global-setup.ts` generates the fixtures with pdf-lib and writes them to
+`e2e/fixtures/` (gitignored, regenerated each run). Nothing binary is committed.
+There are two: `form.pdf`, a two-page PDF with an empty fillable text field, and
+`filled-form.pdf`, a single page whose only content is three text fields that
+already hold values. The latter is deliberately otherwise blank, so any ink on
+the rendered canvas is a form widget that should have been left to the
+annotation layer, which is what makes the doubled-text assertion below possible.
 
 The smoke suite (`e2e/smoke.spec.ts`) covers:
 
 1. The empty state renders on launch.
 2. Toggling dark mode sets `data-theme="dark"`.
 3. Opening a PDF renders its pages and updates the page count.
-4. Filling an AcroForm field and digitally signing produces a downloaded
+4. A filled form's values are not painted into the page canvas (they belong to
+   the DOM inputs alone; both copies at once is the doubled-text bug).
+5. `Page Up` / `Page Down` scroll the document, including after focus has left it
+   for the toolbar.
+6. Closing the find bar hands focus back to the document, so the scroll keys
+   keep working.
+7. Filling an AcroForm field and digitally signing produces a downloaded
    `(signed)` copy.
+
+Tests 4 to 6 pin behavior that fails silently rather than loudly: a wrong
+`annotationMode` renders every field twice, and the scroll keys simply do nothing
+if focus is not where they need it. When changing any of them, check the test
+actually fails against the unfixed code first. The `annotationMode` one is the
+cautionary case: the plausible-looking `ENABLE_STORAGE` leaves the duplicate text
+exactly where it was, and only a canvas-pixel assertion catches that.
 
 Useful flags:
 

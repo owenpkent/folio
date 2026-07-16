@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { announce } from '@/a11y/announcer';
 import { useFocusTrap } from '@/a11y/focus';
-import { Button, Icon } from '@/components/common';
+import { Button, IconButton } from '@/components/common';
 import { exportDocument, saveBytes } from '@/features/export';
 import { useDocumentStore } from '@/state/documentStore';
 
@@ -136,9 +136,7 @@ export function SigningModal() {
       <div ref={dialogRef} className="folio-modal" role="dialog" aria-modal="true" aria-label="Digitally sign">
         <div className="folio-modal__header">
           <h2 className="folio-modal__title">Digitally sign</h2>
-          <button type="button" className="folio-icon-button" aria-label="Close" onClick={close}>
-            <Icon name="x" />
-          </button>
+          <IconButton icon="x" label="Close" onClick={close} />
         </div>
 
         <div className="folio-modal__body">

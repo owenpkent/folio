@@ -75,6 +75,7 @@ function Thumbnail({ pageNumber, active, onSelect }: ThumbnailProps) {
       type="button"
       className={`folio-thumb${active ? ' is-active' : ''}`}
       aria-label={`Go to page ${pageNumber}`}
+      title={`Go to page ${pageNumber}`}
       aria-current={active ? 'page' : undefined}
       onClick={onSelect}
     >

@@ -55,6 +55,7 @@ export function NotesLayer({ pageNumber }: { pageNumber: number }) {
           type="button"
           className="folio-notes-place"
           aria-label="Click where you want to place a note"
+          title="Click where you want to place a note"
           onClick={(e) => place(e.clientX, e.clientY)}
         />
       )}
@@ -81,6 +82,8 @@ export function NotesLayer({ pageNumber }: { pageNumber: number }) {
               className={`folio-note-pin${note.id === activeId ? ' is-active' : ''}${note.note ? '' : ' is-empty'}`}
               style={{ left: `${x}%`, top: `${y}%` }}
               aria-label={note.note ? `Note: ${note.note}` : 'Empty note'}
+              // Lets a reader skim notes on hover without opening each pin.
+              title={note.note || 'Empty note'}
               onPointerDown={(e) => {
                 e.preventDefault();
                 e.currentTarget.setPointerCapture(e.pointerId);
