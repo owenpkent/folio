@@ -20,6 +20,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   an internal host), and enforces connect/read timeouts.
 - **Tightened the desktop Content Security Policy** with `frame-ancestors 'none'`
   and `form-action 'none'`, closing the framing and form-submission vectors.
+- **Upgraded `ureq` 2.x → 3.x** and reimplemented the `fetch_pdf` SSRF guard on
+  its new API: the pre-validated addresses are now pinned through a custom
+  `Resolver` (`Agent::with_parts`), redirects are disabled via `max_redirects(0)`,
+  and the body size ceiling is enforced with `Body::with_config().limit(...)`.
 
 ### Added
 
