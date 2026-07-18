@@ -81,6 +81,12 @@ Run **Save a copy** (`Ctrl/Cmd + S`), the toolbar Save button, or the
    annotations, not flattened graphics). When none of those are present, the
    step-1 bytes are returned as-is.
 
+Text edited in place with the **Edit text** tool (see
+[editing-and-ocr.md](editing-and-ocr.md#editing-existing-text)) is already part
+of the document by this point: each in-place edit commits immediately rather
+than waiting for a save, so step 1's fresh PDF already contains it alongside
+the filled form values.
+
 The result is written to whatever path you pick in the native Save dialog in the
 desktop app (through the Tauri `dialog` plugin plus the Rust `write_document`
 command, so the frontend needs no broad filesystem capability) or downloaded in

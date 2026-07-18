@@ -13,6 +13,7 @@ export function PdfViewer() {
   const status = useDocumentStore((s) => s.status);
   const error = useDocumentStore((s) => s.error);
   const fingerprint = useDocumentStore((s) => s.info?.fingerprint);
+  const docVersion = useDocumentStore((s) => s.docVersion);
 
   const numPages = useViewerStore((s) => s.numPages);
   const scale = useViewerStore((s) => s.scale);
@@ -160,7 +161,11 @@ export function PdfViewer() {
   const onPanStart = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!handMode || e.button !== 0) return;
     const target = e.target as Element;
-    if (target.closest('input, textarea, button, a, .folio-edit, .folio-signature, .folio-forms-layer')) {
+    if (
+      target.closest(
+        'input, textarea, button, a, .folio-edit, .folio-signature, .folio-forms-layer, .folio-textedit-layer',
+      )
+    ) {
       return;
     }
     const container = containerRef.current;
@@ -221,7 +226,11 @@ export function PdfViewer() {
       {status === 'loading' && <div className="folio-viewer-message">Opening document…</div>}
       <div className="folio-pages">
         {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNumber) => (
-          <Page key={`${fingerprint}-${pageNumber}`} pageNumber={pageNumber} scale={scale} />
+          <Page
+            key={`${fingerprint}-${docVersion}-${pageNumber}`}
+            pageNumber={pageNumber}
+            scale={scale}
+          />
         ))}
       </div>
     </div>

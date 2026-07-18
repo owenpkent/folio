@@ -44,6 +44,7 @@ These commands exist but have **no keyboard binding**; they are reachable from t
 | Fit page | `view.fitPage` | Toolbar button |
 | Hand tool (pan to scroll) | `view.toggleHandMode` | Toolbar button |
 | Cycle reading mode | `theme.cycleReadingMode` | Toolbar button |
+| Edit text | `textedit.toggle` | Toolbar button |
 | Add text box | `edit.addText` | Toolbar button |
 | Add image | `edit.addImage` | Toolbar button |
 | Recognize text (OCR) | `ocr.recognizeDocument` | Toolbar button |
@@ -57,6 +58,8 @@ Every one of these is reachable by keyboard through its toolbar button or panel,
 Planned, **not yet implemented** (no command is registered for these today): a command palette (`Ctrl/Cmd+Shift+P`) and an in-app keyboard-shortcuts help overlay (`?`). Every toolbar button whose command has a binding names it in the button's label, which is both its `aria-label` and its tooltip (`IconButton` sets the two from one `label` prop), so bindings stay discoverable until the help overlay lands. If you give an existing command a binding, add it to that label too.
 
 Form fields and signatures: filled AcroForm fields are native HTML inputs, so they are keyboard-operable, and Folio names each one from the field's `/TU` (falling back to `/T`) — see [The text layer and screen readers](#the-text-layer-and-screen-readers) for why PDF.js does not do this on its own. A field with neither entry has no name to give, which is a defect in the source PDF rather than in the viewer. The signature dialog is a focus-trapped modal (dismiss with `Escape`), and placed signatures expose a keyboard-focusable delete button; keyboard placement and resizing of signatures are planned. Signatures and placed images carry **no alternative text** in the exported file, and there is no UI to supply one — a known gap, tracked in [508-conformance.md](508-conformance.md). See [forms-and-signatures.md](forms-and-signatures.md).
+
+Editing text in place: the **Edit text** tool toggle (`textedit.toggle`) is a command reachable from its toolbar button, like the others above. Once it is on, clicking a run of text opens an inline editor: a focused `role="textbox"` with its own `aria-label`, committing on `Enter` and cancelling on `Escape` like a native control. Choosing *which* run to edit is pointer-only today: the hit target is sized to the page and keyed to click coordinates, with no keyboard-driven way to tab between editable runs. See [editing-and-ocr.md](editing-and-ocr.md#editing-existing-text).
 
 Everything reachable by mouse is reachable by keyboard. If you add a feature, add its command with a `keybinding` rather than wiring a bespoke key handler.
 

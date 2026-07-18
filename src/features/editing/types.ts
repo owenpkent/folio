@@ -2,8 +2,8 @@
  * Content the user adds on top of a page: text boxes and placed images. Stored
  * per document (keyed by PDF fingerprint) in a local sidecar, exactly like
  * annotations and signatures, and baked into the PDF only when a copy is saved
- * (see features/export). We deliberately do NOT edit glyphs already in the PDF;
- * these are additive overlays.
+ * (see features/export). These are additive overlays and never touch glyphs
+ * already in the PDF; in-place editing of existing text is features/textedit.
  */
 
 /** A rectangle as fractions (0..1) of the page, top-left origin. Survives zoom. */

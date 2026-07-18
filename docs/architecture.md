@@ -67,6 +67,7 @@ Each layer maps to a real directory in the repository.
 | Accessibility | `src/a11y/` | Announcer (live region), focus trap, keyboard shortcut dispatch, skip link |
 | Annotations | `src/features/annotations/` | Annotation model, `store` (localStorage sidecar), `bake` (embeds highlights/notes as real `/Highlight` and `/Text` annotations on save), and tools |
 | Editing | `src/features/editing/` | Add text boxes and images (typewriter tool + placement), per-document `store`, and pdf-lib baking (`stampEdits`) |
+| Text editing (in place) | `src/features/textedit/` | Edit text already on a page: a content-stream tokenizer/interpreter that locates show-text operators (`contentStream.ts`), a pdf-lib splice-and-redraw step (`mutate.ts`), the click-to-edit overlay, and a transient (not persisted) undo stack in `store` |
 | OCR | `src/features/ocr/` | tesseract.js recognition (self-hosted, lazy-loaded), per-document `store`, selectable on-screen text layer, invisible baked layer (`stampOcrLayer`), and the search fallback |
 | Signatures | `src/features/signatures/` | Visual signature creation (draw/type/upload), on-page placement, per-document `store` |
 | Digital signing | `src/features/signing/` | Certificate identities (create/import .p12 via node-forge), PKCS#7 signing (@signpdf), and signature detection. Runs in the WebView today; a Rust/keychain backend is planned |
@@ -129,6 +130,8 @@ interface PdfEngine {
   renderTextLayer(pageNumber: number, container: HTMLElement, options: RenderLayerOptions): Promise<void>;
   renderAnnotationLayer(pageNumber: number, container: HTMLElement, options: RenderLayerOptions): Promise<void>;
   getPageText(pageNumber: number): Promise<string>;
+  getPageViewport(pageNumber: number, scale: number): Promise<PageViewport>;
+  getTextItems(pageNumber: number): Promise<PageTextItems>;
   getOutline(): Promise<OutlineNode[]>;
   getMetadata(): Promise<PdfMetadata>;
   search(query: string, options?: { limit?: number }): Promise<SearchMatch[]>;
@@ -139,6 +142,8 @@ interface PdfEngine {
 ```
 
 Page count is not a method: it comes back on the `PdfDocumentInfo` that `loadDocument` resolves to (`info.numPages`), which the stores hold.
+
+`getPageViewport` and `getTextItems` are a deliberate exception to that narrowness: in-place text editing (`features/textedit`, see [editing-and-ocr.md](editing-and-ocr.md#editing-existing-text)) has to hit-test a click against the exact items and coordinate space PDF.js used to build the text layer, so the interface leaks PDF.js's `PageViewport` and per-item text content (`PageTextItems`) rather than re-wrapping them. No import of `pdfjs-dist` appears outside `core/pdf` even so: the two methods hand back PDF.js-shaped data, not the module itself.
 
 `PdfJsEngine` is the sole implementation today. It wraps `pdfjs-dist` v4: `loadDocument` calls `getDocument`, `renderPage` uses `page.render`, `renderTextLayer` and `getPageText` are built from `page.getTextContent`, and so on.
 
@@ -175,7 +180,7 @@ State is the single source of truth between the UI, commands, plugins, and the A
 
 | Store | File | Holds | Written by |
 |---|---|---|---|
-| `documentStore` | `src/state/documentStore.ts` | Load status, document `info`, metadata, outline, error | `loadSource`/`closeDocument` actions |
+| `documentStore` | `src/state/documentStore.ts` | Load status, document `info`, metadata, outline, error, a `docVersion` counter bumped on each in-place text edit | `loadSource`/`closeDocument` actions, `reloadEditedBytes` |
 | `viewerStore` | `src/state/viewerStore.ts` | Scale, fit mode (custom/width/page), current page, page count, sidebar open + active tab, search open, pending scroll target | Zoom/nav/sidebar commands, scroll handler |
 | `themeStore` | `src/theme/themeStore.ts` | UI theme (light/dark/system), resolved theme, reading mode | Theme commands, system preference listener |
 | `aiStore` | `src/ai/aiStore.ts` | AI enabled flag, selected provider id (disabled by default) | AI settings UI |
@@ -233,7 +238,7 @@ Implemented today (`src-tauri/src/lib.rs`), the registered commands are:
 - **`take_launch_file()`.** Return (and clear) the PDF path Folio was launched with as the default `.pdf` handler. The path is captured from the process arguments at startup, validated (must end in `.pdf` and exist on disk), and consumed exactly once by the frontend on mount, so an in-app reload does not silently re-open it.
 - **`open_default_apps_settings()`.** Open the OS "Default apps" settings so the user can make Folio the default PDF viewer. Windows launches the fixed `ms-settings:defaultapps` URI (no user input is interpolated); modern Windows does not permit an app to seize a default handler silently, so this is a guided deep link rather than a silent switch.
 
-The native open and save pickers are provided by `tauri-plugin-dialog`; the document is prepared for saving in the frontend (PDF.js `saveDocument()` writes filled form values, then pdf-lib is loaded once to bake the invisible OCR text layer, placed edits, signatures, and review annotations in that order — see `src/features/export/`) and the bytes are written by `write_document`. Also registered in `run()`: `tauri-plugin-updater` (in-app updates, desktop only), `tauri-plugin-deep-link` + `tauri-plugin-single-instance` (the `folio://` scheme and single-window URL routing), and `tauri-plugin-process` (relaunch after an update). See `docs/releasing.md` for the signing and update-manifest flow.
+The native open and save pickers are provided by `tauri-plugin-dialog`; the document is prepared for saving in the frontend (PDF.js `saveDocument()` writes filled form values, then pdf-lib is loaded once to bake the invisible OCR text layer, placed edits, signatures, and review annotations in that order — see `src/features/export/`) and the bytes are written by `write_document`. In-place text edits (`src/features/textedit/`) bypass that bake step: each commit already spliced the target run out of the page's content stream and reloaded the engine from the result at edit time, so by the time a save runs, those edits are already part of the bytes `saveDocument()` returns. Also registered in `run()`: `tauri-plugin-updater` (in-app updates, desktop only), `tauri-plugin-deep-link` + `tauri-plugin-single-instance` (the `folio://` scheme and single-window URL routing), and `tauri-plugin-process` (relaunch after an update). See `docs/releasing.md` for the signing and update-manifest flow.
 
 Opening a PDF as the **default viewer** has two entry points, handled in `src/features/fileopen/`. On a cold start the OS launches Folio with the file path in `argv`; `run()` captures it and the frontend pulls it via `take_launch_file`. When Folio is already running, a second launch is intercepted by `tauri-plugin-single-instance`, which forwards the path to the existing window as a `folio:open-pdf` event (macOS delivers the file as an `Opened` run event instead of argv; that branch is wired but untested). The `.pdf` association itself is registered by the installer from `bundle.fileAssociations` in `tauri.conf.json`.
 

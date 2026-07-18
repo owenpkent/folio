@@ -8,6 +8,7 @@ import { AnnotationLayer, NotesLayer } from '@/features/annotations';
 import { EditLayer } from '@/features/editing';
 import { OcrTextLayer } from '@/features/ocr';
 import { SignatureLayer } from '@/features/signatures';
+import { TextEditLayer } from '@/features/textedit';
 import { pluginHost } from '@/plugins';
 
 interface PageProps {
@@ -118,6 +119,7 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
       <NotesLayer pageNumber={pageNumber} />
       <SignatureLayer pageNumber={pageNumber} />
       <EditLayer pageNumber={pageNumber} />
+      <TextEditLayer pageNumber={pageNumber} />
     </div>
   );
 });

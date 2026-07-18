@@ -1240,6 +1240,50 @@ kbd {
   color: var(--folio-text-muted);
 }
 
+/* ---- In-place text editing (existing PDF text) ---- */
+.folio-textedit-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+/* The click-catcher: only rendered while the tool is on and no editor is
+   open, so it never steals pointer events (or blocks scrolling) otherwise. */
+.folio-textedit-hit {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  cursor: text;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  appearance: none;
+}
+/* Hover affordance on the text layer, a sibling of the layer above; gated by
+   a class toggled on their shared .folio-page ancestor while the tool is on. */
+.folio-page.is-textedit-active .folio-text-layer span {
+  cursor: text;
+  border-radius: 2px;
+}
+.folio-page.is-textedit-active .folio-text-layer span:hover {
+  background: color-mix(in srgb, var(--folio-accent) 22%, transparent);
+}
+.folio-textedit-editor {
+  position: absolute;
+  z-index: 7;
+  margin: 0;
+  padding: 1px 2px;
+  white-space: pre;
+  overflow: visible;
+  line-height: 1.1;
+  background: var(--folio-surface);
+  outline: 2px solid var(--folio-accent);
+  outline-offset: 1px;
+  border-radius: 2px;
+  cursor: text;
+}
+
 /* Scrollbars */
 .folio-viewer::-webkit-scrollbar,
 .folio-sidebar__body::-webkit-scrollbar,

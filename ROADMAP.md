@@ -82,7 +82,7 @@ Change document content, reorganize pages, make scans searchable, and redact.
 | Area | Deliverable | Status |
 | --- | --- | --- |
 | Add text and images | Place text boxes and images on a page; baked into a saved copy | Done |
-| Edit existing content | Edit text runs already in the PDF and replace/move embedded images | Planned |
+| Edit existing content | Edit text runs already in the PDF and replace/move embedded images | In progress (text runs done; embedded image replace/move planned) |
 | OCR | Recognize text in scanned pages and add a searchable text layer | Done (English via tesseract.js; invisible baked layer + on-screen selection) |
 | Page operations | Insert, delete, reorder, rotate, split, and merge pages | Planned |
 | Redaction | True redaction that removes underlying content, not just a black box | Planned |

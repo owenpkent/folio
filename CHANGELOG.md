@@ -27,6 +27,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Edit text in place**: a new **Edit text** tool (pencil icon, the
+  `textedit.toggle` command) that lets you click text already on a page and
+  replace it. Unlike the existing additive text-box tool, this is true in-place
+  editing: the original show-text operator is located and removed from the
+  page's content stream, and the replacement is drawn at the same spot, taking
+  effect as soon as you commit the edit rather than waiting for a save.
+  Replacement text uses a substituted Standard 14 font rather than the
+  document's own embedded font; rotated or skewed text, text inside Form
+  XObjects, and characters the standard fonts cannot encode are refused with a
+  toast instead of risking a corrupt file. `Ctrl/Cmd + Z` undoes up to 10 edits.
+  New `src/features/textedit` module, two new `PdfEngine` methods
+  (`getPageViewport`, `getTextItems`), and a `docVersion`-driven live reload of
+  the open document. See docs/editing-and-ocr.md.
 - **Hand (pan) tool**: a grab tool in the toolbar (and the `view.toggleHandMode`
   command) that lets you click-drag the page to scroll. Text selection is
   suppressed while it is active; form fields and placed edits still work.

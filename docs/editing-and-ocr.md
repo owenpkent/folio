@@ -1,22 +1,31 @@
 # Editing and OCR
 
-Folio can add content to a page and recognize text in scans, then save a copy
-with everything baked in. This page explains how both work today and what is
-deliberately out of scope.
+Folio can add content to a page, edit text that is already on it, and recognize
+text in scans, then save a copy with everything baked in. This page explains
+how each capability works today and what is deliberately out of scope.
 
-Two capabilities, both additive to the page:
+Three capabilities:
 
 1. **Editing.** Add **text boxes** (a typewriter tool) and place **images**
-   (PNG/JPEG). You can drag, resize, and edit them; they are burned into the PDF
-   only when you save a copy.
-2. **OCR.** Recognize text in **scanned / image-only** pages with a bundled,
+   (PNG/JPEG). You can drag, resize, and edit them; they are additive overlays,
+   burned into the PDF only when you save a copy. The underlying page content is
+   never touched.
+2. **Editing existing text.** Click text already on the page and replace it in
+   place: the original show-text operator is removed from the page's content
+   stream, and the replacement is drawn at the same spot, rather than covered
+   up. Unlike the tool above, this changes the open document as soon as you
+   commit an edit, not only when you save.
+3. **OCR.** Recognize text in **scanned / image-only** pages with a bundled,
    offline English engine. The result is selectable on screen, searchable in-app,
    and baked into the saved PDF as an invisible text layer.
 
-> Scope, up front: Folio does **not** edit glyphs already in the PDF, reflow
-> paragraphs, or replace embedded images. These are additive overlays. Editing
-> existing content, page operations, redaction, and non-Latin OCR are on the
-> [roadmap](../ROADMAP.md), not built.
+> Scope, up front: in-place text edits replace one run at a time with a
+> substituted standard font, not the document's own embedded font, and do not
+> reflow a paragraph. Rotated or skewed text, text inside Form XObjects, and
+> characters the standard fonts cannot encode are refused rather than risking a
+> corrupt file. Folio still does not replace or move embedded images, and page
+> operations, redaction, and non-Latin text (typed or OCR'd) remain on the
+> [roadmap](../ROADMAP.md).
 
 ## Editing: text boxes and images
 
@@ -62,6 +71,101 @@ type EditItem =
   not wired up.
 - **Wrapping is best-effort.** The baked line breaks approximate the browser's
   CSS wrapping; they will not be pixel-identical.
+
+## Editing existing text
+
+Click text that is already on the page and replace it, in place. This is
+different from the tool above: instead of drawing something new over the page,
+Folio finds the original show-text operator in the page's content stream,
+removes it, and draws the replacement at the same spot. The edit applies to the
+open document as soon as you commit it, not only when you save a copy.
+
+### Using it
+
+- Toggle toolbar **Edit text** (the pencil icon, `textedit.toggle`). While it is
+  on, the page becomes clickable: click a run of text to open an inline editor
+  prefilled with it, sized and colored to match the original as closely as
+  PDF.js's own styles allow (font family, size, and fill color).
+- Type the replacement. **Enter**, or clicking elsewhere (blur), commits it.
+  **Escape** cancels and leaves the original text in place.
+- **Ctrl/Cmd + Z** undoes the most recent commit, up to 10 edits back. Undo is
+  one stack for the whole document, not per page or per run, and it only fires
+  when nothing else editable (a form field, the inline editor itself) has
+  focus, so it never fights a native undo inside a text input.
+- Clicking text Folio cannot safely edit shows a toast explaining why, instead
+  of opening the editor (see Guardrails, below).
+- Works the same way in the desktop app and the browser build: the whole
+  feature is front-end only, with no Rust involvement.
+
+### How it works
+
+- **Locating a run.** `contentStream.ts` tokenizes and interprets the subset of
+  content-stream operators needed to find every show-text operator (`Tj`, `TJ`,
+  `'`, `"`): text positioning (`Td`/`TD`/`Tm`/`T*`/`TL`), font selection (`Tf`),
+  the graphics-state stack (`q`/`Q`/`cm`), and fill color
+  (`rg`/`g`/`k`/`sc`/`scn`/`cs`). For each one it records the byte range, the
+  baseline origin in PDF user space, the effective font size, the active font
+  resource, and the fill color. Inline images are skipped rather than parsed,
+  and text inside Form XObjects is never seen (see Guardrails).
+- **Matching a click.** A click is converted from screen pixels to PDF user
+  space through the page's own viewport (`PdfEngine.getPageViewport`), then
+  matched against PDF.js's own per-item text content for the page
+  (`PdfEngine.getTextItems`) by proximity to each item's baseline origin.
+- **Splicing.** `spliceRun` removes the operator's bytes from the stream. A
+  plain `Tj`/`TJ` closes the gap (or leaves a single space, if closing it would
+  fuse two adjacent tokens together). `'` is replaced with `T*`, keeping the
+  line advance the next line of text was written expecting. `"` is replaced
+  with `aw Tw ac Tc T*`, keeping the word- and character-spacing side effects
+  and the line advance, and dropping only the string itself.
+- **Redrawing.** `mutate.ts` re-decodes the page's content stream(s) with
+  pdf-lib, re-locates the same run, splices it, merges the page back into one
+  uncompressed stream, and (unless the replacement is empty) draws the new text
+  with the closest **Standard 14** font, Times, Courier, or Helvetica, with
+  bold and italic picked from a hint carrying the original font's name, at the
+  run's own baseline origin, size, and color.
+- **Committing.** The bytes edited are the current document's
+  `PdfEngine.saveDocument()` output, so filled form values are preserved.
+  `reloadEditedBytes` (`src/state/actions.ts`) then swaps the engine's loaded
+  document for the result, without resetting any per-feature store or the
+  document's fingerprint, so annotations, signatures, and OCR state (all keyed
+  by fingerprint) survive untouched. It bumps a `docVersion` counter that every
+  page's React key includes, so every page remounts from the new bytes, and it
+  restores scroll position afterward. One consequence worth knowing: an
+  in-place edit is already part of the document by the time you next run
+  **Save a copy**; it does not wait for the additive tools' save-time bake step.
+
+### Guardrails
+
+Clicking (or, in one case, committing) text Folio cannot safely edit shows a
+toast instead of corrupting the file:
+
+- **Rotated or skewed text.** The replacement is always drawn upright at the
+  original origin, so a rotated or skewed run is left alone rather than drawn
+  wrong.
+- **Runs that share positioning.** A show-text operator with no repositioning
+  operator before the next one inherits wherever that next run left the text
+  position. Removing it would shift its neighbor, so both are left alone.
+- **Text inside Form XObjects.** The content-stream parser does not descend
+  into `Do`-invoked Form XObjects, so text drawn there is never located, and
+  clicking it is reported as not editable.
+- **Characters the standard fonts cannot encode.** This one is only caught when
+  you commit, not when you click: if the replacement text cannot be encoded in
+  the standard WinAnsi fonts, the edit is rejected and the original text is left
+  in place.
+
+### Limitations
+
+- **A substituted font, not the original.** Replacement text is drawn with the
+  closest Standard 14 font rather than the document's own embedded font, the
+  same kind of substitution Acrobat falls back to when a font is unavailable.
+- **One run at a time.** Each show-text operator is edited on its own; there is
+  no reflow across a paragraph or a wrapped line.
+- **Latin (WinAnsi) text only, for now**, same as the additive text tool.
+  Bundling a Unicode font (`@pdf-lib/fontkit`) so non-Latin replacement text can
+  be typed is a planned follow-up.
+- **Undo holds full document snapshots, capped at 10.** Each entry is the whole
+  document's bytes at that point, not a diff, so heavy undo use on a large
+  document is more memory-hungry than a typical text editor's undo stack.
 
 ## OCR: making scans searchable
 
@@ -131,6 +235,11 @@ WebView2 and modern browsers, Folio's only targets.
 | --- | --- |
 | Editing store, overlay, commands | `src/features/editing/` |
 | Editing bake (pdf-lib) | `src/features/editing/bake.ts` |
+| In-place text edit: content-stream parser + splice | `src/features/textedit/contentStream.ts` |
+| In-place text edit: pdf-lib splice + redraw | `src/features/textedit/mutate.ts` |
+| In-place text edit: overlay, store, commands | `src/features/textedit/` |
+| Live reload after a commit (swaps engine doc, bumps `docVersion`) | `src/state/actions.ts` (`reloadEditedBytes`) |
+| Page viewport + raw text items (for hit-testing) | `src/core/pdf/PdfJsEngine.ts` (`getPageViewport`, `getTextItems`) |
 | OCR recognition + worker | `src/features/ocr/recognize.ts` |
 | OCR store, text layer, modal, commands | `src/features/ocr/` |
 | OCR bake (invisible layer) | `src/features/ocr/bake.ts` |
@@ -139,4 +248,6 @@ WebView2 and modern browsers, Folio's only targets.
 | Export pipeline (loads pdf-lib once) | `src/features/export/saveDocument.ts` |
 | Self-hosted OCR assets | `scripts/setup-ocr-assets.mjs`, `public/tesseract/` |
 
-Manual test steps are in [testing.md](testing.md#editing-text-boxes--images).
+Manual test steps for text boxes and images are in
+[testing.md](testing.md#editing-text-boxes--images); steps for in-place text
+editing are in [testing.md](testing.md#editing-text-in-place).

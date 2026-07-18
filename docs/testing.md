@@ -220,6 +220,21 @@ Works in both the browser build (`npm run dev`) and the desktop app.
 - **Round-trip:** Save a copy (Ctrl+S), reopen in Folio **and** a third-party
   reader; the text and image should sit where you placed them.
 
+### Editing text in place
+
+Works in both the browser build (`npm run dev`) and the desktop app.
+
+- Toolbar *Edit text* (the pencil), then click a run of text on the page: an
+  inline editor opens, prefilled with that run and styled to match it.
+- Type a replacement, then **Enter** or click away to commit; **Escape** cancels
+  and leaves the original text alone.
+- **Ctrl/Cmd + Z** undoes the most recent commit (repeatable, up to 10 edits).
+- Click text you expect to be blocked (rotated, or part of an embedded object)
+  and confirm a toast explains it instead of the editor opening.
+- **Round-trip:** commit an edit, Save a copy (Ctrl+S), reopen in Folio **and**
+  a third-party reader; the new text should read correctly with no trace of the
+  original run underneath it.
+
 ### OCR (scanned pages)
 
 Needs the self-hosted assets (`npm run setup:ocr`, or just run the app once).
