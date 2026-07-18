@@ -6,6 +6,10 @@ import { useEditStore } from '@/features/editing';
 import { useOcrStore } from '@/features/ocr';
 import { useSignatureStore } from '@/features/signatures';
 import { detectSignatures, useSigningStore } from '@/features/signing';
+// Import the store directly rather than the feature barrel: the barrel also
+// exports TextEditLayer, which imports reloadEditedBytes from this file, and
+// routing through it here would make that a circular module dependency.
+import { useTextEditStore } from '@/features/textedit/store';
 import { pluginHost } from '@/plugins/PluginHost';
 
 import { useDocumentStore } from './documentStore';
@@ -39,6 +43,9 @@ export async function loadSource(source: DocumentSource): Promise<void> {
     useSignatureStore.getState().loadForDocument(info.fingerprint);
     useEditStore.getState().loadForDocument(info.fingerprint);
     useOcrStore.getState().loadForDocument(info.fingerprint);
+    // Not persisted (nothing to load per fingerprint), but a fresh document is
+    // never mid-edit, so any leftover session/undo history from a prior one goes.
+    useTextEditStore.getState().reset();
     try {
       const original = engine.getOriginalBytes();
       useSigningStore.getState().setDetected(original ? detectSignatures(original) : []);
@@ -68,7 +75,34 @@ export async function closeDocument(): Promise<void> {
   useSignatureStore.getState().reset();
   useEditStore.getState().reset();
   useOcrStore.getState().reset();
+  useTextEditStore.getState().reset();
   useSigningStore.getState().setDetected([]);
   document.title = 'Folio';
   announce('Closed document');
+}
+
+/**
+ * Swap the engine's document for freshly edited bytes (in-place text edits),
+ * without resetting any per-feature store or changing the stored fingerprint:
+ * unlike {@link loadSource}, this is still the same logical document, just
+ * with new bytes, so per-fingerprint state (placed edits, signatures, OCR
+ * text, annotations) must survive the reload untouched.
+ */
+export async function reloadEditedBytes(bytes: Uint8Array): Promise<void> {
+  const doc = useDocumentStore.getState();
+  if (doc.status !== 'ready' || !doc.info) return;
+
+  const engine = getEngine();
+  await engine.loadDocument({ kind: 'bytes', data: bytes, name: doc.info.name });
+  useDocumentStore.getState().bumpDocVersion();
+  // Pages repaint in place on a docVersion bump (Page.tsx re-runs its canvas /
+  // text-layer / annotation-layer effects rather than remounting), so scroll
+  // position is never disturbed and needs no explicit preservation here.
+
+  try {
+    const original = engine.getOriginalBytes();
+    useSigningStore.getState().setDetected(original ? detectSignatures(original) : []);
+  } catch {
+    useSigningStore.getState().setDetected([]);
+  }
 }

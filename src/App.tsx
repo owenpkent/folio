@@ -19,6 +19,7 @@ import { registerFileOpen } from '@/features/fileopen';
 import { OcrProgressModal, registerOcrCommands } from '@/features/ocr';
 import { registerSignatureCommands, SignatureModal } from '@/features/signatures';
 import { registerSigningCommands, SigningModal } from '@/features/signing';
+import { registerTextEditCommands } from '@/features/textedit';
 import { checkForUpdates } from '@/features/updates';
 import { activateBuiltinPlugins } from '@/plugins';
 import { loadSource } from '@/state/actions';
@@ -38,6 +39,7 @@ export function App() {
     registerOcrCommands();
     registerSignatureCommands();
     registerSigningCommands();
+    registerTextEditCommands();
     registerExportCommands();
     void activateBuiltinPlugins();
   }, []);

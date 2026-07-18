@@ -15,7 +15,7 @@ export function SignatureLayer({ pageNumber }: { pageNumber: number }) {
   if (items.length === 0) return null;
 
   return (
-    <div className="folio-signature-layer">
+    <div className="folio-signature-layer" data-pan-exclude>
       {items.map((sig) => (
         <SignatureItem key={sig.id} sig={sig} />
       ))}

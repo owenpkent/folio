@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { commandRegistry } from '@/commands';
 import { IconButton, type IconName } from '@/components/common';
 import { useNotesUi } from '@/features/annotations';
+import { useTextEditStore } from '@/features/textedit';
 import { useContributionStore } from '@/plugins';
 import { useDocumentStore } from '@/state/documentStore';
 import { focusViewer } from '@/state/viewerElement';
@@ -23,6 +24,7 @@ export function Toolbar() {
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme);
   const readingMode = useThemeStore((s) => s.readingMode);
   const addingNote = useNotesUi((s) => s.adding);
+  const textEditActive = useTextEditStore((s) => s.active);
   const toolbarItems = useContributionStore((s) => s.toolbarItems);
 
   return (
@@ -122,6 +124,13 @@ export function Toolbar() {
           disabled={!hasDoc}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => run('annotate.highlight')}
+        />
+        <IconButton
+          icon="pencil"
+          label="Edit text"
+          active={textEditActive}
+          disabled={!hasDoc}
+          onClick={() => run('textedit.toggle')}
         />
         <IconButton
           icon="type"

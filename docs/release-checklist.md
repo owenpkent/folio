@@ -62,6 +62,7 @@ On the EV-cert Windows host:
   - [ ] App launches and opens a PDF (drag-drop and `Ctrl/Cmd+O`); pages render
   - [ ] Default-viewer: double-clicking a `.pdf` opens it in Folio (cold start renders the file)
   - [ ] Editing: add a text box + image, Save a copy, reopen — both land correctly
+  - [ ] Edit text in place: click existing text, replace it, undo with Ctrl+Z, then Save a copy and reopen to confirm the edit landed
   - [ ] OCR: recognize a scanned PDF, select/search text, save, confirm searchable elsewhere (assets load offline)
   - [ ] Auto-update path: install the previous published version first, then verify the in-app updater detects the new version, downloads, and relaunches (point the updater endpoint at a locally-served `release/latest.json` if testing before publish)
 - [ ] `release/latest.json` `signature` for `windows-x86_64` matches the contents of `Folio_<ver>_x64-setup.exe.sig`, and `pub_date` is the current UTC time

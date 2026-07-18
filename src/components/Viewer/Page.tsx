@@ -8,7 +8,9 @@ import { AnnotationLayer, NotesLayer } from '@/features/annotations';
 import { EditLayer } from '@/features/editing';
 import { OcrTextLayer } from '@/features/ocr';
 import { SignatureLayer } from '@/features/signatures';
+import { TextEditLayer } from '@/features/textedit';
 import { pluginHost } from '@/plugins';
+import { useDocumentStore } from '@/state/documentStore';
 
 interface PageProps {
   pageNumber: number;
@@ -20,6 +22,7 @@ interface PageProps {
  * then rasterises the canvas and text layer once it scrolls near the viewport.
  */
 export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
+  const docVersion = useDocumentStore((s) => s.docVersion);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
@@ -61,10 +64,12 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
     return () => observer.disconnect();
   }, []);
 
-  // Render once visible; re-render when the scale changes while visible.
-  // Deliberately not gated on `dims`: that only reserves the wrapper's layout
-  // box, and renderPage sizes the canvas itself. Waiting for it would mean two
-  // render passes per scale change (once with the stale dims, once with the new).
+  // Render once visible; re-render when the scale changes while visible, or
+  // when docVersion bumps (an in-place text edit swapped the engine's loaded
+  // document for new bytes). Deliberately not gated on `dims`: that only
+  // reserves the wrapper's layout box, and renderPage sizes the canvas itself.
+  // Waiting for it would mean two render passes per scale change (once with
+  // the stale dims, once with the new).
   useEffect(() => {
     if (!visible) return;
     const canvas = canvasRef.current;
@@ -84,6 +89,9 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
         }
         if (!active) return;
         if (formsLayerRef.current) {
+          // Reads doc.annotationStorage off the engine's *current* document
+          // proxy, so re-running this after a docVersion bump rebinds the
+          // rendered widgets to the new document instead of the stale one.
           await engine.renderAnnotationLayer(pageNumber, formsLayerRef.current, { scale, signal });
         }
         if (!active) return;
@@ -97,7 +105,7 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
       active = false;
       controller.abort();
     };
-  }, [visible, pageNumber, scale]);
+  }, [visible, pageNumber, scale, docVersion]);
 
   return (
     <div
@@ -112,12 +120,13 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
           accessible one, so keep the canvas out of the accessibility tree. */}
       <canvas ref={canvasRef} className="folio-page-canvas" aria-hidden="true" />
       <div ref={textLayerRef} className="textLayer folio-text-layer" />
-      <div ref={formsLayerRef} className="annotationLayer folio-forms-layer" />
+      <div ref={formsLayerRef} className="annotationLayer folio-forms-layer" data-pan-exclude />
       <OcrTextLayer pageNumber={pageNumber} />
       <AnnotationLayer pageNumber={pageNumber} />
       <NotesLayer pageNumber={pageNumber} />
       <SignatureLayer pageNumber={pageNumber} />
       <EditLayer pageNumber={pageNumber} />
+      <TextEditLayer pageNumber={pageNumber} />
     </div>
   );
 });

@@ -64,19 +64,23 @@ Folio rendering a two-page form PDF, in light and dark:
 **Editing and OCR**
 - Add **text boxes** (typewriter tool with font, size, bold, and color) and place
   **images** (PNG/JPEG); drag, resize, and bake them into a saved copy
+- **Edit text already on the page**, in place: click a run of text to replace
+  it; the original is removed from the page's content, not just covered up
+  (undo with Ctrl/Cmd + Z, up to 10 edits)
 - **OCR** scanned pages with a bundled, offline English engine (tesseract.js): the
   recognized text becomes selectable on screen, is searchable in-app, and is baked
   into the saved PDF as an invisible searchable layer
-- Additive editing only for now: existing PDF text is not modified (see the
-  [roadmap](ROADMAP.md))
+- In-place text edits use a substituted standard font, one run at a time, with
+  no paragraph reflow; replacing embedded images and non-Latin text remain on
+  the [roadmap](ROADMAP.md)
 
 **Forms and signing**
 - Fill interactive AcroForm fields (text, checkbox, radio, dropdown)
 - Sign by drawing, typing, or uploading a signature; place, drag, and resize it
 - Cryptographic digital signatures (PKCS#7): import a `.p12` or create a
   self-signed identity; opened signed PDFs show the signer and tamper status
-- Save a copy with form values, edits, OCR text, signatures, and annotations
-  baked in (original untouched)
+- Save a copy with form values, placed edits, in-place text edits, OCR text,
+  signatures, and annotations all included (original untouched)
 
 **Extensible**
 - A plugin system: contribute commands, toolbar items, sidebar panels, and tools
@@ -174,7 +178,7 @@ folio/
 │  ├─ core/pdf/          PdfEngine interface + PDF.js implementation
 │  ├─ commands/          command registry (every user action)
 │  ├─ components/        Viewer, Toolbar, Sidebar, Search, common
-│  ├─ features/          annotations, editing, ocr, signatures, forms, save/export
+│  ├─ features/          annotations, editing, textedit, ocr, signatures, forms, save/export
 │  ├─ plugins/           plugin host, SDK types, built-in Word Count plugin
 │  ├─ ai/                provider-agnostic AI layer (Claude, experimental) + MCP stubs
 │  ├─ theme/             tokens, ThemeProvider, reading modes

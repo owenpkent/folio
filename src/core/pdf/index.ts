@@ -12,5 +12,5 @@ export function getEngine(): PdfEngine {
   return engine;
 }
 
-export type { PdfEngine } from './PdfEngine';
+export type { PageTextItems, PdfEngine } from './PdfEngine';
 export * from './types';

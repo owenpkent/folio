@@ -111,6 +111,12 @@ const ICONS = {
       <path d="M9 19h6" />
     </>
   ),
+  pencil: (
+    <>
+      <path d="M4 20l1-4L16 5l3 3L8 19l-4 1Z" />
+      <path d="M14 7l3 3" />
+    </>
+  ),
   scan: (
     <>
       <path d="M4 8V6a2 2 0 0 1 2-2h2" />

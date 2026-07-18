@@ -63,9 +63,10 @@ Almost certainly yes, and we plan on that basis.
 508 defines an authoring tool (**E103.4**) as *"any software... that can be used
 by authors, alone or collaboratively, to create or modify content for use by
 others, including other authors."* Folio creates highlights, sticky notes, ink
-signatures, text boxes and OCR text layers, and writes them into a saved copy.
-That is content creation on any plain reading, independent of whether
-form-filling counts.
+signatures, text boxes and OCR text layers, edits text already on a page in
+place, and writes all of it into a saved copy. That is content creation (and,
+for in-place text edits, content modification in the plainest possible sense)
+on any plain reading, independent of whether form-filling counts.
 
 Worth knowing precisely, because it will come up: **the Access Board never
 addressed annotation or form-filling in the final rule.** The terms
@@ -216,10 +217,16 @@ to stamp edits, signatures and annotations.
   `copyPages()` (which copies from the page dict and never reaches the catalog's
   `/StructTreeRoot`) and on `form.flatten()` (which orphans struct elements).
 
-Folio uses neither of those two calls today, so tags survive in practice. The
-risk is that a future change adds one and silently untags every export. Routing
-saves through PDF.js's incremental writer, and keeping pdf-lib for stamping
-only, is the durable fix.
+Folio uses neither of those two calls today, so tags survive in practice.
+In-place text editing (`src/features/textedit/`) is a second, independent
+consumer of this same `load()` → `save()` path: every commit re-serializes the
+document immediately, ahead of and separate from the export pipeline above. It
+avoids `copyPages()` and `form.flatten()` too, so the same reasoning holds, but
+a tagged document now goes through pdf-lib's re-serialization once per edit,
+not only once at export. The risk is that a future change adds one of those two
+calls, in either code path, and silently untags every export. Routing saves
+through PDF.js's incremental writer, and keeping pdf-lib for stamping only, is
+the durable fix.
 
 What we **do** preserve deliberately: filled form values stay real AcroForm
 fields, and highlights and sticky notes are written as **real `/Highlight` and

@@ -1,7 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
-import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
+import type { PageViewport, PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 
-import type { PdfEngine } from './PdfEngine';
+import type { PageTextItems, PdfEngine } from './PdfEngine';
 import { ensureWorker } from './setupWorker';
 import type {
   DocumentSource,
@@ -29,6 +29,7 @@ export class PdfJsEngine implements PdfEngine {
   private sourceBytes: Uint8Array | null = null;
   private pageCache = new Map<number, PDFPageProxy>();
   private textCache = new Map<number, string>();
+  private textItemsCache = new Map<number, PageTextItems>();
   private readonly linkService = createLinkService();
 
   get isReady(): boolean {
@@ -57,6 +58,7 @@ export class PdfJsEngine implements PdfEngine {
   async closeDocument(): Promise<void> {
     this.pageCache.clear();
     this.textCache.clear();
+    this.textItemsCache.clear();
     this.sourceBytes = null;
     if (this.doc) {
       await this.doc.destroy();
@@ -229,6 +231,22 @@ export class PdfJsEngine implements PdfEngine {
 
     this.textCache.set(pageNumber, text);
     return text;
+  }
+
+  async getPageViewport(pageNumber: number, scale: number): Promise<PageViewport> {
+    const page = await this.getPage(pageNumber);
+    return page.getViewport({ scale });
+  }
+
+  async getTextItems(pageNumber: number): Promise<PageTextItems> {
+    const cached = this.textItemsCache.get(pageNumber);
+    if (cached) return cached;
+
+    const page = await this.getPage(pageNumber);
+    const { items, styles } = await page.getTextContent();
+    const result: PageTextItems = { items, styles };
+    this.textItemsCache.set(pageNumber, result);
+    return result;
   }
 
   async getOutline(): Promise<OutlineNode[]> {
