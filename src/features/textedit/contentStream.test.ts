@@ -45,6 +45,27 @@ describe('parseContentStreams', () => {
     expect(runs[0].fontSize).toBeCloseTo(10);
   });
 
+  it('Q restores the font resource and size (Tf) saved by q', () => {
+    const src = '/F1 12 Tf q /F2 20 Tf BT (A) Tj ET Q BT 1 0 0 1 10 10 Tm (B) Tj ET';
+    const runs = parseContentStreams([encode(src)]);
+
+    expect(runs).toHaveLength(2);
+    expect(runs[0].fontResource).toBe('F2');
+    expect(runs[0].fontSize).toBeCloseTo(20);
+    // Without a Q restore this would still see F2 / size 20, leaked past the Q.
+    expect(runs[1].fontResource).toBe('F1');
+    expect(runs[1].fontSize).toBeCloseTo(12);
+  });
+
+  it('Q restores the leading (TL) saved by q, used by a later T*', () => {
+    const src = '20 TL q 5 TL Q BT T* (B) Tj ET';
+    const runs = parseContentStreams([encode(src)]);
+
+    expect(runs).toHaveLength(1);
+    // T* advances by -TL; if the inner TL (5) had leaked past Q this would be -5.
+    expect(runs[0].y).toBeCloseTo(-20);
+  });
+
   it('TD sets TL and advances the line; T* repeats the advance using TL', () => {
     const src = 'BT /F1 10 Tf 0 0 Td 5 -20 TD (A) Tj T* (B) Tj ET';
     const runs = parseContentStreams([encode(src)]);

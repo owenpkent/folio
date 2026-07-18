@@ -14,7 +14,6 @@ import { pluginHost } from '@/plugins/PluginHost';
 
 import { useDocumentStore } from './documentStore';
 import { useViewerStore } from './viewerStore';
-import { getViewerElement } from './viewerElement';
 
 /**
  * High-level orchestration that ties the engine, the stores, accessibility
@@ -93,23 +92,17 @@ export async function reloadEditedBytes(bytes: Uint8Array): Promise<void> {
   const doc = useDocumentStore.getState();
   if (doc.status !== 'ready' || !doc.info) return;
 
-  const container = getViewerElement();
-  const scrollTop = container?.scrollTop ?? 0;
-  const scrollLeft = container?.scrollLeft ?? 0;
-
-  await getEngine().loadDocument({ kind: 'bytes', data: bytes, name: doc.info.name });
+  const engine = getEngine();
+  await engine.loadDocument({ kind: 'bytes', data: bytes, name: doc.info.name });
   useDocumentStore.getState().bumpDocVersion();
+  // Pages repaint in place on a docVersion bump (Page.tsx re-runs its canvas /
+  // text-layer / annotation-layer effects rather than remounting), so scroll
+  // position is never disturbed and needs no explicit preservation here.
 
-  // Remounting every page (the key includes docVersion) briefly collapses
-  // each one's layout box until its dimensions are re-measured, which can
-  // make the browser clamp scrollTop to 0. Re-assert the saved position for a
-  // few frames so it survives that settling.
-  if (container) reassertScroll(container, scrollTop, scrollLeft);
-}
-
-function reassertScroll(container: HTMLElement, top: number, left: number, framesLeft = 6): void {
-  container.scrollTop = top;
-  container.scrollLeft = left;
-  if (framesLeft <= 0) return;
-  requestAnimationFrame(() => reassertScroll(container, top, left, framesLeft - 1));
+  try {
+    const original = engine.getOriginalBytes();
+    useSigningStore.getState().setDetected(original ? detectSignatures(original) : []);
+  } catch {
+    useSigningStore.getState().setDetected([]);
+  }
 }

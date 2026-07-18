@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+import { clearLocatedRunsCache } from './locateCache';
 import type { RunColor, ShowOp } from './types';
 
 /** Baseline origin + operator kind used to re-locate the edited run on commit. */
@@ -30,6 +31,12 @@ export interface EditingSession {
   color: RunColor;
   /** The run's font size in PDF user units (as opposed to fontSizePx, in CSS px). */
   fontSize: number;
+  /**
+   * PDF.js's internal font resource name (the clicked text item's `fontName`),
+   * held here so the commit can build its `fontFamilyHint` from the session
+   * alone, without a live handle back to the item that opened it.
+   */
+  pdfFontName: string;
 }
 
 /** Oldest snapshots drop first once the undo stack passes this many entries. */
@@ -81,5 +88,8 @@ export const useTextEditStore = create<TextEditState>((set, get) => ({
     return popped;
   },
 
-  reset: () => set({ active: false, session: null, undoStack: [] }),
+  reset: () => {
+    clearLocatedRunsCache();
+    set({ active: false, session: null, undoStack: [] });
+  },
 }));

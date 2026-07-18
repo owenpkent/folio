@@ -21,7 +21,7 @@ export function EditLayer({ pageNumber }: { pageNumber: number }) {
   if (items.length === 0) return null;
 
   return (
-    <div className="folio-edit-layer">
+    <div className="folio-edit-layer" data-pan-exclude>
       {items.map((item) =>
         item.kind === 'text' ? (
           <TextItem key={item.id} item={item} />

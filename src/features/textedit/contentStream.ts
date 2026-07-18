@@ -305,9 +305,19 @@ function cmykToRgb(c: number, m: number, y: number, k: number): RunColor {
 // Interpreter
 // ---------------------------------------------------------------------------
 
+/**
+ * State saved by q and restored by Q (ISO 32000-1 9.3.1). This covers not
+ * just ctm and fill color but also the text state set by Tf (font resource,
+ * size) and TL/TD (leading), since those are part of the graphics state too.
+ * tm/tlm are deliberately excluded: the text matrix is not part of the
+ * graphics state, it lives between BT/ET (9.4.2).
+ */
 interface GraphicsState {
   ctm: Matrix;
   fillColor: RunColor;
+  fontResource: string;
+  tfSize: number;
+  tl: number;
 }
 
 interface InterpreterState {
@@ -412,13 +422,22 @@ export function parseContentStreams(streams: Uint8Array[]): LocatedRun[] {
     scanOperations(bytes, ({ operator, operatorEnd, operands, start }) => {
       switch (operator) {
         case 'q':
-          state.stack.push({ ctm: state.ctm, fillColor: state.fillColor });
+          state.stack.push({
+            ctm: state.ctm,
+            fillColor: state.fillColor,
+            fontResource: state.fontResource,
+            tfSize: state.tfSize,
+            tl: state.tl,
+          });
           break;
         case 'Q': {
           const restored = state.stack.pop();
           if (restored) {
             state.ctm = restored.ctm;
             state.fillColor = restored.fillColor;
+            state.fontResource = restored.fontResource;
+            state.tfSize = restored.tfSize;
+            state.tl = restored.tl;
           }
           break;
         }

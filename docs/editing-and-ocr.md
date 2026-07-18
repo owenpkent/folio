@@ -123,16 +123,19 @@ open document as soon as you commit it, not only when you save a copy.
   with the closest **Standard 14** font, Times, Courier, or Helvetica, with
   bold and italic picked from a hint carrying the original font's name, at the
   run's own baseline origin, size, and color.
-- **Committing.** The bytes edited are the current document's
-  `PdfEngine.saveDocument()` output, so filled form values are preserved.
-  `reloadEditedBytes` (`src/state/actions.ts`) then swaps the engine's loaded
-  document for the result, without resetting any per-feature store or the
-  document's fingerprint, so annotations, signatures, and OCR state (all keyed
-  by fingerprint) survive untouched. It bumps a `docVersion` counter that every
-  page's React key includes, so every page remounts from the new bytes, and it
-  restores scroll position afterward. One consequence worth knowing: an
-  in-place edit is already part of the document by the time you next run
-  **Save a copy**; it does not wait for the additive tools' save-time bake step.
+- **Committing.** The bytes edited are serialized fresh at commit time
+  (`PdfEngine.saveDocument()`), so anything else changed while the editor was
+  open, such as a form value, is not silently reverted; filled form values are
+  preserved the same way. `reloadEditedBytes` (`src/state/actions.ts`) then
+  swaps the engine's loaded document for the result, without resetting any
+  per-feature store or the document's fingerprint, so annotations, signatures,
+  and OCR state (all keyed by fingerprint) survive untouched. It bumps a
+  `docVersion` counter that each page's render effect depends on, so every
+  page repaints its canvas, text layer, and annotation layer in place from the
+  new bytes instead of unmounting; scroll position is undisturbed, so there is
+  nothing to restore. One consequence worth knowing: an in-place edit is
+  already part of the document by the time you next run **Save a copy**; it
+  does not wait for the additive tools' save-time bake step.
 
 ### Guardrails
 

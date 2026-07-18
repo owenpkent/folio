@@ -3,10 +3,12 @@ import { useEffect, useRef, type MouseEvent } from 'react';
 import { pushToast } from '@/components/common';
 import { getEngine, type PageTextItems } from '@/core/pdf';
 import { reloadEditedBytes } from '@/state/actions';
+import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
 
-import { matchRunToItem, parseContentStreams } from './contentStream';
-import { commitTextEdit, getPageContentStreams, TexteditError } from './mutate';
+import { matchRunToItem } from './contentStream';
+import { getLocatedRuns } from './locateCache';
+import { commitTextEdit, TexteditError } from './mutate';
 import { useTextEditStore, type EditingSession } from './store';
 import type { RunColor } from './types';
 
@@ -54,55 +56,6 @@ const rgbCss = (c: RunColor) =>
   `rgb(${Math.round(c.r * 255)}, ${Math.round(c.g * 255)}, ${Math.round(c.b * 255)})`;
 
 /**
- * Exactly one `keydown` listener regardless of how many pages (and thus
- * TextEditLayer instances) are mounted at once: every page renders its own
- * layer, but undo is a single document-wide stack.
- */
-let undoListenerCount = 0;
-
-function handleUndoKeydown(e: KeyboardEvent): void {
-  if (!useTextEditStore.getState().active) return;
-  // Any focused editable control (our contentEditable editor, form-field
-  // inputs, search boxes) keeps its own native Ctrl/Cmd+Z; document-level
-  // undo only applies when nothing editable has focus.
-  const focused = document.activeElement;
-  if (
-    focused instanceof HTMLElement &&
-    (focused.isContentEditable ||
-      focused.tagName === 'INPUT' ||
-      focused.tagName === 'TEXTAREA' ||
-      focused.tagName === 'SELECT')
-  ) {
-    return;
-  }
-  const isUndo =
-    (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z';
-  if (!isUndo) return;
-
-  const bytes = useTextEditStore.getState().popUndo();
-  if (!bytes) return;
-  e.preventDefault();
-  void reloadEditedBytes(bytes);
-}
-
-function useGlobalUndoListener(): void {
-  useEffect(() => {
-    undoListenerCount++;
-    if (undoListenerCount === 1) window.addEventListener('keydown', handleUndoKeydown);
-    return () => {
-      undoListenerCount--;
-      if (undoListenerCount === 0) window.removeEventListener('keydown', handleUndoKeydown);
-    };
-  }, []);
-}
-
-/** Document bytes + PDF.js font resource name kept alongside an open session. */
-interface Pending {
-  bytes: Uint8Array;
-  fontName: string;
-}
-
-/**
  * In-place editing overlay for one page: click existing text to replace it.
  * The clicked PDF.js text item is matched to a located show-text operator in
  * the page's content stream (see ./types.ts for the pipeline this feature
@@ -113,10 +66,7 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
   const session = useTextEditStore((s) => s.session);
   const scale = useViewerStore((s) => s.scale);
   const rootRef = useRef<HTMLDivElement>(null);
-  const pendingRef = useRef<Pending | null>(null);
   const pageIndex = pageNumber - 1;
-
-  useGlobalUndoListener();
 
   // Hover affordance lives on the text layer, a sibling of this one; toggle a
   // class on their shared .folio-page ancestor rather than reaching sideways.
@@ -127,11 +77,6 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
       pageEl?.classList.remove('is-textedit-active');
     };
   }, [active]);
-
-  // Release the held document bytes once the session they belong to ends.
-  useEffect(() => {
-    if (!session) pendingRef.current = null;
-  }, [session]);
 
   const isThisPage = session != null && session.pageIndex === pageIndex;
 
@@ -148,9 +93,8 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
     const item = findBestItem(items, pdfX, pdfY);
     if (!item) return;
 
-    const pdfBytes = await engine.saveDocument();
-    const streams = await getPageContentStreams(pdfBytes, pageIndex);
-    const runs = parseContentStreams(streams);
+    const docVersion = useDocumentStore.getState().docVersion;
+    const runs = await getLocatedRuns(docVersion, pageIndex);
     const transform = item.transform as number[];
     const origin = { x: transform[4], y: transform[5] };
     const run = matchRunToItem(runs, origin, undefined);
@@ -178,7 +122,6 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
       height: Math.abs(vr[3] - vr[1]),
     };
 
-    pendingRef.current = { bytes: pdfBytes, fontName: item.fontName };
     useTextEditStore.getState().beginSession({
       pageIndex,
       // run.x/run.y (not the PDF.js item's own origin): commitTextEdit
@@ -192,6 +135,7 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
       fontSizePx: item.height * scale,
       color: run.color,
       fontSize: run.fontSize,
+      pdfFontName: item.fontName,
     });
   };
 
@@ -202,35 +146,39 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
     void tryEditAt(pageEl, clientX, clientY);
   };
 
-  /** Commit flow: replace the run in the held bytes, then live-reload them. */
+  /**
+   * Commit flow: serialize the document fresh (so anything the user changed
+   * while the editor was open, e.g. a form-field value, is not silently
+   * reverted), replace the run in those bytes, then live-reload the result.
+   */
   const handleCommit = (newText: string, onFailure: () => void) => {
     const currentSession = useTextEditStore.getState().session;
-    const pending = pendingRef.current;
-    if (!currentSession || !pending) {
+    if (!currentSession) {
       onFailure();
       return;
     }
 
-    useTextEditStore.getState().pushUndo(pending.bytes);
     void (async () => {
       try {
+        const bytes = await getEngine().saveDocument();
         const result = await commitTextEdit({
-          pdfBytes: pending.bytes,
+          pdfBytes: bytes,
           pageIndex: currentSession.pageIndex,
           target: currentSession.target,
           newText,
           style: {
-            fontFamilyHint: `${pending.fontName} ${currentSession.fontFamily}`.trim(),
+            fontFamilyHint: `${currentSession.pdfFontName} ${currentSession.fontFamily}`.trim(),
             fontSize: currentSession.fontSize,
             color: currentSession.color,
           },
         });
+        // Only push the pre-edit snapshot once the commit has actually
+        // succeeded: a failed attempt below never reaches here, so there is
+        // nothing to compensate for in the catch block.
+        useTextEditStore.getState().pushUndo(bytes);
         await reloadEditedBytes(result);
         useTextEditStore.getState().endSession();
       } catch (error) {
-        // The commit never happened: the pushed snapshot would undo to a state
-        // identical to the current one, so drop it rather than keep a no-op entry.
-        useTextEditStore.getState().popUndo();
         const message =
           error instanceof TexteditError ? error.message : 'Could not save this text edit';
         pushToast(message, 'error');
@@ -244,7 +192,7 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
   };
 
   return (
-    <div ref={rootRef} className="folio-textedit-layer">
+    <div ref={rootRef} className="folio-textedit-layer" data-pan-exclude>
       {active && !session && (
         <button
           type="button"
