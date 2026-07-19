@@ -8,7 +8,6 @@ shell is never invoked. If soffice were called via a shell string, these names
 would execute; with list-form argv they cannot.
 """
 import random
-import subprocess
 import sys
 import types
 from pathlib import Path

@@ -24,6 +24,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   its new API: the pre-validated addresses are now pinned through a custom
   `Resolver` (`Agent::with_parts`), redirects are disabled via `max_redirects(0)`,
   and the body size ceiling is enforced with `Body::with_config().limit(...)`.
+- **Pinned the OCR language-model download to a SHA-256 digest.**
+  `scripts/setup-ocr-assets.mjs` fetches `eng.traineddata.gz` at setup time; it
+  now verifies the download against a pinned hash *before* writing it to
+  `public/tesseract/` and re-verifies a cached copy on every run, so a tampered,
+  truncated, or MITM'd model never lands on disk. The pinned `.gz` decompresses
+  byte-for-byte to the authoritative `tessdata_fast` 4.0.0 English model
+  (provenance recorded inline in the script).
 
 ### Added
 
