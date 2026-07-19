@@ -203,13 +203,16 @@ export function PdfViewer() {
       const dt = Math.min((ts - last) / 1000, 0.05);
       last = ts;
       // Hold position while the user is actively panning the page by hand.
-      if (!panRef.current && dt > 0) {
+      const maxTop = container.scrollHeight - container.clientHeight;
+      // Nothing to scroll (the document fits the viewport): idle without
+      // advancing or spuriously announcing the end. Stays armed, so it starts
+      // gliding if the content later overflows (e.g. the user zooms in).
+      if (!panRef.current && dt > 0 && maxTop > 0.5) {
         // If the user scrolled by hand (wheel, keys), adopt that position.
         if (Math.abs(container.scrollTop - pos) > 2) pos = container.scrollTop;
         const speed = useViewerStore.getState().autoScrollSpeed;
         pos += speed * dt;
         container.scrollTop = pos;
-        const maxTop = container.scrollHeight - container.clientHeight;
         if (pos >= maxTop - 0.5) {
           useViewerStore.getState().setAutoScroll(false);
           announce('Auto-scroll reached the end');

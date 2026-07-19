@@ -99,10 +99,19 @@ export class PdfJsEngine implements PdfEngine {
     const viewport = page.getViewport({ scale });
     const dpr = window.devicePixelRatio || 1;
     const target = Math.min(3, Math.max(2, dpr)); // supersample toward crisp
-    const byDim = MAX_CANVAS_DIM / Math.max(viewport.width, viewport.height);
-    const byArea = Math.sqrt(MAX_CANVAS_AREA / (viewport.width * viewport.height));
-    // Take the tightest cap, but never render below the display's own density.
-    const outputScale = Math.max(Math.min(1, dpr), Math.min(target, byDim, byArea));
+    // Hard ceiling on the backing store: the tighter of the max-per-side and
+    // pixel-budget limits. It has to win unconditionally — past ~5x zoom the
+    // page's CSS layout size alone already exceeds the budget, so any floor
+    // (even 1x) would bust the cap and hand the browser an oversized canvas it
+    // silently downscales anyway (blur) while burning the memory the cap exists
+    // to bound. There we accept a sub-1x, browser-downsampled render instead.
+    const cap = Math.min(
+      MAX_CANVAS_DIM / Math.max(viewport.width, viewport.height),
+      Math.sqrt(MAX_CANVAS_AREA / (viewport.width * viewport.height)),
+    );
+    // Aim for `target` (>= 2x, so normal pages never drop below CSS resolution),
+    // but never above the cap.
+    const outputScale = Math.min(target, cap);
 
     canvas.width = Math.round(viewport.width * outputScale);
     canvas.height = Math.round(viewport.height * outputScale);
