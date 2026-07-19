@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-19
+
 ### Security
 
 - **Hardened the `fetch_pdf` browser hand-off against SSRF.** The `folio://`
@@ -305,6 +307,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
   cargo-deny policy.
 
-[Unreleased]: https://github.com/owenpkent/folio/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/owenpkent/folio/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/owenpkent/folio/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/owenpkent/folio/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/owenpkent/folio/releases/tag/v0.1.0
