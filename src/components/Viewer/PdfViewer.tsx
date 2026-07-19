@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useRef } from 'react';
 
+import { announce } from '@/a11y/announcer';
 import { getEngine } from '@/core/pdf';
+import { useContextMenu } from '@/features/contextmenu';
 import { focusViewer, setViewerElement } from '@/state/viewerElement';
 import { MAX_SCALE, MIN_SCALE, useViewerStore } from '@/state/viewerStore';
 import { useDocumentStore } from '@/state/documentStore';
 
 import { EmptyState } from './EmptyState';
 import { Page } from './Page';
+
+function announceSpeed(): void {
+  announce(`Auto-scroll speed ${useViewerStore.getState().autoScrollSpeed} pixels per second`);
+}
 
 /** The scrollable document surface: fit/zoom, lazy pages, current-page tracking. */
 export function PdfViewer() {
@@ -18,7 +24,9 @@ export function PdfViewer() {
   const scale = useViewerStore((s) => s.scale);
   const fitMode = useViewerStore((s) => s.fitMode);
   const handMode = useViewerStore((s) => s.handMode);
+  const autoScroll = useViewerStore((s) => s.autoScroll);
   const pendingScrollPage = useViewerStore((s) => s.pendingScrollPage);
+  const openContextMenu = useContextMenu((s) => s.openMenu);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const naturalRef = useRef<{ width: number; height: number } | null>(null);
@@ -142,6 +150,27 @@ export function PdfViewer() {
     // empty state, so the listener must (re)attach when that element appears.
   }, [status]);
 
+  // Re-rasterise every page when devicePixelRatio changes — dragging the window
+  // to a monitor of a different scale leaves canvases baked at the old ratio,
+  // which the OS then stretches (blur). devicePixelRatio has no change event, so
+  // use the documented trick: a `(resolution: Xdppx)` media query is a fixed
+  // boundary that stops matching the instant dpr changes; re-register a fresh
+  // query each time it fires.
+  useEffect(() => {
+    let mql: MediaQueryList | null = null;
+    const onChange = () => {
+      useViewerStore.getState().bumpRenderNonce();
+      subscribe();
+    };
+    const subscribe = () => {
+      mql?.removeEventListener('change', onChange);
+      mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      mql.addEventListener('change', onChange, { once: true });
+    };
+    subscribe();
+    return () => mql?.removeEventListener('change', onChange);
+  }, []);
+
   // Honor scroll-to-page requests (outline clicks, page box, next/prev).
   useEffect(() => {
     if (pendingScrollPage == null) return;
@@ -155,10 +184,76 @@ export function PdfViewer() {
     useViewerStore.getState().clearPendingScroll();
   }, [pendingScrollPage]);
 
-  // Hand (pan) tool: click-drag scrolls the document. Interactive overlays keep
-  // their own drag behavior; everything else pans.
+  // Auto-scroll (teleprompter): glide the page down while active. A floating
+  // point position is advanced every frame and written straight to scrollTop —
+  // browsers keep sub-pixel scroll offsets on HiDPI, so even a slow crawl moves
+  // smoothly instead of stepping a whole pixel at a time. Speed is read live so
+  // slider/keyboard changes apply without restarting the loop. Panning pauses
+  // it, manual scrolling is adopted, and reaching the bottom switches it off.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!autoScroll || !container) return;
+
+    let raf = 0;
+    let last = 0;
+    let pos = container.scrollTop; // float scroll position we own between frames
+    const step = (ts: number) => {
+      if (last === 0) last = ts;
+      // Clamp dt so a dropped/backgrounded frame doesn't lurch the page.
+      const dt = Math.min((ts - last) / 1000, 0.05);
+      last = ts;
+      // Hold position while the user is actively panning the page by hand.
+      if (!panRef.current && dt > 0) {
+        // If the user scrolled by hand (wheel, keys), adopt that position.
+        if (Math.abs(container.scrollTop - pos) > 2) pos = container.scrollTop;
+        const speed = useViewerStore.getState().autoScrollSpeed;
+        pos += speed * dt;
+        container.scrollTop = pos;
+        const maxTop = container.scrollHeight - container.clientHeight;
+        if (pos >= maxTop - 0.5) {
+          useViewerStore.getState().setAutoScroll(false);
+          announce('Auto-scroll reached the end');
+          return;
+        }
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+
+    // While auto-scrolling, keep speed control and stop on the keyboard.
+    const onKey = (e: KeyboardEvent) => {
+      // Don't steal keys while the user is typing in a field (find box, page box).
+      const el = e.target as Element | null;
+      if (el?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (e.key === 'Escape') {
+        useViewerStore.getState().setAutoScroll(false);
+        announce('Auto-scroll off');
+        e.preventDefault();
+      } else if (e.key === 'ArrowUp' || e.key === '+' || e.key === '=') {
+        useViewerStore.getState().adjustAutoScrollSpeed(1.3);
+        announceSpeed();
+        e.preventDefault();
+      } else if (e.key === 'ArrowDown' || e.key === '-' || e.key === '_') {
+        useViewerStore.getState().adjustAutoScrollSpeed(1 / 1.3);
+        announceSpeed();
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [autoScroll]);
+
+  // Pan the document by dragging: the hand tool with the left button, or the
+  // middle button in any mode (like Acrobat / browsers). Interactive overlays
+  // keep their own drag behavior; everything else pans.
   const onPanStart = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!handMode || e.button !== 0) return;
+    const handLeft = handMode && e.button === 0;
+    const middle = e.button === 1;
+    if (!handLeft && !middle) return;
     const target = e.target as Element;
     if (target.closest('input, textarea, button, a, [data-pan-exclude]')) {
       return;
@@ -198,6 +293,25 @@ export function PdfViewer() {
     }
   };
 
+  // Suppress the browser's middle-click autoscroll widget so our middle-button
+  // pan (onPanStart) takes over instead. preventDefault must happen on mousedown
+  // for the pointer button; the pointerdown handler above starts the actual pan.
+  const onMouseDownCapture = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button === 1) e.preventDefault();
+  };
+
+  // Acrobat-style right-click menu. Leave editable targets (note editor, inputs)
+  // to the native menu so copy/paste there still works.
+  const onContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as Element;
+    if (target.closest('input, textarea, [contenteditable="true"], [data-context-native]')) {
+      return;
+    }
+    e.preventDefault();
+    const selectionText = window.getSelection()?.toString() ?? '';
+    openContextMenu(e.clientX, e.clientY, selectionText);
+  };
+
   if (status === 'empty') return <EmptyState />;
   if (status === 'error') {
     return (
@@ -210,14 +324,16 @@ export function PdfViewer() {
   return (
     <div
       ref={containerRef}
-      className={`folio-viewer${handMode ? ' is-hand' : ''}`}
+      className={`folio-viewer${handMode ? ' is-hand' : ''}${autoScroll ? ' is-autoscroll' : ''}`}
       role="region"
       aria-label="Document pages"
       aria-busy={status === 'loading'}
+      onMouseDownCapture={onMouseDownCapture}
       onPointerDown={onPanStart}
       onPointerMove={onPanMove}
       onPointerUp={onPanEnd}
       onLostPointerCapture={onPanEnd}
+      onContextMenu={onContextMenu}
       // A scrollable region must be keyboard focusable so it can be scrolled
       // with the arrow keys (WCAG 2.1.1).
       // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex

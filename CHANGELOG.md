@@ -43,6 +43,50 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Hand (pan) tool**: a grab tool in the toolbar (and the `view.toggleHandMode`
   command) that lets you click-drag the page to scroll. Text selection is
   suppressed while it is active; form fields and placed edits still work.
+  Dragging tracks the cursor 1:1 (the viewer's `scroll-behavior: smooth` is
+  disabled while grabbing, so scrolling is instant rather than eased).
+  Middle-mouse-button drag now pans the page the same way in **any** mode, hand
+  tool on or off, and the browser's own middle-click autoscroll is suppressed
+  so it doesn't fight with it.
+- **Continuous auto-scroll**: a teleprompter-style scroll, toggled with a new
+  toolbar button (in the center group next to the hand tool) or the
+  `view.toggleAutoScroll` command. Speed ranges 4-160 px/s (`autoScroll`,
+  `autoScrollSpeed` in `viewerStore`, default 12), set with a geometric,
+  slow-weighted slider that appears next to the button for finer control at low
+  speeds. While running, `Esc` stops it and `ArrowUp`/`+` and `ArrowDown`/`-`
+  speed it up or slow it down; it pauses automatically while hand-panning and
+  stops on its own at the end of the document. Motion is smooth, sub-pixel
+  scrolling rather than a fixed per-frame jump.
+- **Right-click context menu**, Acrobat-style (new `src/features/contextmenu`
+  module): Select tool / Hand tool (with a checkmark on whichever is active),
+  Copy (selection), Highlight, Add comment, Add text box, Add image, Add
+  signature, Find, and Save a copy. It duplicates existing toolbar commands
+  rather than adding new behavior, and editable targets (form inputs, the note
+  editor) keep the browser's native context menu.
+- **The open document's filename** now shows in the toolbar's left group, next
+  to the open button, truncated with an ellipsis with the full name available
+  on hover.
+- **About dialog** (`help.about` command, an info (i) toolbar icon,
+  `src/features/about/AboutModal.tsx`): shows the app version, the git commit
+  hash, the build date, and the display's `devicePixelRatio` and window size.
+  Version/commit/date are injected at build time via Vite `define`
+  (`__APP_VERSION__`, `__COMMIT_HASH__` from `git rev-parse --short HEAD`,
+  falling back to "unknown", and `__BUILD_DATE__`; see `vite.config.ts` and
+  `src/vite-env.d.ts`). The dialog also has a manual "Check for updates"
+  button (`help.checkForUpdates`, desktop/Tauri only) that reuses the existing
+  `checkForUpdates(false)` path so it reports both "up to date" and error
+  outcomes via toast, not just a found update; the silent launch-time update
+  check is unchanged.
+- **Zoom now snaps to clean preset levels** - 25 / 50 / 75 / 100 / 125 / 150 /
+  200 / 300 / 400 / 600 / 800% - via `zoomIn`/`zoomOut`, instead of an
+  arbitrary step. The overall 25%-800% clamp is unchanged, and fit-width /
+  fit-page still compute an exact scale rather than snapping.
+- **Selectable dark reading schemes**, Acrobat-style: **Night** (plain
+  white-on-black), **Green**, and **Amber**, chosen from a new toolbar dropdown
+  (`DarkSchemeMenu`) next to the light/dark toggle. The choice is tied to dark
+  mode - light mode always shows the page as authored - and is persisted
+  (`darkScheme` in `themeStore`, `folio.darkScheme` in local storage, default
+  `night`).
 - **`Page Up` / `Page Down` scroll the document**, as the `nav.scrollUp` /
   `nav.scrollDown` commands. They are bound as commands rather than left to the
   browser so they keep working wherever focus happens to be.
@@ -114,6 +158,37 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Dark mode is now unified across the UI and the page**, instead of a
+  separate reading-mode setting. The single light/dark/system toggle
+  (`theme.toggle`) darkens the UI chrome and inverts the rendered page
+  together. The old **normal / night / sepia / high-contrast reading modes**
+  are removed entirely, along with the `theme.cycleReadingMode` command, the
+  `data-reading-mode` attribute, and the contrast toolbar button that cycled
+  between them: night is effectively folded into the dark theme, and sepia and
+  high-contrast are gone. Page inversion moved from a CSS `filter` on the page
+  canvas, which some rendering engines re-rasterized and blurred at CSS
+  resolution, to a `globalCompositeOperation: 'difference'` fill applied
+  directly on the canvas in `PdfJsEngine.renderPage`, at the canvas's full
+  backing-store resolution, so dark pages are now sharp instead of soft.
+  Thumbnails still use the old CSS filter, since they're small enough that the
+  blur was never visible there. See the new **selectable dark reading
+  schemes** entry above and docs/theming.md.
+- **Rendering overhaul for crisper text on high-DPI and fractional-scaling
+  displays.** Page canvases now render above the display's own pixel density
+  (targeting roughly 2x, minimum 2, maximum 3) and are downsampled into the
+  page's layout size, capped by a pixel budget (`MAX_CANVAS_AREA`,
+  16,777,216px, matching PDF.js's own `maxCanvasPixels` default) and a
+  4096px-per-side maximum (`MAX_CANVAS_DIM`), and never rendered below the
+  display's actual `devicePixelRatio`. Previously the backing store was sized
+  close to CSS pixels, which read soft on fractional-scale displays (Windows
+  125%/150%) and on platforms that under-report DPI. The viewer also now
+  re-renders visible pages when `devicePixelRatio` changes mid-session, such as
+  when a window is dragged between monitors with different scaling.
+- **Page virtualization bounds memory on long documents.** Each page's canvas
+  backing store is released (dimensions zeroed, text and form layers cleared)
+  once it scrolls more than 600px out of the viewport, and is re-rendered when
+  it scrolls back into range, instead of every page a session had ever
+  displayed keeping its full-resolution canvas allocated indefinitely.
 - The in-app **"Set as default PDF viewer"** action now deep-links straight to
   Folio's page in *Settings > Default apps* (via a `RegisteredApplications`
   Capabilities entry written by the installer, `src-tauri/installer.nsh`), so you

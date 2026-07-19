@@ -35,8 +35,10 @@ Folio rendering a two-page form PDF, in light and dark:
 
 **Reading**
 - Open, render, and navigate PDFs with a continuous, lazily-rendered page view
-- Zoom, fit-to-width, fit-to-page, and a live page indicator
-- Hand (pan) tool: grab and drag the page to scroll
+- Zoom (snaps to clean preset levels), fit-to-width, fit-to-page, and a live page indicator
+- Hand (pan) tool with 1:1 cursor tracking, plus middle-click drag-to-pan in any mode
+- Continuous auto-scroll (teleprompter-style), with adjustable speed and keyboard control
+- Acrobat-style right-click context menu for common tools and actions
 - Thumbnail strip and document outline (bookmarks)
 - Fast in-document text search with a results list
 
@@ -47,8 +49,8 @@ Folio rendering a two-page form PDF, in light and dark:
 - Respects `prefers-reduced-motion`; targets WCAG 2.2 AA
 
 **Dark mode and reading comfort**
-- Native light / dark / system UI theming via CSS custom properties
-- Page reading modes: normal, night (inverted), sepia, and high-contrast
+- Native light / dark / system theming via CSS custom properties, unified across the UI chrome and the rendered page: toggling dark darkens the whole app and inverts the page together, rendered at full resolution for crisp text
+- Selectable dark reading schemes (Acrobat-style): Night (white-on-black), Green, and Amber
 
 **Annotations**
 - Highlight selected text; annotations persist per document
@@ -90,6 +92,7 @@ Folio rendering a two-page form PDF, in light and dark:
 - EV-signed Windows installer; installs per-user and **auto-updates** from GitHub Releases
 - Set Folio as your **default PDF viewer**: double-click a `.pdf` to open it in Folio (there's a one-click "make default" action on the start screen)
 - Open PDFs from your browser: a Chrome extension renders them in Folio, or hands off to the desktop app via a `folio://` deep link
+- **About dialog** with app version, commit hash, and build date, plus a manual "Check for updates" action (desktop)
 
 **AI-ready**
 - A provider-agnostic AI layer with an experimental, opt-in Claude provider (bring-your-own-key)
@@ -181,7 +184,7 @@ folio/
 │  ├─ features/          annotations, editing, textedit, ocr, signatures, forms, save/export
 │  ├─ plugins/           plugin host, SDK types, built-in Word Count plugin
 │  ├─ ai/                provider-agnostic AI layer (Claude, experimental) + MCP stubs
-│  ├─ theme/             tokens, ThemeProvider, reading modes
+│  ├─ theme/             tokens, ThemeProvider, dark schemes
 │  ├─ a11y/              announcer, focus, keyboard shortcuts
 │  ├─ state/             Zustand stores
 │  ├─ styles/            global CSS

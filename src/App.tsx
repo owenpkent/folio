@@ -17,6 +17,8 @@ import { registerEditCommands } from '@/features/editing';
 import { registerExportCommands } from '@/features/export';
 import { registerFileOpen } from '@/features/fileopen';
 import { OcrProgressModal, registerOcrCommands } from '@/features/ocr';
+import { AboutModal } from '@/features/about';
+import { ContextMenu } from '@/features/contextmenu';
 import { registerSignatureCommands, SignatureModal } from '@/features/signatures';
 import { registerSigningCommands, SigningModal } from '@/features/signing';
 import { registerTextEditCommands } from '@/features/textedit';
@@ -105,6 +107,8 @@ export function App() {
       <SignatureModal />
       <SigningModal />
       <OcrProgressModal />
+      <AboutModal />
+      <ContextMenu />
       <ToastHost />
     </div>
   );

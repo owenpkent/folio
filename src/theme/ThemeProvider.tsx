@@ -3,16 +3,14 @@ import { useEffect, type ReactNode } from 'react';
 import { useThemeStore } from './themeStore';
 
 /**
- * Applies the resolved UI theme and page reading mode to the document root.
+ * Applies the resolved UI theme to the document root.
  *
- * - `data-theme` drives the CSS custom properties in `theme/tokens.css`.
- * - `data-reading-mode` drives the page-canvas filters.
- *
- * When the UI theme is "system" it tracks `prefers-color-scheme` live.
+ * `data-theme` drives the CSS custom properties in `theme/tokens.css`, and in
+ * dark mode also inverts the page canvas (one unified dark experience). When the
+ * UI theme is "system" it tracks `prefers-color-scheme` live.
  */
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const theme = useThemeStore((s) => s.theme);
-  const readingMode = useThemeStore((s) => s.readingMode);
   const setResolvedTheme = useThemeStore((s) => s.setResolvedTheme);
 
   useEffect(() => {
@@ -30,10 +28,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       return () => media.removeEventListener('change', apply);
     }
   }, [theme, setResolvedTheme]);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-reading-mode', readingMode);
-  }, [readingMode]);
 
   return <>{children}</>;
 }

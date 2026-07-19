@@ -7,22 +7,39 @@ import { useTextEditStore } from '@/features/textedit';
 import { useContributionStore } from '@/plugins';
 import { useDocumentStore } from '@/state/documentStore';
 import { focusViewer } from '@/state/viewerElement';
-import { useViewerStore } from '@/state/viewerStore';
+import {
+  AUTO_SCROLL_MAX,
+  AUTO_SCROLL_MIN,
+  useViewerStore,
+} from '@/state/viewerStore';
 import { useThemeStore } from '@/theme/themeStore';
 
+import { DarkSchemeMenu } from './DarkSchemeMenu';
+
 const run = (id: string) => commandRegistry.execute(id);
+
+// The auto-scroll slider is geometric, not linear: equal slider travel is equal
+// *ratio* of speed change, so the slow end (where fine control matters) gets as
+// much of the track as the fast end. Position runs 0..1.
+const speedToSlider = (speed: number): number =>
+  Math.log(speed / AUTO_SCROLL_MIN) / Math.log(AUTO_SCROLL_MAX / AUTO_SCROLL_MIN);
+const sliderToSpeed = (pos: number): number =>
+  AUTO_SCROLL_MIN * (AUTO_SCROLL_MAX / AUTO_SCROLL_MIN) ** pos;
 
 /** The top application toolbar. */
 export function Toolbar() {
   const hasDoc = useDocumentStore((s) => s.status === 'ready');
+  const docName = useDocumentStore((s) => s.info?.name);
   const currentPage = useViewerStore((s) => s.currentPage);
   const numPages = useViewerStore((s) => s.numPages);
   const scale = useViewerStore((s) => s.scale);
   const sidebarOpen = useViewerStore((s) => s.sidebarOpen);
   const handMode = useViewerStore((s) => s.handMode);
+  const autoScroll = useViewerStore((s) => s.autoScroll);
+  const autoScrollSpeed = useViewerStore((s) => s.autoScrollSpeed);
+  const setAutoScrollSpeed = useViewerStore((s) => s.setAutoScrollSpeed);
   const goToPage = useViewerStore((s) => s.goToPage);
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme);
-  const readingMode = useThemeStore((s) => s.readingMode);
   const addingNote = useNotesUi((s) => s.adding);
   const textEditActive = useTextEditStore((s) => s.active);
   const toolbarItems = useContributionStore((s) => s.toolbarItems);
@@ -41,6 +58,11 @@ export function Toolbar() {
           label="Open document (Ctrl/Cmd + O)"
           onClick={() => run('file.open')}
         />
+        {hasDoc && docName && (
+          <span className="folio-toolbar__title" title={docName}>
+            {docName}
+          </span>
+        )}
       </div>
 
       <div className="folio-toolbar__group folio-toolbar__group--center">
@@ -97,6 +119,30 @@ export function Toolbar() {
           disabled={!hasDoc}
           onClick={() => run('view.toggleHandMode')}
         />
+        <IconButton
+          icon="auto-scroll"
+          label="Auto-scroll (continuous)"
+          active={autoScroll}
+          disabled={!hasDoc}
+          onClick={() => run('view.toggleAutoScroll')}
+        />
+        {/* Fixed-width slot so the slider appearing/disappearing never reflows
+            the other toolbar buttons. */}
+        <span className="folio-toolbar__speed-slot">
+          {autoScroll && (
+            <input
+              className="folio-toolbar__speed"
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={speedToSlider(autoScrollSpeed)}
+              aria-label={`Auto-scroll speed, ${autoScrollSpeed} pixels per second`}
+              title="Auto-scroll speed (slower ← → faster)"
+              onChange={(e) => setAutoScrollSpeed(sliderToSpeed(Number(e.target.value)))}
+            />
+          )}
+        </span>
       </div>
 
       <div className="folio-toolbar__group folio-toolbar__group--right">
@@ -174,16 +220,16 @@ export function Toolbar() {
           disabled={!hasDoc}
           onClick={() => run('search.toggle')}
         />
-        <IconButton
-          icon="contrast"
-          label={`Reading mode: ${readingMode}`}
-          active={readingMode !== 'normal'}
-          onClick={() => run('theme.cycleReadingMode')}
-        />
+        <DarkSchemeMenu />
         <IconButton
           icon={resolvedTheme === 'dark' ? 'sun' : 'moon'}
           label="Toggle light / dark (Ctrl/Cmd + Shift + L)"
           onClick={() => run('theme.toggle')}
+        />
+        <IconButton
+          icon="info"
+          label="About Folio (version, build info, updates)"
+          onClick={() => run('help.about')}
         />
       </div>
     </header>

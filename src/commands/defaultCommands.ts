@@ -3,11 +3,12 @@ import { invoke } from '@tauri-apps/api/core';
 import { announce } from '@/a11y/announcer';
 import { pushToast } from '@/components/common';
 import { isTauri } from '@/core/document/openDocument';
+import { checkForUpdates } from '@/features/updates';
 import { closeDocument, openDocumentViaPicker } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
 import { scrollViewerByPage } from '@/state/viewerElement';
 import { useViewerStore } from '@/state/viewerStore';
-import { READING_MODE_LABELS, useThemeStore } from '@/theme/themeStore';
+import { useThemeStore } from '@/theme/themeStore';
 
 import { commandRegistry } from './registry';
 import type { Command } from './types';
@@ -121,6 +122,16 @@ const commands: Command[] = [
       announce(useViewerStore.getState().handMode ? 'Hand tool on' : 'Hand tool off');
     },
   },
+  {
+    id: 'view.toggleAutoScroll',
+    title: 'Auto-scroll (continuous)',
+    category: 'View',
+    when: hasDocument,
+    run: () => {
+      useViewerStore.getState().toggleAutoScroll();
+      announce(useViewerStore.getState().autoScroll ? 'Auto-scroll on' : 'Auto-scroll off');
+    },
+  },
 
   // Navigation
   {
@@ -219,13 +230,22 @@ const commands: Command[] = [
       announce(`${useThemeStore.getState().resolvedTheme} theme`);
     },
   },
+
+  // Help
   {
-    id: 'theme.cycleReadingMode',
-    title: 'Cycle page reading mode',
-    category: 'Appearance',
+    id: 'help.about',
+    title: 'About Folio',
+    category: 'Help',
+    run: () => useViewerStore.getState().setAboutModalOpen(true),
+  },
+  {
+    id: 'help.checkForUpdates',
+    title: 'Check for updates',
+    category: 'Help',
+    // Desktop only: the browser build has no Tauri shell to update.
+    when: () => isTauri(),
     run: () => {
-      useThemeStore.getState().cycleReadingMode();
-      announce(`Reading mode: ${READING_MODE_LABELS[useThemeStore.getState().readingMode]}`);
+      void checkForUpdates(false);
     },
   },
 ];

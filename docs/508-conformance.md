@@ -102,8 +102,9 @@ Implemented (`src/theme/tokens.css`, covered by `e2e/accessibility.spec.ts`):
   an explicit outline. Shadows are dropped, since the browser does not force them
   and an author-colored shadow would survive as a smudge.
 - **The document opts out.** The page canvas sets `forced-color-adjust: none`: a
-  PDF is content and must render as its author wrote it, not remapped. Reading
-  modes still apply, being the user's own explicit choice.
+  PDF is content and must render as its author wrote it, not remapped. Dark
+  mode's own page inversion still applies on top, being the user's own explicit
+  choice.
 - **Font size.** UI sizes are in `rem`, so the OS/browser font-size preference
   scales the interface.
 - **Focus cursor.** Focus is never removed and is styled from `--folio-focus`,
@@ -242,7 +243,7 @@ exactly why it is a common ACR failure.
 
 - **602.2 — accessibility features are listed and explained.**
   [accessibility.md](accessibility.md) documents the keyboard map, focus rules,
-  reading modes, platform-settings support, and assistive-technology
+  dark schemes, platform-settings support, and assistive-technology
   compatibility. This page documents the gaps.
 - **602.3 — electronic documentation conforms to WCAG 2.0 A/AA.** Documentation
   is plain Markdown with real headings, no images carrying meaning without alt

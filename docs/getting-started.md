@@ -157,7 +157,7 @@ folio/
 │  ├─ state/                # Zustand stores
 │  ├─ styles/               # global CSS
 │  ├─ test/                 # test setup (Vitest)
-│  └─ theme/                # ThemeProvider, design tokens, reading modes
+│  └─ theme/                # ThemeProvider, design tokens, dark schemes
 ├─ src-tauri/               # Rust backend (Tauri 2): src/, icons/, capabilities/
 ├─ index.html · package.json · tsconfig.json · vite.config.ts · LICENSE · README.md
 ```
@@ -195,5 +195,5 @@ Expected. The initial backend compile builds all crates from scratch; later buil
 
 - `docs/architecture.md`: the full layer stack and data flow.
 - `docs/accessibility.md`: keyboard shortcuts and the WCAG 2.2 AA approach.
-- `docs/theming.md`: design tokens, dark mode, and reading modes.
+- `docs/theming.md`: design tokens, dark mode, and dark schemes.
 - `docs/adr/`: the decisions behind the stack.

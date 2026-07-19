@@ -11,6 +11,8 @@ import { SignatureLayer } from '@/features/signatures';
 import { TextEditLayer } from '@/features/textedit';
 import { pluginHost } from '@/plugins';
 import { useDocumentStore } from '@/state/documentStore';
+import { useViewerStore } from '@/state/viewerStore';
+import { DARK_SCHEME_TINT, useThemeStore } from '@/theme/themeStore';
 
 interface PageProps {
   pageNumber: number;
@@ -23,6 +25,11 @@ interface PageProps {
  */
 export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
   const docVersion = useDocumentStore((s) => s.docVersion);
+  const renderNonce = useViewerStore((s) => s.renderNonce);
+  const dark = useThemeStore((s) => s.resolvedTheme === 'dark');
+  const darkScheme = useThemeStore((s) => s.darkScheme);
+  // In dark mode the page inverts; Green/Amber add a tint. Null tint => Night.
+  const tint = dark ? (DARK_SCHEME_TINT[darkScheme] ?? undefined) : undefined;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
@@ -44,21 +51,18 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
     };
   }, [pageNumber, scale]);
 
-  // Flag when the page nears the viewport (prefetch margin).
+  // Track whether the page is near the viewport (prefetch margin). Unlike a
+  // one-shot observer, this keeps watching so pages that scroll away can be torn
+  // down (see the render effect) — otherwise every page ever viewed keeps its
+  // canvas and memory climbs without bound on long documents.
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setVisible(true);
-            observer.disconnect();
-            break;
-          }
-        }
+        for (const entry of entries) setVisible(entry.isIntersecting);
       },
-      { rootMargin: '400px 0px' },
+      { rootMargin: '600px 0px' },
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -71,9 +75,19 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
   // Waiting for it would mean two render passes per scale change (once with
   // the stale dims, once with the new).
   useEffect(() => {
-    if (!visible) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // Scrolled away: drop the backing store (0x0 frees the raster memory) and
+    // clear the layers so an offscreen page costs almost nothing. It re-renders
+    // when it scrolls back into range.
+    if (!visible) {
+      canvas.width = 0;
+      canvas.height = 0;
+      textLayerRef.current?.replaceChildren();
+      formsLayerRef.current?.replaceChildren();
+      return;
+    }
 
     const controller = new AbortController();
     let active = true;
@@ -82,7 +96,14 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
     void (async () => {
       const { signal } = controller;
       try {
-        await engine.renderPage(pageNumber, { scale, canvas, signal, overlayForms: true });
+        await engine.renderPage(pageNumber, {
+          scale,
+          canvas,
+          signal,
+          overlayForms: true,
+          invert: dark,
+          tint,
+        });
         if (!active) return;
         if (textLayerRef.current) {
           await engine.renderTextLayer(pageNumber, textLayerRef.current, { scale, signal });
@@ -105,7 +126,7 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
       active = false;
       controller.abort();
     };
-  }, [visible, pageNumber, scale, docVersion]);
+  }, [visible, pageNumber, scale, docVersion, renderNonce, dark, tint]);
 
   return (
     <div

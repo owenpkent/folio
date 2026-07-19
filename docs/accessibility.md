@@ -1,6 +1,6 @@
 # Folio Accessibility Guide
 
-Accessibility is a first-class requirement in Folio, not a later pass. The target is **WCAG 2.2 Level AA**. This guide documents the concrete behaviors you can rely on and test against: the keyboard model, focus rules, ARIA structure, the text layer, live-region announcements, reading modes, reduced motion, zoom/reflow, and the automated plus manual testing approach.
+Accessibility is a first-class requirement in Folio, not a later pass. The target is **WCAG 2.2 Level AA**. This guide documents the concrete behaviors you can rely on and test against: the keyboard model, focus rules, ARIA structure, the text layer, live-region announcements, dark mode and dark schemes, reduced motion, zoom/reflow, and the automated plus manual testing approach.
 
 The accessibility utilities live in `src/a11y/` (announcer, focus trap, keyboard shortcut dispatch, and the skip link). Because every user action is a `Command` with an optional `keybinding` (see `docs/architecture.md`), keyboard access and menu access run the exact same code path.
 
@@ -43,7 +43,7 @@ These commands exist but have **no keyboard binding**; they are reachable from t
 | Fit width | `view.fitWidth` | Toolbar button |
 | Fit page | `view.fitPage` | Toolbar button |
 | Hand tool (pan to scroll) | `view.toggleHandMode` | Toolbar button |
-| Cycle reading mode | `theme.cycleReadingMode` | Toolbar button |
+| Auto-scroll (continuous, teleprompter-style) | `view.toggleAutoScroll` | Toolbar button |
 | Edit text | `textedit.toggle` | Toolbar button |
 | Add text box | `edit.addText` | Toolbar button |
 | Add image | `edit.addImage` | Toolbar button |
@@ -51,9 +51,15 @@ These commands exist but have **no keyboard binding**; they are reachable from t
 | Recognize text on this page | `ocr.recognizePage` | Command |
 | Add signature | `sign.addSignature` | Toolbar button / Signatures panel |
 | Digitally sign | `sign.digitallySign` | Toolbar button / Signatures panel |
+| About Folio | `help.about` | Toolbar button |
+| Check for updates (desktop only) | `help.checkForUpdates` | About dialog button |
 | Word Count (built-in plugin) | `plugin.wordCount.show` | Sidebar panel |
 
 Every one of these is reachable by keyboard through its toolbar button or panel, so no functionality is keyboard-inaccessible (WCAG 2.1.1); they simply have no dedicated chord. The planned command palette is what makes them all directly reachable.
+
+Once auto-scroll is running, it has its own keyboard controls rather than a fixed chord: `Esc` stops it, `ArrowUp`/`+` speeds it up, and `ArrowDown`/`-` slows it down. It also pauses automatically while hand-panning and stops on its own at the end of the document.
+
+The hand tool, middle-mouse-button page panning (available in any mode, not just with the hand tool on), and the right-click context menu are pointer-only affordances layered on top of the command system, not replacements for it. The context menu duplicates a subset of toolbar commands (select/hand tool, copy, highlight, add comment/text box/image/signature, find, save a copy) for convenience; every one of those remains reachable from the toolbar and keyboard as usual, so nothing the context menu offers is keyboard-inaccessible.
 
 Planned, **not yet implemented** (no command is registered for these today): a command palette (`Ctrl/Cmd+Shift+P`) and an in-app keyboard-shortcuts help overlay (`?`). Every toolbar button whose command has a binding names it in the button's label, which is both its `aria-label` and its tooltip (`IconButton` sets the two from one `label` prop), so bindings stay discoverable until the help overlay lands. If you give an existing command a binding, add it to that label too.
 
@@ -67,7 +73,7 @@ Everything reachable by mouse is reachable by keyboard. If you add a feature, ad
 
 Focus is deliberate, visible, and never lost. Rules enforced by `src/a11y` focus management:
 
-- **Visible focus rings, always.** Focus is styled with the `--folio-focus` token and is never removed (no `outline: none` without a replacement). Rings meet the 3:1 non-text contrast requirement in every theme and reading mode.
+- **Visible focus rings, always.** Focus is styled with the `--folio-focus` token and is never removed (no `outline: none` without a replacement). Rings meet the 3:1 non-text contrast requirement in every theme and dark scheme.
 - **Logical tab order.** DOM order matches visual order: skip link → Toolbar → Sidebar (when open) → page viewport. Tabbing never jumps unpredictably.
 - **Focus trapping in overlays.** Transient surfaces use the `useFocusTrap` helper in `src/a11y/focus.ts`, which cycles `Tab`/`Shift+Tab` within the container and restores focus to the opener on close. The search bar focuses its input when it opens and closes on `Escape`; the planned command palette will use the same helper.
 - **Focus restoration.** When an overlay closes, focus returns to the element that opened it. Closing the find bar and committing the page box both return focus to the page viewport (`focusViewer` in `src/state/viewerElement.ts`) rather than dropping it on `<body>`, which would leave the scroll keys with no scrollable element to act on.
@@ -91,7 +97,7 @@ Folio exposes a stable landmark structure so screen-reader users can navigate by
 
 There is no separate status-bar landmark today: the current page (an editable page box) and the current zoom percentage live in the toolbar, with the zoom readout in an `aria-live="polite"` region. A dedicated status bar is planned.
 
-Additional roles in the sidebar panels: thumbnails present a selectable list, each with `aria-current="page"` for the page in view; toolbar toggles expose their state via `aria-pressed`; the reading-mode control exposes its current mode in its label.
+Additional roles in the sidebar panels: thumbnails present a selectable list, each with `aria-current="page"` for the page in view; toolbar toggles expose their state via `aria-pressed`; the dark-scheme menu exposes its current scheme in its label.
 
 The sidebar rail is a real tablist: it uses a roving tabindex, so `Tab` steps over the rail as one stop and `↑`/`↓` (and `←`/`→`, and `Home`/`End`) move between tabs, with selection following focus. That handler is load-bearing rather than a nicety — a roving tabindex without it leaves every unselected panel unreachable by keyboard.
 
@@ -126,7 +132,6 @@ There are around three dozen announcements; `grep -rn "announce(" src/` is the a
 |---|---|
 | Page change | `Page 5 of 24` |
 | Zoom change | `Zoom 150 percent` |
-| Reading mode | `Reading mode: Night` (the capitalized mode label) |
 | Theme change | `dark theme` / `light theme` (the resolved theme) |
 | Document opened via the picker | `Opened report.pdf, 24 pages` |
 | Document closed | `Closed document` |
@@ -143,18 +148,17 @@ The polite region (`role="status"`, `aria-live="polite"`) never interrupts the u
 
 The find-in-page result count is a separate `aria-live="polite"` region inside the search bar (not routed through the announcer); it reads `3 of 17`, `Searching…`, or `No results`. Fit-mode changes and sidebar toggles are not currently announced.
 
-## Reading modes and contrast
+## Dark mode and dark schemes
 
-Folio separates the **UI theme** (chrome) from the **reading mode** (the page itself). Full detail is in `docs/theming.md`; the accessibility-relevant summary:
+Folio's dark mode is unified: toggling **light / dark / system** darkens the chrome and inverts the rendered page together, rather than treating the page as a separately-controlled reading mode. Full detail, including how the inversion is rendered, is in `docs/theming.md`; the accessibility-relevant summary is a choice of color for the inverted page, made via the dark-scheme picker next to the theme toggle:
 
-| Reading mode | Effect on page | Use case |
+| Dark scheme | Effect on page | Use case |
 |---|---|---|
-| Normal | No filter | Faithful color reproduction |
-| Night | Inverted, hue-preserved | Low-light reading without a blinding white page |
-| Sepia | Warm tint | Reduced glare, longer sessions |
-| High-contrast | Increased contrast, normalized | Low-vision users; maximizes text/background separation |
+| Night (default) | Inverted, white-on-black | Low-light reading without a blinding white page |
+| Green | Inverted, green-on-black | Reduced-glare reading, classic terminal-style contrast |
+| Amber | Inverted, amber-on-black | Reduced-glare reading, warmer alternative to Night |
 
-UI text and controls meet the WCAG 2.2 AA contrast minimums (4.5:1 for normal text, 3:1 for large text and non-text UI components) in both light and dark themes. Focus indicators meet 3:1 against adjacent colors. High-contrast reading mode is provided specifically for users who need more than the default separation on page content.
+UI text and controls meet the WCAG 2.2 AA contrast minimums (4.5:1 for normal text, 3:1 for large text and non-text UI components) in both light and dark themes. Focus indicators meet 3:1 against adjacent colors.
 
 ## Reduced motion
 
@@ -168,7 +172,7 @@ This is implemented at the token/CSS level so it applies uniformly, including to
 
 ## Zoom and reflow
 
-- **Continuous zoom** from a small fit-page view up to high magnification, via `view.zoomIn`/`view.zoomOut` (steps), `view.zoomReset` (100%), and fit modes.
+- **Zoom** from a small fit-page view up to high magnification, via `view.zoomIn`/`view.zoomOut`, `view.zoomReset` (100%), and fit modes. `view.zoomIn`/`view.zoomOut` snap to a fixed set of preset levels (25/50/75/100/125/150/200/300/400/600/800%) rather than an arbitrary step, so the readout always lands on a predictable, announced value; fit-width and fit-page still compute an exact scale for the viewport.
 - **Fit width** keeps the page column at the viewport width so horizontal scrolling is not required at typical reading zoom, which supports the WCAG reflow expectation for content.
 - **OS/browser text scaling** and **application zoom** stack: the surrounding UI uses relative units so it remains usable when the platform text size is increased.
 - Zoom level is announced (`Zoom 150 percent`) and shown as a live `150%` readout in the toolbar so it is perceivable without relying on the visual size change alone.
@@ -183,11 +187,11 @@ Accessibility is verified continuously, not audited once.
 - **Vitest** unit tests cover keyboard-shortcut dispatch (chords, the typing-in-input guard, and `when()` gating) and the stores behind accessible state.
 - **Playwright** end-to-end tests drive real keyboard and pointer flows in a browser (open, render, fill a form, sign), including `Page Up`/`Page Down` scrolling both with focus in the document and after it has moved to the toolbar. See [testing.md](testing.md).
 
-Planned: **axe-core** violation scanning wired into the end-to-end suite across views (viewer, sidebar open, search open, each reading mode, light and dark), plus unit tests for the announcer (polite vs assertive) and focus trap/restore. These are not yet implemented.
+Planned: **axe-core** violation scanning wired into the end-to-end suite across views (viewer, sidebar open, search open, each dark scheme, light and dark), plus unit tests for the announcer (polite vs assertive) and focus trap/restore. These are not yet implemented.
 
 **Manual (per release):**
 
-- **NVDA** on Windows and **VoiceOver** on macOS passes covering: opening a document, navigating pages, reading page text, using the outline tree, searching, and switching themes/reading modes.
+- **NVDA** on Windows and **VoiceOver** on macOS passes covering: opening a document, navigating pages, reading page text, using the outline tree, searching, and switching themes and dark schemes.
 - Keyboard-only pass with no mouse: confirm every action in the shortcuts table works, focus is always visible, and no overlay traps focus.
 - Reduced-motion and high-contrast passes with the OS setting enabled.
 
@@ -219,4 +223,4 @@ The table maps Folio features to the success criteria they satisfy. This is a wo
 
 - `docs/508-conformance.md`: how Folio maps to the Revised 508 Standards, which incorporate WCAG 2.0 A/AA by reference, plus the provisions WCAG does not cover (platform settings, authoring tools, support documentation) and the open gaps.
 - `docs/architecture.md`: the command registry and a11y layer in context.
-- `docs/theming.md`: token values, contrast, and reading-mode filters.
+- `docs/theming.md`: token values, contrast, dark mode, and dark schemes.

@@ -15,6 +15,14 @@ import type {
   SearchMatch,
 } from './types';
 
+// Canvas backing-store budget. pdf.js's low-level render API enforces no limit,
+// so we cap it ourselves: past the browser's canvas ceiling the page is silently
+// downscaled (blur) and memory balloons. 2^24 px matches pdf.js's own viewer
+// default (`maxCanvasPixels`); 4096 per side stays well under every engine's
+// max-dimension limit (Chromium/WebKit ~16k, but large canvases get unstable).
+const MAX_CANVAS_AREA = 16_777_216; // 2 ** 24
+const MAX_CANVAS_DIM = 4096;
+
 // PDF.js raw outline items, typed loosely to avoid depending on internals.
 interface RawOutlineItem {
   title: string;
@@ -77,21 +85,33 @@ export class PdfJsEngine implements PdfEngine {
   }
 
   async renderPage(pageNumber: number, options: RenderPageOptions): Promise<void> {
-    const { scale, canvas, signal, overlayForms = false } = options;
+    const { scale, canvas, signal, overlayForms = false, invert = false, tint } = options;
     const page = await this.getPage(pageNumber);
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Could not acquire a 2D canvas context');
 
-    // Render at device-pixel resolution for crisp text on HiDPI displays,
-    // then scale the canvas back down via CSS.
-    const outputScale = window.devicePixelRatio || 1;
+    // Rasterise above the display density (so text stays crisp even when the
+    // platform under-reports DPI — e.g. WebView2 under Windows scaling — and on
+    // plain 1x panels) and let the browser downsample the backing store into the
+    // canvas's CSS size. Crucially, clamp the backing store to a pixel BUDGET and
+    // a max DIMENSION: the low-level pdf.js API enforces neither, and a canvas
+    // past the browser's limit gets silently downscaled (blur) and burns memory.
     const viewport = page.getViewport({ scale });
-    canvas.width = Math.floor(viewport.width * outputScale);
-    canvas.height = Math.floor(viewport.height * outputScale);
-    canvas.style.width = `${Math.floor(viewport.width)}px`;
-    canvas.style.height = `${Math.floor(viewport.height)}px`;
+    const dpr = window.devicePixelRatio || 1;
+    const target = Math.min(3, Math.max(2, dpr)); // supersample toward crisp
+    const byDim = MAX_CANVAS_DIM / Math.max(viewport.width, viewport.height);
+    const byArea = Math.sqrt(MAX_CANVAS_AREA / (viewport.width * viewport.height));
+    // Take the tightest cap, but never render below the display's own density.
+    const outputScale = Math.max(Math.min(1, dpr), Math.min(target, byDim, byArea));
 
-    const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
+    canvas.width = Math.round(viewport.width * outputScale);
+    canvas.height = Math.round(viewport.height * outputScale);
+    // CSS size is the layout size (matches the text layer and page box exactly);
+    // the larger backing store is downsampled into it.
+    canvas.style.width = `${viewport.width}px`;
+    canvas.style.height = `${viewport.height}px`;
+
+    const transform = [outputScale, 0, 0, outputScale, 0, 0];
     const task = page.render({
       canvasContext: context,
       viewport,
@@ -118,6 +138,29 @@ export class PdfJsEngine implements PdfEngine {
       if ((error as { name?: string })?.name !== 'RenderingCancelledException') {
         throw error;
       }
+      return;
+    }
+
+    // Dark mode: invert the freshly-painted pixels at full backing-store
+    // resolution. `difference` with white computes |255 - channel| per pixel —
+    // exactly invert(1) — but on the real canvas, so it never triggers the
+    // CSS-filter path that some engines re-rasterise at CSS resolution (blur).
+    if (invert && !signal?.aborted) {
+      context.save();
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.globalCompositeOperation = 'difference';
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      // A green/amber reading scheme: multiply the inverted page by the tint so
+      // the (now white) ink takes the colour while black stays black. Multiply
+      // scales each channel, so anti-aliased edges become a gradient of the tint
+      // rather than a hard mask.
+      if (tint) {
+        context.globalCompositeOperation = 'multiply';
+        context.fillStyle = `rgb(${tint[0]}, ${tint[1]}, ${tint[2]})`;
+        context.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      context.restore();
     }
   }
 
