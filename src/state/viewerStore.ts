@@ -95,7 +95,13 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   },
   zoomOut: () => {
     const s = get().scale;
-    const next = [...ZOOM_LEVELS].reverse().find((z) => z < s - 1e-3) ?? ZOOM_LEVELS[0];
+    let next = ZOOM_LEVELS[0];
+    for (let i = ZOOM_LEVELS.length - 1; i >= 0; i--) {
+      if (ZOOM_LEVELS[i] < s - 1e-3) {
+        next = ZOOM_LEVELS[i];
+        break;
+      }
+    }
     set({ scale: clampScale(next), fitMode: 'custom' });
   },
   resetZoom: () => set({ scale: 1, fitMode: 'custom' }),

@@ -222,6 +222,10 @@ export function PdfViewer() {
 
     // While auto-scrolling, keep speed control and stop on the keyboard.
     const onKey = (e: KeyboardEvent) => {
+      // Don't steal keys the command dispatcher already handled (it runs first
+      // and preventDefaults its matches), and never fire on a modifier combo —
+      // otherwise Ctrl/Cmd+= and Ctrl/Cmd+- would zoom *and* change speed.
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
       // Don't steal keys while the user is typing in a field (find box, page box).
       const el = e.target as Element | null;
       if (el?.closest('input, textarea, select, [contenteditable="true"]')) return;

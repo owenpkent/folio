@@ -26,21 +26,25 @@ async function copyText(text: string): Promise<void> {
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
+    announce('Copied selection');
+    return;
   } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-      document.execCommand('copy');
-    } catch {
-      /* nothing more we can do */
-    }
-    document.body.removeChild(ta);
+    /* fall through to the legacy execCommand path */
   }
-  announce('Copied selection');
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    /* nothing more we can do */
+  }
+  document.body.removeChild(ta);
+  announce(ok ? 'Copied selection' : 'Copy failed');
 }
 
 /**
