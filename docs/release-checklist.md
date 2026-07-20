@@ -18,6 +18,7 @@ issue or defer the release.
 - [ ] `cargo test --manifest-path src-tauri/Cargo.toml` — Rust unit tests green
 - [ ] `npm run lint` — no ESLint errors
 - [ ] `npm run typecheck` — no type errors
+- [ ] `npm run check:versions` — `tauri` crate and `@tauri-apps/api` share the same major.minor (also enforced in CI)
 - [ ] `npm run build` — clean production build, no warnings worth investigating
 - [ ] `npm run test:e2e` — Playwright smoke suite green (needs `npx playwright install chromium` once)
 - [ ] No outstanding **High** or **Critical** Dependabot alerts on `main`

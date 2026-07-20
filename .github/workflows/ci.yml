@@ -44,6 +44,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Fail if the `tauri` crate and `@tauri-apps/api` drift in major.minor,
+      # which can silently break cross-window IPC (see scripts/check-tauri-versions.mjs).
+      - name: Check Tauri version parity
+        run: npm run check:versions
+
       - name: Unit tests
         run: npm run test
 

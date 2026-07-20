@@ -101,7 +101,8 @@ env vars and include `latest.json`.
 ### 3. Generate the update manifest
 
 ```bash
-node scripts/generate-latest.mjs --version <ver> --notes "What changed"
+npm run release:manifest -- --version <ver> --notes "What changed"
+# equivalently: node scripts/generate-latest.mjs --version <ver> --notes "What changed"
 ```
 
 Writes `release/latest.json` with the `windows-x86_64` entry (the `.sig` contents
@@ -114,11 +115,11 @@ Ship a CycloneDX Software Bill of Materials per release so downstream users can
 audit what's inside the binary. Folio has two dependency graphs:
 
 ```bash
-# renderer (production deps only)
-npx @cyclonedx/cyclonedx-npm --omit dev --output-file release/sbom/Folio_<ver>_sbom.npm.cyclonedx.json
-# backend (every crate compiled in); needs `cargo install cargo-cyclonedx` once
-cargo cyclonedx --manifest-path src-tauri/Cargo.toml --format json
+npm run release:sbom   # writes both SBOMs into release/sbom/ (Folio_<ver>_sbom.{npm,cargo}.cyclonedx.json)
 ```
+
+The Rust side needs `cargo-cyclonedx` (`cargo install cargo-cyclonedx` once); the npm
+side runs `@cyclonedx/cyclonedx-npm` via `npx` with no install.
 
 Attach both to the GitHub release in step 4 so the SBOM travels with the binary.
 
