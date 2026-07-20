@@ -39,10 +39,13 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
+    "check:versions": "node scripts/check-tauri-versions.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "release:manifest": "node scripts/generate-latest.mjs",
+    "release:sbom": "node scripts/generate-sbom.mjs"
   },
   "dependencies": {
     "@signpdf/placeholder-pdf-lib": "^3.3.0",
