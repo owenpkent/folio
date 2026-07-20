@@ -96,6 +96,10 @@ kbd {
   background: var(--folio-surface);
   border-bottom: 1px solid var(--folio-border);
   flex: 0 0 auto;
+  /* The toolbar is a fixed-height single row: no readout should ever wrap here.
+     Guarding at the container means every inline label (page "/ N", zoom %, the
+     filename) inherits it, rather than each one having to remember. */
+  white-space: nowrap;
 }
 
 .folio-toolbar__group {
@@ -285,6 +289,10 @@ kbd {
   align-items: center;
   gap: 4px;
   color: var(--folio-text-muted);
+  /* Never shrink or wrap: a squeezed toolbar would otherwise break "/ 18" at its
+     space, stacking "/" above "18" and mis-centering the page input beside it. */
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .folio-pagebox__input {
   width: 44px;
