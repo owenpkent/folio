@@ -14,10 +14,10 @@ New here? Start with **[Getting started](getting-started.md)**, then
 | Document | What it covers |
 | --- | --- |
 | [Getting started](getting-started.md) | Install, run in dev, build, project layout, and troubleshooting. |
-| [Accessibility](accessibility.md) | The keyboard map, focus rules, ARIA structure, the text layer, reading modes, and the WCAG 2.2 AA approach. |
+| [Accessibility](accessibility.md) | The keyboard map, focus rules, ARIA structure, the text layer, dark mode and dark schemes, and the WCAG 2.2 AA approach. |
 | [Editing and OCR](editing-and-ocr.md) | Text boxes, images, editing text already on a page, and recognising text on scanned pages. |
 | [Forms and signatures](forms-and-signatures.md) | Filling AcroForms, placing ink signatures, and certificate-based digital signing. |
-| [Theming](theming.md) | Design tokens, light/dark, and the page reading modes. |
+| [Theming](theming.md) | Design tokens, light/dark, and the dark reading schemes. |
 
 ### Building on Folio
 

@@ -1,13 +1,8 @@
 # Folio Theming
 
-Folio's look is driven entirely by **CSS custom properties** (design tokens). There is no hard-coded color anywhere in the UI: components read tokens, and switching theme or reading mode just changes token values or applies a filter. This keeps dark mode native, keeps contrast auditable, and lets plugins match the app for free.
+Folio's look is driven entirely by **CSS custom properties** (design tokens). There is no hard-coded color anywhere in the UI: components read tokens, and toggling the theme changes token values for the chrome and re-rasterizes the page itself. This keeps dark mode native, keeps contrast auditable, and lets plugins match the app for free.
 
-Two independent concepts:
-
-- **UI theme** styles the application chrome (toolbar, sidebar, dialogs). Values: **light**, **dark**, **system**. Applied via `data-theme` on `<html>`.
-- **Reading mode** styles the rendered PDF page itself. Values: **normal**, **night**, **sepia**, **high-contrast**. Applied as a CSS filter on the page canvas.
-
-You can run a dark UI with a normal page, or a light UI with a night-inverted page; the two are orthogonal by design. The theme system lives entirely in `src/theme/`: `ThemeProvider.tsx` applies the attributes, `tokens.css` declares the tokens and reading-mode filters, and `themeStore.ts` holds the state (both preferences are persisted to local storage).
+Dark mode is unified: a single **light / dark / system** toggle (`theme.toggle`, `Ctrl/Cmd+Shift+L`, moon/sun icon) drives both the application chrome (toolbar, sidebar, dialogs — via `data-theme` on `<html>`) and the rendered PDF page together. Light shows the page as authored; dark darkens the chrome and inverts the page at once. There is no separate reading-mode setting — switching the theme is the only control, and when dark is active a second, dark-only setting called the **dark scheme** picks which colors the inverted page uses (night/green/amber, see below). The theme system lives entirely in `src/theme/`: `ThemeProvider.tsx` sets `data-theme` on `<html>`, `tokens.css` declares the tokens, and `themeStore.ts` holds `theme`, `resolvedTheme`, and `darkScheme` (all persisted to local storage).
 
 ## Design tokens
 
@@ -57,7 +52,7 @@ Rules of thumb:
 - **Surfaces stack:** `--folio-bg` (deepest) is the app background; `--folio-surface` is panels (toolbar, sidebar); `--folio-surface-2` and `--folio-surface-hover` are the recessed/selected and hover states layered on top.
 - **Text pairs with surfaces:** `--folio-text` and `--folio-text-muted` are chosen to meet WCAG 2.2 AA contrast against `--folio-bg` and `--folio-surface` in every theme.
 - **`--folio-focus` is separate from `--folio-accent`** even when their values match, so a theme can diverge them (for example, a higher-contrast focus ring) without touching accent styling.
-- **`--folio-page-bg` and `--folio-page-shadow`** style the PDF page sheet and stay white in both themes; the page raster is recolored by reading-mode filters, not by theme tokens.
+- **`--folio-page-bg` and `--folio-page-shadow`** style the PDF page sheet and stay white in both themes; the page raster itself is recolored at render time when dark mode is active, not by theme tokens.
 
 ## Light vs dark values
 
@@ -83,7 +78,7 @@ The dark theme overrides the same token names under `[data-theme='dark']`. Compo
 }
 ```
 
-Note that `--folio-accent` and `--folio-focus` are lightened in dark mode. A brand blue that reads well on white is too dark on a near-black surface, so the dark theme uses a tint that keeps the 3:1 non-text contrast and 4.5:1 text contrast targets. `--folio-accent-contrast` correspondingly flips to a near-black so text on an accent fill stays legible. `--folio-page-bg` deliberately stays white so an untouched page renders true to print; use a reading mode to darken the page itself.
+Note that `--folio-accent` and `--folio-focus` are lightened in dark mode. A brand blue that reads well on white is too dark on a near-black surface, so the dark theme uses a tint that keeps the 3:1 non-text contrast and 4.5:1 text contrast targets. `--folio-accent-contrast` correspondingly flips to a near-black so text on an accent fill stays legible. `--folio-page-bg` deliberately stays white so an untouched page renders true to print; dark mode darkens the page itself at raster time (see below), not via this token.
 
 ## How `data-theme` and system preference work
 
@@ -97,37 +92,37 @@ Because everything keys off a single `data-theme` attribute on `<html>`, there i
 
 `prefers-color-scheme` also seeds a sensible default on first run, and `prefers-reduced-motion` is honored by neutralizing `--folio-transition` (see Reduced motion below).
 
-## Reading modes and canvas filters
+## Dark mode and raster-time page inversion
 
-Reading modes affect **only the rendered PDF page**, not the chrome. `ThemeProvider` sets a `data-reading-mode` attribute on the root `<html>` element, and `tokens.css` selects the page raster beneath it (`[data-reading-mode='night'] .folio-page-canvas`), applying the mode as a CSS `filter`. Using filters means the raster itself is untouched: nothing is re-rendered, so switching modes is instant and reversible.
+Dark mode affects the chrome via tokens (above) and the rendered PDF page via a canvas operation applied when the page is drawn, not a CSS filter. `PdfJsEngine.renderPage` (`src/core/pdf/PdfJsEngine.ts`) draws the page normally and then, when dark mode is active, paints a full-canvas white fill with `globalCompositeOperation = 'difference'` over the backing store. Difference-with-white is mathematically identical to `filter: invert(1)`, but because it runs on the real canvas at full backing-store resolution rather than as a browser-composited CSS filter, dark pages come out razor-sharp instead of blurred.
 
-Under forced colors (Windows High Contrast) the canvas sets `forced-color-adjust: none`, so the document keeps its authored colors and reading modes still apply — see [508-conformance.md](508-conformance.md).
+This replaces the previous approach, which applied a CSS `filter` (`invert(1) hue-rotate(180deg)`, plus sepia/contrast variants for other modes) to the page canvas element. Some rendering engines re-rasterize a filtered element at CSS pixel size before compositing it back at device resolution, which visibly softened text on a filtered page. Doing the inversion as a paint operation on the canvas itself, at the canvas's own backing-store resolution, avoids that resampling step entirely.
 
-Normal mode has no rule (the absence of a filter is faithful color). The other three are defined in `tokens.css`:
+Pages re-render whenever the theme or the dark scheme (below) changes, since the inversion is baked into the raster rather than layered on top of it with CSS.
+
+The text layer is unaffected either way: it is a transparent, positioned overlay used for selection and screen readers (see `docs/accessibility.md`), not a visible raster, so there is nothing on it to invert or tint.
+
+Under forced colors (Windows High Contrast) the canvas still sets `forced-color-adjust: none`, so the document keeps its authored colors, and dark mode's own inversion still applies on top as the user's explicit choice — see [508-conformance.md](508-conformance.md).
+
+## Dark reading schemes
+
+When dark mode is active, `darkScheme` (`src/theme/themeStore.ts`, values `'night' | 'green' | 'amber'`, default `'night'`, persisted as `folio.darkScheme`) chooses the color the inverted page renders in, Acrobat-style:
+
+- **`night`** (default) — plain white-on-black. Just the difference-invert described above, with no further tint.
+- **`green`** — green text on black.
+- **`amber`** — amber text on black.
+
+The tint is applied at raster time, after the difference-invert: a `multiply` fill of an RGB color over the now-inverted canvas. `DARK_SCHEME_TINT` (`src/core/pdf/PdfJsEngine.ts`) maps `green` to `[74, 222, 128]` and `amber` to `[240, 185, 80]`; `night` has no tint (`null`). Multiplying rather than replacing the color means the now-white ink picks up the tint while black stays black, so anti-aliasing at glyph edges is preserved instead of banding. `DARK_SCHEME_LABELS` supplies the display names shown in the picker.
+
+`darkScheme` is chosen from a toolbar dropdown, `DarkSchemeMenu` (`src/components/Toolbar/DarkSchemeMenu.tsx`, using the contrast/◐ icon), which sits next to the light/dark toggle. The setting is tied to dark mode: in light mode the page renders as authored regardless of which scheme is selected; in dark mode, the selected scheme is what you see. Changing the scheme while dark mode is active re-renders visible pages immediately, the same as toggling the theme itself.
+
+**Thumbnails are the one place still using a CSS filter**, since they are small enough that the blur the raster approach fixes for full pages is not visible on them:
 
 ```css
-/* Night: invert while preserving hue, so photos/logos stay recognizable */
-[data-reading-mode='night'] .folio-page-canvas {
+[data-theme='dark'] .folio-thumb__canvas {
   filter: invert(1) hue-rotate(180deg);
 }
-
-/* Sepia: warm the page to reduce glare */
-[data-reading-mode='sepia'] .folio-page-canvas {
-  filter: sepia(0.4) contrast(0.95) brightness(0.98);
-}
-
-/* High-contrast: maximize text/background separation */
-[data-reading-mode='high-contrast'] .folio-page-canvas {
-  filter: contrast(1.3) brightness(1.05);
-}
 ```
-
-Details worth knowing:
-
-- **`invert(1) hue-rotate(180deg)`** for night mode inverts luminance (white page → dark) but rotates hue back, so a red stamp stays reddish rather than turning cyan. It is the standard trick for readable inverted documents.
-- **The text layer is not filtered.** Only the canvas raster (`.folio-page-canvas`) gets the filter. The transparent text layer that sits above it (used for selection and screen readers, see `docs/accessibility.md`) keeps its normal geometry, so selection and copy still line up with the visible glyphs.
-- **Reading mode is separate from UI theme in state.** `theme.cycleReadingMode` rotates normal → night → sepia → high-contrast and announces the new mode. A user can pick, say, a light UI with a night page, which is common for people who want dark documents but a bright toolbar.
-- **High-contrast reading mode** exists specifically for low-vision users and complements, rather than replaces, the dark UI theme.
 
 ## Adding a new UI theme
 
@@ -182,7 +177,7 @@ Because tokens are declared on `:root` and cascade everywhere, plugin UI automat
 
 - **Always use tokens for color, radius, shadow, and transition.** Never hard-code a hex value; it will break dark mode and custom themes and may fail contrast checks.
 - **Use `--folio-focus` for focus rings** so your controls match the app's visible-focus requirement.
-- **Do not filter your own surfaces to emulate reading modes.** Reading modes apply to page content only; plugin chrome should track the UI theme via tokens.
+- **Do not filter your own surfaces to emulate the dark page inversion.** That inversion applies to rendered page content only; plugin chrome should track the UI theme via tokens, the same as everything else.
 
 ## Reduced motion
 
@@ -207,4 +202,4 @@ Since components (and well-behaved plugins) reference `--folio-transition` rathe
 ## Related documents
 
 - `docs/architecture.md`: where the theme layer and `themeStore` sit in the stack.
-- `docs/accessibility.md`: contrast targets, focus, reduced motion, and reading-mode accessibility.
+- `docs/accessibility.md`: contrast targets, focus, reduced motion, and dark-mode/dark-scheme accessibility.

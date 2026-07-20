@@ -57,6 +57,19 @@ export interface RenderPageOptions {
    * thumbnails, which have no overlay and do need the values painted in.
    */
   overlayForms?: boolean;
+  /**
+   * Invert the rasterised pixels for dark mode. Done in the canvas (a
+   * difference-with-white composite at full backing-store resolution) rather
+   * than a CSS filter, which some engines re-rasterise at CSS resolution and
+   * blur. The caller re-renders when the theme changes.
+   */
+  invert?: boolean;
+  /**
+   * Optional page tint (RGB 0-255) multiplied over the (inverted) page — e.g. a
+   * green or amber dark-reading scheme. Multiply keeps black black and colours
+   * the ink, preserving anti-aliasing. Only meaningful together with `invert`.
+   */
+  tint?: [number, number, number];
 }
 
 /** Options for the DOM overlay renders (text layer, annotation layer). */

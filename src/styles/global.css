@@ -122,6 +122,142 @@ kbd {
   color: var(--folio-text-muted);
   font-variant-numeric: tabular-nums;
 }
+.folio-toolbar__speed-slot {
+  display: inline-flex;
+  align-items: center;
+  width: 104px;
+  padding: 0 4px;
+}
+.folio-toolbar__speed {
+  width: 100%;
+  accent-color: var(--folio-accent);
+  cursor: pointer;
+}
+.folio-toolbar__title {
+  margin-left: 8px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--folio-text);
+}
+
+/* ---- Toolbar dropdown (dark reading color) ---- */
+.folio-dropdown {
+  position: relative;
+  display: inline-flex;
+}
+.folio-dropdown__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 40;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--folio-surface);
+  border: 1px solid var(--folio-border);
+  border-radius: var(--folio-radius);
+  box-shadow: var(--folio-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.folio-dropdown__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--folio-text);
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+}
+.folio-dropdown__item:hover,
+.folio-dropdown__item:focus-visible {
+  background: var(--folio-surface-hover);
+  outline: none;
+}
+.folio-dropdown__label {
+  flex: 1;
+}
+.folio-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: #000;
+  font-weight: 700;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+/* ---- Right-click context menu ---- */
+.folio-context-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+.folio-context-menu {
+  position: fixed;
+  z-index: 61;
+  min-width: 200px;
+  padding: 4px;
+  background: var(--folio-surface);
+  border: 1px solid var(--folio-border);
+  border-radius: var(--folio-radius);
+  box-shadow: var(--folio-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.folio-context-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--folio-text);
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+}
+.folio-context-menu__item:hover:not(:disabled),
+.folio-context-menu__item:focus-visible {
+  background: var(--folio-surface-hover);
+  outline: none;
+}
+.folio-context-menu__item:disabled {
+  color: var(--folio-text-muted);
+  opacity: 0.5;
+  cursor: default;
+}
+.folio-context-menu__icon {
+  display: inline-flex;
+  width: 16px;
+  color: var(--folio-text-muted);
+}
+.folio-context-menu__label {
+  flex: 1;
+}
+.folio-context-menu__check {
+  display: inline-flex;
+  color: var(--folio-accent);
+}
+.folio-context-menu__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--folio-border);
+}
 
 .folio-pagebox {
   display: inline-flex;
@@ -418,8 +554,18 @@ kbd {
   cursor: grab;
   user-select: none;
 }
-.folio-viewer.is-hand.is-grabbing {
+/* While actively dragging (hand tool or middle-button pan) the page must track
+   the cursor 1:1, so disable smooth scrolling — otherwise every scrollTop write
+   animates and the page lags behind the pointer. Applies to any active drag, so
+   middle-button panning works even when the hand tool is off. */
+.folio-viewer.is-grabbing {
   cursor: grabbing;
+  user-select: none;
+  scroll-behavior: auto;
+}
+/* Auto-scroll advances scrollTop every frame; smooth behavior would fight it. */
+.folio-viewer.is-autoscroll {
+  scroll-behavior: auto;
 }
 .folio-pages {
   display: flex;
@@ -1030,6 +1176,29 @@ kbd {
 .folio-modal__hint {
   color: var(--folio-text-muted);
   font-size: 0.8125rem;
+}
+.folio-about {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.folio-about__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.folio-about__label {
+  margin: 0;
+  color: var(--folio-text-muted);
+  font-size: 0.8125rem;
+}
+.folio-about__value {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  word-break: break-word;
 }
 .folio-modal__footer {
   display: flex;

@@ -134,6 +134,28 @@ const ICONS = {
       <path d="M8 11v-.5a1.5 1.5 0 0 0-3 0v3.5a7 7 0 0 0 7 7 6 6 0 0 0 6-6V9" />
     </>
   ),
+  'auto-scroll': (
+    <>
+      <rect x="5" y="3" width="14" height="18" rx="2" />
+      <path d="M9 9l3 3 3-3" />
+      <path d="M9 14l3 3 3-3" />
+    </>
+  ),
+  cursor: <path d="M4 3l7 17 2.4-6.6L20 11 4 3Z" />,
+  copy: (
+    <>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </>
+  ),
+  check: <path d="M20 6L9 17l-5-5" />,
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5" />
+      <path d="M12 8h.01" />
+    </>
+  ),
   list: (
     <>
       <line x1="8" y1="6" x2="20" y2="6" />

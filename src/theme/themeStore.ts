@@ -2,12 +2,29 @@ import { create } from 'zustand';
 
 export type UiTheme = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
-export type ReadingMode = 'normal' | 'night' | 'sepia' | 'high-contrast';
+/** Which color scheme the page renders in when the UI is dark. */
+export type DarkScheme = 'night' | 'green' | 'amber';
 
 const THEME_KEY = 'folio.theme';
-const READING_KEY = 'folio.readingMode';
+const DARK_SCHEME_KEY = 'folio.darkScheme';
+const DARK_SCHEMES: DarkScheme[] = ['night', 'green', 'amber'];
 
-const READING_MODES: ReadingMode[] = ['normal', 'night', 'sepia', 'high-contrast'];
+/**
+ * Page tint (RGB 0-255) multiplied over the inverted page for each dark scheme.
+ * Night has no tint (plain white-on-black); Green/Amber colour the ink. Applied
+ * at raster time in {@link PdfJsEngine.renderPage}.
+ */
+export const DARK_SCHEME_TINT: Record<DarkScheme, [number, number, number] | null> = {
+  night: null,
+  green: [74, 222, 128],
+  amber: [240, 185, 80],
+};
+
+export const DARK_SCHEME_LABELS: Record<DarkScheme, string> = {
+  night: 'Night',
+  green: 'Green',
+  amber: 'Amber',
+};
 
 function readStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -29,19 +46,18 @@ function persist(key: string, value: string): void {
 interface ThemeState {
   theme: UiTheme;
   resolvedTheme: ResolvedTheme;
-  readingMode: ReadingMode;
+  darkScheme: DarkScheme;
 
   setTheme(theme: UiTheme): void;
   toggleTheme(): void;
   setResolvedTheme(resolved: ResolvedTheme): void;
-  setReadingMode(mode: ReadingMode): void;
-  cycleReadingMode(): void;
+  setDarkScheme(scheme: DarkScheme): void;
 }
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
   theme: readStored<UiTheme>(THEME_KEY, ['light', 'dark', 'system'], 'system'),
   resolvedTheme: 'light',
-  readingMode: readStored<ReadingMode>(READING_KEY, READING_MODES, 'normal'),
+  darkScheme: readStored<DarkScheme>(DARK_SCHEME_KEY, DARK_SCHEMES, 'night'),
 
   setTheme: (theme) => {
     persist(THEME_KEY, theme);
@@ -53,21 +69,8 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     set({ theme: next });
   },
   setResolvedTheme: (resolvedTheme) => set({ resolvedTheme }),
-  setReadingMode: (mode) => {
-    persist(READING_KEY, mode);
-    set({ readingMode: mode });
-  },
-  cycleReadingMode: () => {
-    const current = get().readingMode;
-    const next = READING_MODES[(READING_MODES.indexOf(current) + 1) % READING_MODES.length];
-    persist(READING_KEY, next);
-    set({ readingMode: next });
+  setDarkScheme: (darkScheme) => {
+    persist(DARK_SCHEME_KEY, darkScheme);
+    set({ darkScheme });
   },
 }));
-
-export const READING_MODE_LABELS: Record<ReadingMode, string> = {
-  normal: 'Normal',
-  night: 'Night',
-  sepia: 'Sepia',
-  'high-contrast': 'High contrast',
-};

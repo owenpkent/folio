@@ -8,7 +8,7 @@ This document describes the layer stack, the data flow for opening and rendering
 
 - **Fast rendering.** Parsing and rasterization happen off the UI thread. The main thread only paints canvases and manages the DOM.
 - **Accessibility-first (WCAG 2.2 AA).** Every rendered page carries a real text layer for selection and screen-reader access. Every user action is a `Command` with a keybinding.
-- **Dark-mode native.** Theme tokens and reading-mode filters are first-class, not bolted on.
+- **Dark-mode native.** Theme tokens and a raster-time page inversion are first-class, not bolted on.
 - **Extensible.** A plugin host exposes stable SDK surfaces (commands, viewer regions, theme tokens) so third parties extend Folio without forking.
 - **AI-ready.** A provider-agnostic AI layer sits behind an interface, with Claude/Anthropic as the default provider and MCP planned as an experimental transport.
 
@@ -63,7 +63,7 @@ Each layer maps to a real directory in the repository.
 | Command registry | `src/commands/` | Every user action as a `Command`; single dispatch point |
 | PDF core | `src/core/` | `pdf/` (`PdfEngine` interface + `PdfJsEngine`), `document/` (file picking and byte reading) |
 | State | `src/state/` | `documentStore` and `viewerStore`; other Zustand stores are colocated with their feature (theme, ai, annotations, plugins) |
-| Theming | `src/theme/` | `ThemeProvider`, design tokens (`tokens.css`), reading modes, `themeStore` |
+| Theming | `src/theme/` | `ThemeProvider`, design tokens (`tokens.css`), `themeStore` (UI theme + dark scheme) |
 | Accessibility | `src/a11y/` | Announcer (live region), focus trap, keyboard shortcut dispatch, skip link |
 | Annotations | `src/features/annotations/` | Annotation model, `store` (localStorage sidecar), `bake` (embeds highlights/notes as real `/Highlight` and `/Text` annotations on save), and tools |
 | Editing | `src/features/editing/` | Add text boxes and images (typewriter tool + placement), per-document `store`, and pdf-lib baking (`stampEdits`) |
@@ -152,6 +152,14 @@ Two rules of the rendering contract are easy to break by accident, and both show
 - **A page is drawn by three renders that must agree, and any of them can be superseded.** `renderPage`, `renderTextLayer` and `renderAnnotationLayer` all take an `AbortSignal` (`RenderPageOptions` / `RenderLayerOptions`), and the caller re-checks staleness between them. The layer renders are also serialised per container inside the engine, because PDF.js builds a layer by appending across `await` points: two overlapping passes on one element interleave, and the older pass's leftovers survive the newer one's `replaceChildren()` as duplicated elements. Pass the signal through; do not render a layer into an element another pass may still own.
 - **Form widgets are drawn exactly once, by whoever owns them.** `renderPage({ overlayForms: true })` tells the engine that the caller will overlay real DOM inputs, so the widgets are left out of the raster (`annotationMode: ENABLE_FORMS`, which is the only mode that suppresses them — `ENABLE_STORAGE` sets a different intent flag and paints them anyway). Callers that rasterise a page on its own, like thumbnails, leave the flag unset and get the values painted in. Setting it without an annotation layer loses the values; omitting it under one doubles them.
 
+### Rendering resolution, virtualization, and DPI changes
+
+Three things beyond the render contract itself keep pages sharp and memory bounded on long documents, all in `src/core/pdf/PdfJsEngine.ts` and `src/components/Viewer/Page.tsx`:
+
+- **Supersampled, budget-capped canvases.** Each page's backing store is rendered above the display's own density so text stays crisp on fractional DPI (Windows 125%/150% scaling gives a `devicePixelRatio` of 1.25/1.5) and on platforms that under-report DPI. `outputScale` targets roughly 2x (minimum 2, maximum 3) but is capped by a pixel budget, `MAX_CANVAS_AREA` (2^24, matching PDF.js's own `maxCanvasPixels` default) and `MAX_CANVAS_DIM` (4096px per side), and never drops below the display's actual `devicePixelRatio`. The CSS size stays the page's layout size; the larger backing store is downsampled into it.
+- **Page virtualization.** `Page.tsx` keeps an `IntersectionObserver` watching each page with a 600px prefetch margin, and releases a page's canvas backing store (dimensions set to 0, text/annotation layers cleared) once it scrolls out of range, re-rendering it when it scrolls back in. Without this, every page a user had ever scrolled past kept its full-resolution canvas allocated for the life of the session.
+- **Re-render on DPI change.** Dragging the window between monitors with different scale factors changes `devicePixelRatio` without a resize event. `PdfViewer` runs a self-re-registering `matchMedia('(resolution: Xdppx)')` listener that bumps a `renderNonce` in `viewerStore`; pages depend on that nonce and re-rasterize at the new resolution.
+
 ### Why PDF.js, and why the interface
 
 - **Why PDF.js:** it is mature, MIT-licensed, actively maintained, renders to `<canvas>`, and already produces a positioned text layer that we need for accessibility. It runs in the WebView with no native rendering dependency, which keeps the desktop bundle simple.
@@ -182,7 +190,7 @@ State is the single source of truth between the UI, commands, plugins, and the A
 |---|---|---|---|
 | `documentStore` | `src/state/documentStore.ts` | Load status, document `info`, metadata, outline, error, a `docVersion` counter bumped on each in-place text edit | `loadSource`/`closeDocument` actions, `reloadEditedBytes` |
 | `viewerStore` | `src/state/viewerStore.ts` | Scale, fit mode (custom/width/page), current page, page count, sidebar open + active tab, search open, pending scroll target | Zoom/nav/sidebar commands, scroll handler |
-| `themeStore` | `src/theme/themeStore.ts` | UI theme (light/dark/system), resolved theme, reading mode | Theme commands, system preference listener |
+| `themeStore` | `src/theme/themeStore.ts` | UI theme (light/dark/system), resolved theme, dark page scheme (night/green/amber) | Theme commands, system preference listener |
 | `aiStore` | `src/ai/aiStore.ts` | AI enabled flag, selected provider id (disabled by default) | AI settings UI |
 | annotation store (`useAnnotationStore`) | `src/features/annotations/store.ts` | Current document fingerprint and its annotations | `features/annotations/` tools |
 | contribution store (`useContributionStore`) | `src/plugins/contributionStore.ts` | Plugin-contributed toolbar items, sidebar panels, annotation tools | Plugin host on activate/deactivate |
@@ -194,7 +202,7 @@ Design rules:
 
 - **Commands and actions mutate state; components read it.** A React component should not orchestrate a workflow directly. It dispatches a command (or calls a state action); that updates the relevant store; components re-render from the store.
 - **Stores never import from `components/`.** Data flows down, actions flow up through commands.
-- **Persistence is selective.** UI theme and reading mode are persisted in local storage (`themeStore`), and annotations are persisted per document fingerprint in local storage (`features/annotations/store.ts`). Transient view state such as scroll position is not. A recent-files list persisted via the Rust backend is planned, not yet implemented.
+- **Persistence is selective.** UI theme and dark scheme are persisted in local storage (`themeStore`), and annotations are persisted per document fingerprint in local storage (`features/annotations/store.ts`). Transient view state such as scroll position is not. A recent-files list persisted via the Rust backend is planned, not yet implemented.
 
 ## Extension points
 
@@ -215,13 +223,13 @@ Folio is designed to be extended without forking. The stable surfaces are:
 
    Keyboard shortcuts, the future command palette, plugins, and AI actions all dispatch through the same registry. `when` gates availability (for example, "a document is open"); `keybinding` wires a shortcut; `category` groups entries in the palette.
 
-2. **Plugins (`src/plugins`).** A plugin is a module that receives the SDK and registers contributions: commands, sidebar panels, toolbar items, and reading-mode or annotation-tool additions. Built-ins in `plugins/builtins/` are written against the same SDK a third party would use, which keeps the SDK honest.
+2. **Plugins (`src/plugins`).** A plugin is a module that receives the SDK and registers contributions: commands, sidebar panels, toolbar items, and annotation-tool additions. Built-ins in `plugins/builtins/` are written against the same SDK a third party would use, which keeps the SDK honest.
 
 3. **Viewer regions.** The `Toolbar`, `Sidebar`, and overlay layers expose named slots that plugins can contribute React nodes into, so extensions surface UI without patching core components.
 
 4. **AI providers (`src/ai/providers`).** New providers implement the `AIProvider` interface. Claude/Anthropic is the default. The UI and commands talk to the interface, never to a specific vendor SDK, so swapping or adding a provider is a registration, not a rewrite. `src/ai/mcp/` holds an experimental Model Context Protocol client and server (`McpClient`, `McpServer`); AI is disabled by default, so nothing is sent anywhere until the user turns it on.
 
-5. **Theme tokens (`src/theme`).** Plugins consume CSS custom properties (for example `--folio-surface`, `--folio-text`, `--folio-accent`) rather than hard-coded colors, so their UI follows the active theme and reading mode automatically. See `theming.md`.
+5. **Theme tokens (`src/theme`).** Plugins consume CSS custom properties (for example `--folio-surface`, `--folio-text`, `--folio-accent`) rather than hard-coded colors, so their UI follows the active theme automatically. See `theming.md`.
 
 6. **PDF engine (`src/core/pdf`).** Not a public plugin surface, but the same seam: implementing `PdfEngine` swaps the rendering backend.
 
@@ -261,6 +269,6 @@ Everything else, including all PDF parsing, rendering, text extraction, search, 
 ## Related documents
 
 - `docs/accessibility.md`: keyboard model, ARIA landmarks, live-region announcements, WCAG 2.2 AA mapping.
-- `docs/theming.md`: design tokens, light/dark, and reading modes.
+- `docs/theming.md`: design tokens, light/dark, and dark schemes.
 - `docs/getting-started.md`: environment setup and development workflow.
 - `docs/adr/`: architecture decision records for the choices summarized here.

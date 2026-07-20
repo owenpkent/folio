@@ -1,0 +1,32 @@
+# Normalize every text file to LF *in the repository*, regardless of each
+# contributor's core.autocrlf / editor settings. Without this, a checkout on a
+# machine with autocrlf=true can commit an entire file with flipped line
+# endings (see the 0.3.0 release commit that rewrote package.json, Cargo.lock,
+# and tauri.conf.json line-for-line). Working trees still get native endings.
+* text=auto eol=lf
+
+# Windows-only scripts that must keep CRLF to run correctly.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Binary assets: never touch line endings, never diff/merge as text.
+*.png         binary
+*.jpg         binary
+*.jpeg        binary
+*.gif         binary
+*.ico         binary
+*.icns        binary
+*.webp        binary
+*.avif        binary
+*.pdf         binary
+*.woff        binary
+*.woff2       binary
+*.ttf         binary
+*.otf         binary
+*.eot         binary
+*.wasm        binary
+*.gz          binary
+*.zip         binary
+*.traineddata binary
+*.mp4         binary
+*.webm        binary

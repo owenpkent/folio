@@ -13,7 +13,7 @@ outline, search, and text selection — and it follows your VS Code color theme.
 - **Thumbnails, outline, and search** — navigate long documents fast.
 - **Real text layer** — select and copy text; screen-reader friendly.
 - **Zoom, fit-to-width, fit-to-page**, and a live page indicator.
-- **Reading modes** — normal, night, sepia, high-contrast.
+- **Dark reading schemes** - Night, Green, and Amber, rendered at full resolution for crisp text.
 - Built on [PDF.js](https://mozilla.github.io/pdf.js/) and the
   [Folio](https://github.com/owenpkent/folio) viewer.
 
