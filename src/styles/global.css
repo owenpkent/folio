@@ -115,6 +115,12 @@ kbd {
 .folio-toolbar__group--right {
   margin-left: auto;
 }
+/* Theme controls + About: always visible, never collapsed into the overflow. */
+.folio-toolbar__pinned {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
 .folio-toolbar__divider {
   width: 1px;
   height: 24px;
@@ -191,6 +197,11 @@ kbd {
 .folio-dropdown__item:focus-visible {
   background: var(--folio-surface-hover);
   outline: none;
+}
+.folio-dropdown__item:disabled {
+  color: var(--folio-text-muted);
+  opacity: 0.5;
+  cursor: default;
 }
 .folio-dropdown__label {
   flex: 1;
