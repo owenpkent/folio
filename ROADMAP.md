@@ -23,12 +23,12 @@ The core viewer: open a PDF and read it comfortably, fully by keyboard, fully wi
 | Area | Deliverable | Status |
 | --- | --- | --- |
 | Open and render | Open local PDFs, render pages via PDF.js with a lazily-rendered page list | Done |
-| Navigate | Page navigation, go-to-page, and continuous scroll (single-page mode planned) | Done |
-| Zoom and fit | Zoom in/out, fit-width, fit-page, and actual-size (per-page rotation planned) | Done |
+| Navigate | Page navigation, go-to-page, continuous scroll, hand/pan tool (plus middle-click pan in any mode), and teleprompter auto-scroll (single-page mode planned) | Done |
+| Zoom and fit | Zoom in/out (snapping to clean preset levels), fit-width, fit-page, and actual-size (per-page rotation planned) | Done |
 | Search | Full-text search with a results list and next/previous navigation | Done |
 | Thumbnails | Thumbnail sidebar panel for page navigation | Done |
 | Outline | Bookmarks/outline sidebar panel with jump-to-destination | Done |
-| Dark mode | Native dark theme via CSS variables, following the OS by default | Done |
+| Dark mode | Native dark theme via CSS variables, following the OS by default; unified so dark inverts the rendered page at raster time (crisp on HiDPI), with selectable Night/Green/Amber reading schemes | Done |
 | Accessibility | Full keyboard operation, focus management, ARIA labeling, screen-reader page announcements, visible focus, reduced-motion support | Done |
 | Command registry | Global command registry backing keybindings, palette, and toolbar (see [docs/plugins.md](./docs/plugins.md)) | Done |
 | Plugin host | `PluginHost` loading plugins against the public API; ships a built-in Word Count plugin | Done |
