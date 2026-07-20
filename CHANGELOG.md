@@ -6,6 +6,26 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-20
+
+### Fixed
+
+- **Toolbar controls no longer clip off narrow or high-DPI windows.** The
+  right-hand tools (theme, About, save, find, …) used to spill past the window
+  edge, unreachable, on narrower or fractionally-scaled displays (the toolbar
+  held a fixed ~1345px intrinsic width). The open document's filename now
+  truncates first, and the auto-scroll speed slider only occupies toolbar width
+  while auto-scroll is active, so the tools stay inline down to ~960px.
+
+### Added
+
+- **Toolbar overflow menu.** Below the inline-fit width, the right-hand document
+  tools (comment, highlight, edit text, add text box, add image, OCR, add
+  signature, digitally sign, save a copy, find) collapse into a **More** (⋯)
+  dropdown instead of being clipped, and appear there as labeled rows. The
+  dark-scheme picker, light/dark toggle, and About stay pinned and always
+  visible. The set shown inline adjusts live as the window resizes.
+
 ## [0.3.0] - 2026-07-20
 
 ### Security
@@ -307,7 +327,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
   cargo-deny policy.
 
-[Unreleased]: https://github.com/owenpkent/folio/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/owenpkent/folio/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/owenpkent/folio/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/owenpkent/folio/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/owenpkent/folio/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/owenpkent/folio/releases/tag/v0.1.0
