@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { commandRegistry } from '@/commands';
 import { IconButton, type IconName } from '@/components/common';
@@ -7,14 +7,12 @@ import { useTextEditStore } from '@/features/textedit';
 import { useContributionStore } from '@/plugins';
 import { useDocumentStore } from '@/state/documentStore';
 import { focusViewer } from '@/state/viewerElement';
-import {
-  AUTO_SCROLL_MAX,
-  AUTO_SCROLL_MIN,
-  useViewerStore,
-} from '@/state/viewerStore';
+import { AUTO_SCROLL_MAX, AUTO_SCROLL_MIN, useViewerStore } from '@/state/viewerStore';
 import { useThemeStore } from '@/theme/themeStore';
 
 import { DarkSchemeMenu } from './DarkSchemeMenu';
+import { ToolbarOverflow } from './ToolbarOverflow';
+import type { OverflowTool } from './toolbarTools';
 
 const run = (id: string) => commandRegistry.execute(id);
 
@@ -44,9 +42,162 @@ export function Toolbar() {
   const textEditActive = useTextEditStore((s) => s.active);
   const toolbarItems = useContributionStore((s) => s.toolbarItems);
 
+  // The right-group tools, in display order. Those that don't fit collapse into
+  // the overflow (⋯) menu, from the end, so a narrow window never clips them.
+  const docTools: OverflowTool[] = [
+    ...toolbarItems.map((item) => ({
+      id: item.id,
+      icon: (item.icon as IconName) ?? 'note',
+      label: item.title,
+      menuLabel: item.title,
+      onClick: () => commandRegistry.execute(item.commandId),
+    })),
+    {
+      id: 'comment',
+      icon: 'comment',
+      label: 'Comment on selected text, or click to place (Ctrl/Cmd + Shift + M)',
+      menuLabel: 'Comment',
+      active: addingNote,
+      disabled: !hasDoc,
+      preserveSelection: true,
+      onClick: () => run('annotate.addNote'),
+    },
+    {
+      id: 'highlight',
+      icon: 'highlighter',
+      label: 'Highlight selection (Ctrl/Cmd + Shift + H)',
+      menuLabel: 'Highlight',
+      disabled: !hasDoc,
+      preserveSelection: true,
+      onClick: () => run('annotate.highlight'),
+    },
+    {
+      id: 'edit-text',
+      icon: 'pencil',
+      label: 'Edit text',
+      menuLabel: 'Edit text',
+      active: textEditActive,
+      disabled: !hasDoc,
+      onClick: () => run('textedit.toggle'),
+    },
+    {
+      id: 'add-text',
+      icon: 'type',
+      label: 'Add text box',
+      menuLabel: 'Add text box',
+      disabled: !hasDoc,
+      onClick: () => run('edit.addText'),
+    },
+    {
+      id: 'add-image',
+      icon: 'image',
+      label: 'Add image',
+      menuLabel: 'Add image',
+      disabled: !hasDoc,
+      onClick: () => run('edit.addImage'),
+    },
+    {
+      id: 'ocr',
+      icon: 'scan',
+      label: 'Recognize text (OCR)',
+      menuLabel: 'Recognize text (OCR)',
+      disabled: !hasDoc,
+      onClick: () => run('ocr.recognizeDocument'),
+    },
+    {
+      id: 'signature',
+      icon: 'signature',
+      label: 'Add signature',
+      menuLabel: 'Add signature',
+      disabled: !hasDoc,
+      onClick: () => run('sign.addSignature'),
+    },
+    {
+      id: 'digitally-sign',
+      icon: 'shield',
+      label: 'Digitally sign',
+      menuLabel: 'Digitally sign',
+      disabled: !hasDoc,
+      onClick: () => run('sign.digitallySign'),
+    },
+    {
+      id: 'save',
+      icon: 'download',
+      label: 'Save a copy (Ctrl/Cmd + S)',
+      menuLabel: 'Save a copy',
+      disabled: !hasDoc,
+      onClick: () => run('file.save'),
+    },
+    {
+      id: 'find',
+      icon: 'search',
+      label: 'Find (Ctrl/Cmd + F)',
+      menuLabel: 'Find',
+      disabled: !hasDoc,
+      onClick: () => run('search.toggle'),
+    },
+  ];
+
+  const toolbarRef = useRef<HTMLElement>(null);
+  const leftRef = useRef<HTMLDivElement>(null);
+  const centerRef = useRef<HTMLDivElement>(null);
+  const pinnedRef = useRef<HTMLDivElement>(null);
+  const [visibleCount, setVisibleCount] = useState(docTools.length);
+  const toolCount = docTools.length;
+
+  // How many right-group tools fit inline before the pinned tail (dark scheme,
+  // theme, About); the rest collapse into the overflow menu. Measured from the
+  // fixed siblings' widths so it never depends on the flow's own content (which
+  // would oscillate). Right-group buttons are uniform-width IconButtons, so a
+  // single button width is enough to divide the available space.
+  const measure = useCallback(() => {
+    const tb = toolbarRef.current;
+    const left = leftRef.current;
+    const center = centerRef.current;
+    const pinned = pinnedRef.current;
+    if (!tb || !left || !center || !pinned) return;
+    const sumChildren = (el: HTMLElement): number => {
+      const gap = parseFloat(getComputedStyle(el).columnGap) || 0;
+      const kids = Array.from(el.children) as HTMLElement[];
+      const w = kids.reduce((s, k) => s + k.getBoundingClientRect().width, 0);
+      return w + gap * Math.max(0, kids.length - 1);
+    };
+    const cs = getComputedStyle(tb);
+    const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const groupGap = parseFloat(cs.columnGap) || 0;
+    const leftW = left.getBoundingClientRect().width;
+    const centerW = sumChildren(center);
+    const pinnedW = sumChildren(pinned);
+    const pinnedKids = Array.from(pinned.children) as HTMLElement[];
+    const btnW = pinnedKids.length
+      ? pinnedKids[pinnedKids.length - 1].getBoundingClientRect().width
+      : 34;
+    const flowGap = 2; // .folio-toolbar__group inter-button gap
+    // groupGap sits between left|center and center|right; flowGap between the
+    // flow and the pinned tail. 8px is a sub-pixel safety margin.
+    const available =
+      tb.clientWidth - padX - leftW - centerW - pinnedW - groupGap * 2 - flowGap - 8;
+    const slot = btnW + flowGap;
+    const slots = Math.max(0, Math.floor((available + flowGap) / slot));
+    setVisibleCount(slots >= toolCount ? toolCount : Math.max(0, slots - 1));
+  }, [toolCount]);
+
+  // Re-measure after every render (catches content-width changes: the filename,
+  // the zoom readout, the auto-scroll slider appearing) and on toolbar resize.
+  useLayoutEffect(() => {
+    measure();
+  });
+  useEffect(() => {
+    const tb = toolbarRef.current;
+    if (!tb) return;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(tb);
+    return () => ro.disconnect();
+  }, [measure]);
+
   return (
-    <header className="folio-toolbar" role="banner">
-      <div className="folio-toolbar__group">
+    <header className="folio-toolbar" role="banner" ref={toolbarRef}>
+      <div className="folio-toolbar__group folio-toolbar__group--left" ref={leftRef}>
         <IconButton
           icon="sidebar"
           label="Toggle sidebar (Ctrl/Cmd + B)"
@@ -65,7 +216,7 @@ export function Toolbar() {
         )}
       </div>
 
-      <div className="folio-toolbar__group folio-toolbar__group--center">
+      <div className="folio-toolbar__group folio-toolbar__group--center" ref={centerRef}>
         <IconButton
           icon="chevron-left"
           label="Previous page (←)"
@@ -126,10 +277,10 @@ export function Toolbar() {
           disabled={!hasDoc}
           onClick={() => run('view.toggleAutoScroll')}
         />
-        {/* Fixed-width slot so the slider appearing/disappearing never reflows
-            the other toolbar buttons. */}
-        <span className="folio-toolbar__speed-slot">
-          {autoScroll && (
+        {/* Only occupy toolbar width while auto-scroll is on; reserving a fixed
+            slot when idle pushed the right-hand tools off narrow windows. */}
+        {autoScroll && (
+          <span className="folio-toolbar__speed-slot">
             <input
               className="folio-toolbar__speed"
               type="range"
@@ -141,96 +292,27 @@ export function Toolbar() {
               title="Auto-scroll speed (slower ← → faster)"
               onChange={(e) => setAutoScrollSpeed(sliderToSpeed(Number(e.target.value)))}
             />
-          )}
-        </span>
+          </span>
+        )}
       </div>
 
       <div className="folio-toolbar__group folio-toolbar__group--right">
-        {toolbarItems.map((item) => (
+        <ToolbarOverflow items={docTools} visibleCount={visibleCount} />
+        {/* The theme controls and About stay pinned (always visible); the
+            document tools to their left collapse into the overflow menu. */}
+        <div className="folio-toolbar__pinned" ref={pinnedRef}>
+          <DarkSchemeMenu />
           <IconButton
-            key={item.id}
-            icon={(item.icon as IconName) ?? 'note'}
-            label={item.title}
-            onClick={() => commandRegistry.execute(item.commandId)}
+            icon={resolvedTheme === 'dark' ? 'sun' : 'moon'}
+            label="Toggle light / dark (Ctrl/Cmd + Shift + L)"
+            onClick={() => run('theme.toggle')}
           />
-        ))}
-        <IconButton
-          icon="comment"
-          label="Comment on selected text, or click to place (Ctrl/Cmd + Shift + M)"
-          active={addingNote}
-          disabled={!hasDoc}
-          // Keep the text selection alive: a plain button mousedown collapses it
-          // before the click handler can read it.
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => run('annotate.addNote')}
-        />
-        <IconButton
-          icon="highlighter"
-          label="Highlight selection (Ctrl/Cmd + Shift + H)"
-          disabled={!hasDoc}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => run('annotate.highlight')}
-        />
-        <IconButton
-          icon="pencil"
-          label="Edit text"
-          active={textEditActive}
-          disabled={!hasDoc}
-          onClick={() => run('textedit.toggle')}
-        />
-        <IconButton
-          icon="type"
-          label="Add text box"
-          disabled={!hasDoc}
-          onClick={() => run('edit.addText')}
-        />
-        <IconButton
-          icon="image"
-          label="Add image"
-          disabled={!hasDoc}
-          onClick={() => run('edit.addImage')}
-        />
-        <IconButton
-          icon="scan"
-          label="Recognize text (OCR)"
-          disabled={!hasDoc}
-          onClick={() => run('ocr.recognizeDocument')}
-        />
-        <IconButton
-          icon="signature"
-          label="Add signature"
-          disabled={!hasDoc}
-          onClick={() => run('sign.addSignature')}
-        />
-        <IconButton
-          icon="shield"
-          label="Digitally sign"
-          disabled={!hasDoc}
-          onClick={() => run('sign.digitallySign')}
-        />
-        <IconButton
-          icon="download"
-          label="Save a copy (Ctrl/Cmd + S)"
-          disabled={!hasDoc}
-          onClick={() => run('file.save')}
-        />
-        <IconButton
-          icon="search"
-          label="Find (Ctrl/Cmd + F)"
-          disabled={!hasDoc}
-          onClick={() => run('search.toggle')}
-        />
-        <DarkSchemeMenu />
-        <IconButton
-          icon={resolvedTheme === 'dark' ? 'sun' : 'moon'}
-          label="Toggle light / dark (Ctrl/Cmd + Shift + L)"
-          onClick={() => run('theme.toggle')}
-        />
-        <IconButton
-          icon="info"
-          label="About Folio (version, build info, updates)"
-          onClick={() => run('help.about')}
-        />
+          <IconButton
+            icon="info"
+            label="About Folio (version, build info, updates)"
+            onClick={() => run('help.about')}
+          />
+        </div>
       </div>
     </header>
   );

@@ -107,8 +107,19 @@ kbd {
   flex: 1;
   justify-content: center;
 }
+/* The left group holds the filename: let it shrink so the name truncates first,
+   rather than pushing the right-hand tools off the edge on narrow windows. */
+.folio-toolbar__group--left {
+  min-width: 0;
+}
 .folio-toolbar__group--right {
   margin-left: auto;
+}
+/* Theme controls + About: always visible, never collapsed into the overflow. */
+.folio-toolbar__pinned {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 .folio-toolbar__divider {
   width: 1px;
@@ -135,6 +146,11 @@ kbd {
 }
 .folio-toolbar__title {
   margin-left: 8px;
+  /* min-width:0 lets the name shrink below its content width (flex items default
+     to min-width:auto); it then truncates via the ellipsis instead of forcing
+     the toolbar to overflow. */
+  min-width: 0;
+  flex: 0 1 auto;
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -181,6 +197,11 @@ kbd {
 .folio-dropdown__item:focus-visible {
   background: var(--folio-surface-hover);
   outline: none;
+}
+.folio-dropdown__item:disabled {
+  color: var(--folio-text-muted);
+  opacity: 0.5;
+  cursor: default;
 }
 .folio-dropdown__label {
   flex: 1;
