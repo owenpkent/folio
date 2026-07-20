@@ -37,7 +37,10 @@ jobs:
       - name: Install gitleaks
         run: |
           GL_VER=8.21.2
-          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GL_VER}/gitleaks_${GL_VER}_linux_x64.tar.gz" -o gl.tgz
+          # Retry on transient GitHub-releases network faults (e.g. exit 35,
+          # connection reset). --retry-all-errors covers SSL/reset, which plain
+          # --retry does not; -f turns an HTTP error page into a retriable failure.
+          curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors "https://github.com/gitleaks/gitleaks/releases/download/v${GL_VER}/gitleaks_${GL_VER}_linux_x64.tar.gz" -o gl.tgz
           sudo tar -xzf gl.tgz -C /usr/local/bin gitleaks
       - name: Gitleaks (SARIF)
         run: gitleaks dir . --report-format sarif --report-path gitleaks.sarif --no-banner --exit-code 0
@@ -79,7 +82,8 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           RD_VER=0.20.3
-          curl -sSfL "https://github.com/reviewdog/reviewdog/releases/download/v${RD_VER}/reviewdog_${RD_VER}_Linux_x86_64.tar.gz" -o rd.tgz
+          # Same transient-fault retry as the gitleaks download above.
+          curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors "https://github.com/reviewdog/reviewdog/releases/download/v${RD_VER}/reviewdog_${RD_VER}_Linux_x86_64.tar.gz" -o rd.tgz
           sudo tar -xzf rd.tgz -C /usr/local/bin reviewdog
       - name: "reviewdog: gitleaks"
         if: github.event_name == 'pull_request' && hashFiles('gitleaks.sarif') != ''
