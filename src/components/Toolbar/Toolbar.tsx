@@ -7,11 +7,7 @@ import { useTextEditStore } from '@/features/textedit';
 import { useContributionStore } from '@/plugins';
 import { useDocumentStore } from '@/state/documentStore';
 import { focusViewer } from '@/state/viewerElement';
-import {
-  AUTO_SCROLL_MAX,
-  AUTO_SCROLL_MIN,
-  useViewerStore,
-} from '@/state/viewerStore';
+import { AUTO_SCROLL_MAX, AUTO_SCROLL_MIN, useViewerStore } from '@/state/viewerStore';
 import { useThemeStore } from '@/theme/themeStore';
 
 import { DarkSchemeMenu } from './DarkSchemeMenu';
@@ -46,7 +42,7 @@ export function Toolbar() {
 
   return (
     <header className="folio-toolbar" role="banner">
-      <div className="folio-toolbar__group">
+      <div className="folio-toolbar__group folio-toolbar__group--left">
         <IconButton
           icon="sidebar"
           label="Toggle sidebar (Ctrl/Cmd + B)"
@@ -126,10 +122,10 @@ export function Toolbar() {
           disabled={!hasDoc}
           onClick={() => run('view.toggleAutoScroll')}
         />
-        {/* Fixed-width slot so the slider appearing/disappearing never reflows
-            the other toolbar buttons. */}
-        <span className="folio-toolbar__speed-slot">
-          {autoScroll && (
+        {/* Only occupy toolbar width while auto-scroll is on; reserving a fixed
+            slot when idle pushed the right-hand tools off narrow windows. */}
+        {autoScroll && (
+          <span className="folio-toolbar__speed-slot">
             <input
               className="folio-toolbar__speed"
               type="range"
@@ -141,8 +137,8 @@ export function Toolbar() {
               title="Auto-scroll speed (slower ← → faster)"
               onChange={(e) => setAutoScrollSpeed(sliderToSpeed(Number(e.target.value)))}
             />
-          )}
-        </span>
+          </span>
+        )}
       </div>
 
       <div className="folio-toolbar__group folio-toolbar__group--right">
