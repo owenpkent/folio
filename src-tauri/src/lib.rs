@@ -259,13 +259,24 @@ fn take_launch_file(state: tauri::State<LaunchFile>) -> Option<String> {
 fn open_default_apps_settings() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
         // Deep-link straight to Folio's page in Default apps (via the
         // RegisteredApplications entry the installer writes), so the user lands
         // on the .pdf association without having to search for it. Falls back to
         // the generic Default apps page on Windows builds that don't honor the
         // query. Fixed URI, no user input -> no injection surface.
-        std::process::Command::new("explorer.exe")
-            .arg("ms-settings:defaultapps?registeredAppUser=Folio")
+        //
+        // Launched via `cmd /C start`, which routes the URI through
+        // ShellExecute and reliably lands in the Settings app. Handing the URI
+        // to explorer.exe (the previous approach) drops the `?query` on some
+        // Windows builds and falls through to the default web browser instead.
+        // The empty "" argument is `start`'s window-title slot, so the URI is
+        // never mistaken for a title.
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", "ms-settings:defaultapps?registeredAppUser=Folio"])
+            .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map(|_| ())
             .map_err(|e| format!("Failed to open Settings: {e}"))
