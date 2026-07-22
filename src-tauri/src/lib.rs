@@ -112,17 +112,46 @@ fn read_document(path: String) -> Result<Response, String> {
     Ok(Response::new(bytes))
 }
 
-/// Write PDF bytes to an absolute path chosen via the native save dialog.
+/// Write PDF bytes to an absolute path: the opened file itself (Save in
+/// place) or a path chosen via the native save dialog (Save a copy).
 ///
 /// Lives on the Rust side (mirroring [`read_document`]) so the frontend does
-/// not need a broad `fs:allow-write-file` capability scope to save a copy
-/// wherever the user picks. The `.pdf` extension guard matches `read_document`.
+/// not need a broad `fs:allow-write-file` capability scope to save wherever
+/// the user picks. The `.pdf` extension guard matches `read_document`.
+///
+/// The write is atomic: bytes go to a randomly named temp file in the
+/// destination directory (same filesystem, so the final rename cannot cross
+/// devices), which then replaces the target. A plain `fs::write` truncates
+/// before writing, so a crash or full disk mid-write would corrupt the only
+/// copy of a document being saved in place; with the rename swap the target
+/// always holds either the old bytes or the new bytes, never a partial write.
 #[tauri::command]
 fn write_document(path: String, contents: Vec<u8>) -> Result<(), String> {
+    use std::io::Write;
+
     if !path.to_lowercase().ends_with(".pdf") {
         return Err(format!("Unsupported file type (expected .pdf): {path}"));
     }
-    std::fs::write(&path, &contents).map_err(|e| format!("Failed to write {path}: {e}"))
+    let target = std::path::Path::new(&path);
+    let dir = match target.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => std::path::Path::new("."),
+    };
+    let mut tmp = tempfile::Builder::new()
+        .prefix(".folio-save-")
+        .suffix(".tmp")
+        .tempfile_in(dir)
+        .map_err(|e| format!("Failed to write {path}: {e}"))?;
+    tmp.write_all(&contents)
+        .map_err(|e| format!("Failed to write {path}: {e}"))?;
+    // Flush to disk before the swap so the rename never publishes a file
+    // whose bytes are still only in the OS cache.
+    tmp.as_file()
+        .sync_all()
+        .map_err(|e| format!("Failed to write {path}: {e}"))?;
+    tmp.persist(target)
+        .map(|_| ())
+        .map_err(|e| format!("Failed to write {path}: {e}"))
 }
 
 /// Download a PDF from a public http(s) URL. Used by the browser extension's
@@ -275,7 +304,12 @@ fn open_default_apps_settings() -> Result<(), String> {
         // The empty "" argument is `start`'s window-title slot, so the URI is
         // never mistaken for a title.
         std::process::Command::new("cmd")
-            .args(["/C", "start", "", "ms-settings:defaultapps?registeredAppUser=Folio"])
+            .args([
+                "/C",
+                "start",
+                "",
+                "ms-settings:defaultapps?registeredAppUser=Folio",
+            ])
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map(|_| ())
@@ -283,9 +317,11 @@ fn open_default_apps_settings() -> Result<(), String> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        Err("Setting the default PDF viewer from Folio is only supported on Windows. \
+        Err(
+            "Setting the default PDF viewer from Folio is only supported on Windows. \
              Set it in your system settings or file manager instead."
-            .to_string())
+                .to_string(),
+        )
     }
 }
 
@@ -357,8 +393,8 @@ pub fn run() {
                                 .extension()
                                 .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"));
                             if is_pdf {
-                                let _ =
-                                    window.emit("folio:open-pdf", path.to_string_lossy().to_string());
+                                let _ = window
+                                    .emit("folio:open-pdf", path.to_string_lossy().to_string());
                             }
                         }
                     }
@@ -380,22 +416,22 @@ mod tests {
     #[test]
     fn blocks_private_and_reserved_ips() {
         for s in [
-            "127.0.0.1",       // loopback
-            "10.1.2.3",        // private
-            "172.16.0.1",      // private
-            "192.168.1.1",     // private
-            "169.254.169.254", // link-local / cloud metadata
-            "100.64.0.1",      // carrier-grade NAT
-            "198.18.0.1",      // benchmarking
-            "0.0.0.0",         // unspecified
-            "255.255.255.255", // broadcast
-            "224.0.0.1",       // multicast
-            "0.1.2.3",         // 0.0.0.0/8 "this network"
-            "::1",             // IPv6 loopback
-            "fc00::1",         // IPv6 unique-local
-            "fe80::1",         // IPv6 link-local
+            "127.0.0.1",        // loopback
+            "10.1.2.3",         // private
+            "172.16.0.1",       // private
+            "192.168.1.1",      // private
+            "169.254.169.254",  // link-local / cloud metadata
+            "100.64.0.1",       // carrier-grade NAT
+            "198.18.0.1",       // benchmarking
+            "0.0.0.0",          // unspecified
+            "255.255.255.255",  // broadcast
+            "224.0.0.1",        // multicast
+            "0.1.2.3",          // 0.0.0.0/8 "this network"
+            "::1",              // IPv6 loopback
+            "fc00::1",          // IPv6 unique-local
+            "fe80::1",          // IPv6 link-local
             "::ffff:127.0.0.1", // IPv4-mapped loopback
-            "::127.0.0.1",     // IPv4-compatible loopback (deprecated)
+            "::127.0.0.1",      // IPv4-compatible loopback (deprecated)
         ] {
             assert!(is_disallowed_ip(ip(s)), "{s} should be disallowed");
         }
