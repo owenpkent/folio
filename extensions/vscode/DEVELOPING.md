@@ -78,10 +78,6 @@ path: a PDF's filename reaching the webview HTML.
 
 It reports `ALL PASS` on the current code (60k+ HTML cases).
 
-`fuzz/fuzz-to-pdf.py` is unrelated to this extension: it fuzzes the `to_pdf`
-document-conversion helper that lives in a separate project (it imports from
-that repo's own scripts directory) and exercises no Folio code.
-
 ## Distribute
 
 See [DISTRIBUTING.md](DISTRIBUTING.md).
