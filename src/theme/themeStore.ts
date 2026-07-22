@@ -16,7 +16,9 @@ const DARK_SCHEMES: DarkScheme[] = ['night', 'green', 'amber'];
  */
 export const DARK_SCHEME_TINT: Record<DarkScheme, [number, number, number] | null> = {
   night: null,
-  green: [74, 222, 128],
+  // The Linux console's bright ANSI green (#55FF55), so green-on-black pages
+  // read like a terminal rather than a pastel.
+  green: [85, 255, 85],
   amber: [240, 185, 80],
 };
 
