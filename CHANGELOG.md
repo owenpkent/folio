@@ -6,6 +6,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The Green dark scheme now uses the Linux console's bright ANSI green**
+  (`#55FF55`) instead of a pastel mint (`#4ADE80`), so green-on-black pages
+  read like a classic terminal.
+
 ### Added
 
 - **Save in place.** `Ctrl/Cmd + S` now saves back to the file the document was
