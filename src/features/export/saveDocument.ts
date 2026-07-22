@@ -63,20 +63,40 @@ async function stampSignatures(pdf: PDFDocument, signatures: Signature[]): Promi
   }
 }
 
+/**
+ * Save back to the file the document was opened from (desktop only). Falls
+ * back to Save-a-copy when there is no writable origin: browser builds,
+ * fetched URLs, and drag-dropped browser Files all open without a path.
+ */
+export async function saveDocumentInPlace(): Promise<void> {
+  const { info, status, sourcePath } = useDocumentStore.getState();
+  if (status !== 'ready' || !info) return;
+
+  if (!isTauri() || !sourcePath) {
+    await saveDocumentToFile();
+    return;
+  }
+
+  const bytes = await exportForSave();
+  if (!bytes) return;
+  try {
+    await invoke('write_document', { path: sourcePath, contents: Array.from(bytes) });
+    pushToast('Saved', 'success');
+    announce(`Saved ${info.name}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Write failed';
+    announce(`Could not save the document: ${message}`, true);
+    pushToast('Could not save the document', 'error');
+  }
+}
+
 /** Export the filled/signed document and save it as a copy (dialog or download). */
 export async function saveDocumentToFile(): Promise<void> {
   const { info, status } = useDocumentStore.getState();
   if (status !== 'ready' || !info) return;
 
-  let bytes: Uint8Array;
-  try {
-    bytes = await exportDocument();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Export failed';
-    announce(`Could not prepare the document: ${message}`, true);
-    pushToast('Could not save the document', 'error');
-    return;
-  }
+  const bytes = await exportForSave();
+  if (!bytes) return;
 
   const base = info.name.replace(/\.pdf$/i, '');
   const suffix =
@@ -86,6 +106,18 @@ export async function saveDocumentToFile(): Promise<void> {
         ? 'edited'
         : 'filled';
   await saveBytes(bytes, `${base} (${suffix}).pdf`);
+}
+
+/** Run {@link exportDocument}, surfacing failures as a toast; null on failure. */
+async function exportForSave(): Promise<Uint8Array | null> {
+  try {
+    return await exportDocument();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Export failed';
+    announce(`Could not prepare the document: ${message}`, true);
+    pushToast('Could not save the document', 'error');
+    return null;
+  }
 }
 
 /** Save raw PDF bytes via a native dialog (desktop) or a download (browser). */
@@ -137,9 +169,18 @@ export function registerExportCommands(): void {
 
   commandRegistry.register({
     id: 'file.save',
-    title: 'Save a copy…',
+    title: 'Save',
     category: 'File',
     keybinding: 'Mod+S',
+    when: () => useDocumentStore.getState().status === 'ready',
+    run: () => saveDocumentInPlace(),
+  });
+
+  commandRegistry.register({
+    id: 'file.saveAs',
+    title: 'Save a copy…',
+    category: 'File',
+    keybinding: 'Mod+Shift+S',
     when: () => useDocumentStore.getState().status === 'ready',
     run: () => saveDocumentToFile(),
   });

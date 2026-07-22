@@ -185,6 +185,13 @@ const ICONS = {
       <path d="M5 21h14" />
     </>
   ),
+  save: (
+    <>
+      <path d="M4 4h12l4 4v12H4Z" />
+      <path d="M8 4v5h7" />
+      <path d="M7 20v-6h10v6" />
+    </>
+  ),
   signature: (
     <>
       <path d="M3 17c2.5 0 2.5-9 5-9s2 9 4.5 9 3-4 5.5-4" />

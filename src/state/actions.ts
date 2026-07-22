@@ -37,6 +37,7 @@ export async function loadSource(source: DocumentSource): Promise<void> {
     const [metadata, outline] = await Promise.all([engine.getMetadata(), engine.getOutline()]);
 
     doc.setLoaded(info, metadata, outline);
+    doc.setSourcePath(source.kind === 'bytes' ? (source.path ?? null) : null);
     viewer.reset();
     viewer.setNumPages(info.numPages);
     useAnnotationStore.getState().loadForDocument(info.fingerprint);

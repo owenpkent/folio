@@ -31,7 +31,7 @@ export async function pickAndReadDocument(): Promise<DocumentSource | null> {
 /** Read a PDF from an absolute path (used for drag-and-drop in the desktop app). */
 export async function readPath(path: string): Promise<DocumentSource> {
   const buffer = await invoke<ArrayBuffer>('read_document', { path });
-  return { kind: 'bytes', data: new Uint8Array(buffer), name: basename(path) };
+  return { kind: 'bytes', data: new Uint8Array(buffer), name: basename(path), path };
 }
 
 /** Build a source from a browser File (drag-and-drop / file input fallback). */

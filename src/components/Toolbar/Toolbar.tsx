@@ -122,11 +122,19 @@ export function Toolbar() {
     },
     {
       id: 'save',
-      icon: 'download',
-      label: 'Save a copy (Ctrl/Cmd + S)',
-      menuLabel: 'Save a copy',
+      icon: 'save',
+      label: 'Save (Ctrl/Cmd + S)',
+      menuLabel: 'Save',
       disabled: !hasDoc,
       onClick: () => run('file.save'),
+    },
+    {
+      id: 'save-copy',
+      icon: 'download',
+      label: 'Save a copy (Ctrl/Cmd + Shift + S)',
+      menuLabel: 'Save a copy',
+      disabled: !hasDoc,
+      onClick: () => run('file.saveAs'),
     },
     {
       id: 'find',
