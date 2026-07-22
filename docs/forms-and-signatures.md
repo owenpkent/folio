@@ -87,12 +87,16 @@ of the document by this point: each in-place edit commits immediately rather
 than waiting for a save, so step 1's fresh PDF already contains it alongside
 the filled form values.
 
-The result is written to whatever path you pick in the native Save dialog in the
-desktop app (through the Tauri `dialog` plugin plus the Rust `write_document`
-command, so the frontend needs no broad filesystem capability) or downloaded in
-the browser dev build. The suggested filename is the original name with a
-`(filled)`, `(edited)`, or `(signed)` suffix; the original document is never
-overwritten.
+Where the result goes depends on the command. **Save** (`Ctrl/Cmd + S`) writes
+it back to the file the document was opened from in the desktop app; the write
+is atomic (a temp file next to the target, renamed over it), so a failed save
+never corrupts the original. When there is no writable origin (the browser
+build, fetched URLs, browser drag-and-drop), Save falls back to **Save a
+copy…** (`Ctrl/Cmd + Shift + S`), which writes to whatever path you pick in
+the native Save dialog (through the Tauri `dialog` plugin plus the Rust
+`write_document` command, so the frontend needs no broad filesystem
+capability) or downloads in the browser dev build. The suggested copy filename
+is the original name with a `(filled)`, `(edited)`, or `(signed)` suffix.
 
 ## Cryptographic digital signatures
 

@@ -6,6 +6,31 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Save in place.** `Ctrl/Cmd + S` now saves back to the file the document was
+  opened from (file picker, launch file, or desktop drag-and-drop), instead of
+  always prompting for a new path. "Save a copy…" moved to
+  `Ctrl/Cmd + Shift + S`, with its own toolbar and context-menu entries. When
+  there is no writable origin (the browser build, fetched URLs, browser
+  drag-and-drop), Save falls back to the save-a-copy dialog.
+- **Splash screen.** The empty state now leads with the Folio mark and
+  wordmark, and the open-a-document controls appear only once startup file
+  handling has settled, so opening a PDF by double-clicking it no longer
+  flashes the open UI before the document loads. Animations respect
+  `prefers-reduced-motion`.
+
+### Fixed
+
+- **Saves are atomic.** `write_document` now writes to a randomly named temp
+  file in the destination directory and renames it over the target, so a crash
+  or full disk mid-save can no longer leave a truncated PDF. This matters now
+  that Save writes back to the opened document rather than only to new copies.
+- **"Make Folio your default PDF viewer" reliably opens Windows Settings.**
+  The `ms-settings:` deep link is now launched through ShellExecute (a hidden
+  `cmd /C start`) instead of `explorer.exe`, which dropped the URI's query on
+  some Windows builds and opened the default web browser instead.
+
 ## [0.3.1] - 2026-07-20
 
 ### Fixed
