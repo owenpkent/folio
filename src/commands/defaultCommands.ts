@@ -8,6 +8,7 @@ import { closeDocument, openDocumentViaPicker } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
 import { scrollViewerByPage } from '@/state/viewerElement';
 import { useViewerStore } from '@/state/viewerStore';
+import { isNarrowViewport } from '@/theme/breakpoints';
 import { useThemeStore } from '@/theme/themeStore';
 
 import { commandRegistry } from './registry';
@@ -111,6 +112,17 @@ const commands: Command[] = [
     category: 'View',
     keybinding: 'Mod+B',
     run: () => useViewerStore.getState().toggleSidebar(),
+  },
+  {
+    id: 'view.closeSidebarDrawer',
+    title: 'Close sidebar',
+    category: 'View',
+    keybinding: 'Escape',
+    // Narrow viewports only, where the sidebar overlays the page as a drawer.
+    // Listed before search.close so Escape peels the topmost layer first: the
+    // drawer (z-index 60) sits above the search bar.
+    when: () => isNarrowViewport() && useViewerStore.getState().sidebarOpen,
+    run: () => useViewerStore.getState().setSidebarOpen(false),
   },
   {
     id: 'view.toggleHandMode',

@@ -63,6 +63,26 @@ test('the sidebar opens as an overlay drawer and the backdrop dismisses it', asy
   await expect(page.locator('.folio-sidebar')).toHaveCount(0);
 });
 
+test('Escape dismisses the drawer, and only then closes find', async ({ page }) => {
+  await page.goto('/');
+  await openFixture(page);
+
+  // Open find, then the drawer on top of it (z-index 60 vs the search bar).
+  await page.keyboard.press('Control+f');
+  await expect(page.locator('.folio-search')).toBeVisible();
+  await page.getByRole('button', { name: /toggle sidebar/i }).click();
+  await expect(page.locator('.folio-sidebar')).toBeVisible();
+
+  // First Escape peels the topmost layer only: drawer closes, find survives.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.folio-sidebar')).toHaveCount(0);
+  await expect(page.locator('.folio-search')).toBeVisible();
+
+  // Second Escape reaches the next layer down.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.folio-search')).toHaveCount(0);
+});
+
 test('picking a thumbnail navigates and closes the drawer', async ({ page }) => {
   await page.goto('/');
   await openFixture(page);
