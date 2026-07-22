@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+import { isTauri } from '@/core/document/openDocument';
 import type { OutlineNode, PdfDocumentInfo, PdfMetadata } from '@/core/pdf';
 
 export type DocumentStatus = 'empty' | 'loading' | 'ready' | 'error';
@@ -39,8 +40,6 @@ interface DocumentState {
   reset(): void;
 }
 
-const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-
 export const useDocumentStore = create<DocumentState>((set) => ({
   status: 'empty',
   info: null,
@@ -49,7 +48,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   error: null,
   sourcePath: null,
   // Only the desktop app can be handed a launch file, so only it boots gated.
-  booting: inTauri,
+  booting: isTauri(),
   docVersion: 0,
 
   setStatus: (status) => set({ status }),
