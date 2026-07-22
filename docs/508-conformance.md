@@ -64,7 +64,8 @@ Almost certainly yes, and we plan on that basis.
 by authors, alone or collaboratively, to create or modify content for use by
 others, including other authors."* Folio creates highlights, sticky notes, ink
 signatures, text boxes and OCR text layers, edits text already on a page in
-place, and writes all of it into a saved copy. That is content creation (and,
+place, and writes all of it back to the opened file or into a saved copy. That
+is content creation (and,
 for in-place text edits, content modification in the plainest possible sense)
 on any plain reading, independent of whether form-filling counts.
 

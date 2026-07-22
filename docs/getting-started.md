@@ -1,6 +1,6 @@
 # Getting Started with Folio
 
-Folio is a desktop PDF viewer built with **Tauri 2** (Rust backend) and a **React 18 + TypeScript 5 + Vite 5** frontend, rendering with **PDF.js**. This guide gets you from a clean machine to a running dev build and a release bundle.
+Folio is a desktop PDF viewer built with **Tauri 2** (Rust backend) and a **React 18 + TypeScript 5 + Vite 7** frontend, rendering with **PDF.js**. This guide gets you from a clean machine to a running dev build and a release bundle.
 
 ## Prerequisites
 
@@ -143,7 +143,6 @@ A map of the top-level directories. See `docs/architecture.md` for how they fit 
 folio/
 ├─ .github/                 # CI, issue/PR templates, dependabot, CODEOWNERS
 ├─ docs/                    # documentation (this file lives here)
-│  └─ adr/                  # architecture decision records
 ├─ public/                  # static assets served by Vite
 ├─ src/                     # React + TypeScript frontend
 │  ├─ ai/                   # AI layer: providers/ (Claude, experimental), mcp/ (stubs)
@@ -196,4 +195,3 @@ Expected. The initial backend compile builds all crates from scratch; later buil
 - `docs/architecture.md`: the full layer stack and data flow.
 - `docs/accessibility.md`: keyboard shortcuts and the WCAG 2.2 AA approach.
 - `docs/theming.md`: design tokens, dark mode, and dark schemes.
-- `docs/adr/`: the decisions behind the stack.

@@ -8,12 +8,13 @@ The accessibility utilities live in `src/a11y/` (announcer, focus trap, keyboard
 
 All shortcuts dispatch through the command registry (`useKeyboardShortcuts` matches the pressed chord against each command's declared `keybinding`). Bindings use `Mod`, which resolves to `Cmd` on macOS and `Ctrl` elsewhere, so the two platform columns differ only in that modifier.
 
-Bindings are declared on the command, wherever that command lives — mostly `src/commands/defaultCommands.ts` and `src/features/annotations/commands.ts`, but `file.save` is declared in `src/features/export/saveDocument.ts`. `grep -rn "keybinding:" src/` is the complete list.
+Bindings are declared on the command, wherever that command lives — mostly `src/commands/defaultCommands.ts` and `src/features/annotations/commands.ts`, but `file.save` and `file.saveAs` are declared in `src/features/export/saveDocument.ts`. `grep -rn "keybinding:" src/` is the complete list.
 
 | Action | Command id | Windows/Linux | macOS |
 |---|---|---|---|
 | Open document | `file.open` | `Ctrl+O` | `Cmd+O` |
-| Save a copy | `file.save` | `Ctrl+S` | `Cmd+S` |
+| Save | `file.save` | `Ctrl+S` | `Cmd+S` |
+| Save a copy | `file.saveAs` | `Ctrl+Shift+S` | `Cmd+Shift+S` |
 | Next page | `nav.nextPage` | `→` | `→` |
 | Previous page | `nav.prevPage` | `←` | `←` |
 | Scroll down one screen | `nav.scrollDown` | `Page Down` | `Page Down` |
@@ -53,13 +54,13 @@ These commands exist but have **no keyboard binding**; they are reachable from t
 | Digitally sign | `sign.digitallySign` | Toolbar button / Signatures panel |
 | About Folio | `help.about` | Toolbar button |
 | Check for updates (desktop only) | `help.checkForUpdates` | About dialog button |
-| Word Count (built-in plugin) | `plugin.wordCount.show` | Sidebar panel |
+| Word Count (built-in plugin) | `plugin.wordCount.show` | Command only (the sidebar panel computes and shows the stats itself) |
 
 Every one of these is reachable by keyboard through its toolbar button or panel, so no functionality is keyboard-inaccessible (WCAG 2.1.1); they simply have no dedicated chord. The planned command palette is what makes them all directly reachable.
 
 Once auto-scroll is running, it has its own keyboard controls rather than a fixed chord: `Esc` stops it, `ArrowUp`/`+` speeds it up, and `ArrowDown`/`-` slows it down. It also pauses automatically while hand-panning and stops on its own at the end of the document.
 
-The hand tool, middle-mouse-button page panning (available in any mode, not just with the hand tool on), and the right-click context menu are pointer-only affordances layered on top of the command system, not replacements for it. The context menu duplicates a subset of toolbar commands (select/hand tool, copy, highlight, add comment/text box/image/signature, find, save a copy) for convenience; every one of those remains reachable from the toolbar and keyboard as usual, so nothing the context menu offers is keyboard-inaccessible.
+The hand tool, middle-mouse-button page panning (available in any mode, not just with the hand tool on), and the right-click context menu are pointer-only affordances layered on top of the command system, not replacements for it. The context menu duplicates a subset of toolbar commands (select/hand tool, copy, highlight, add comment/text box/image/signature, find, save, save a copy) for convenience; every one of those remains reachable from the toolbar and keyboard as usual, so nothing the context menu offers is keyboard-inaccessible.
 
 Planned, **not yet implemented** (no command is registered for these today): a command palette (`Ctrl/Cmd+Shift+P`) and an in-app keyboard-shortcuts help overlay (`?`). Every toolbar button whose command has a binding names it in the button's label, which is both its `aria-label` and its tooltip (`IconButton` sets the two from one `label` prop), so bindings stay discoverable until the help overlay lands. If you give an existing command a binding, add it to that label too.
 
@@ -139,6 +140,7 @@ There are around three dozen announcements; `grep -rn "announce(" src/` is the a
 | Hand tool toggled | `Hand tool on` / `Hand tool off` |
 | Note placed | `Note added on page 3` |
 | Signature placed | `Signature placed. Drag it to reposition…` |
+| Saved in place | `Saved report.pdf` (no suffix; the original name) |
 | Saved a copy | `Saved report (filled).pdf` / `Downloaded report (filled).pdf` |
 | OCR finished | `Text recognition complete` |
 

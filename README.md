@@ -18,7 +18,7 @@ native [Tauri](https://tauri.app) shell, and is designed from the first commit
 around three things Acrobat treats as afterthoughts: **accessibility**,
 **a real dark mode**, and **extensibility**.
 
-> Status: early foundation (v0.2). The core viewer, forms, annotations that
+> Status: in development (v0.3). The core viewer, forms, annotations that
 > embed into a saved copy, editing, OCR, visual and cryptographic signing,
 > theming, accessibility (Section 508), the plugin system, and the AI/MCP
 > scaffolding are in place. See the [roadmap](ROADMAP.md).
@@ -81,8 +81,9 @@ Folio rendering a two-page form PDF, in light and dark:
 - Sign by drawing, typing, or uploading a signature; place, drag, and resize it
 - Cryptographic digital signatures (PKCS#7): import a `.p12` or create a
   self-signed identity; opened signed PDFs show the signer and tamper status
-- Save a copy with form values, placed edits, in-place text edits, OCR text,
-  signatures, and annotations all included (original untouched)
+- Save back to the opened file (atomically), or save a copy, with form values,
+  placed edits, in-place text edits, OCR text, signatures, and annotations all
+  included
 
 **Extensible**
 - A plugin system: contribute commands, toolbar items, sidebar panels, and tools
@@ -158,7 +159,8 @@ npm run typecheck    # tsc --noEmit
 | Action            | Shortcut                    |
 | ----------------- | --------------------------- |
 | Open document     | `Ctrl/Cmd + O`              |
-| Save a copy       | `Ctrl/Cmd + S`              |
+| Save              | `Ctrl/Cmd + S`              |
+| Save a copy       | `Ctrl/Cmd + Shift + S`      |
 | Find in document  | `Ctrl/Cmd + F`              |
 | Zoom in / out     | `Ctrl/Cmd + =` / `Ctrl/Cmd + -` |
 | Actual size       | `Ctrl/Cmd + 0`              |

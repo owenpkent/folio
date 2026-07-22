@@ -38,8 +38,10 @@ Three capabilities:
   Escape to deselect.
 - **Add image:** toolbar *Add image* opens a PNG/JPEG picker; the image is placed
   centered, preserving its aspect ratio, and can be dragged and resized.
-- **Save:** *Save a copy* (`Ctrl/Cmd + S`) writes a new PDF with the edits baked
-  in. The original file is never modified.
+- **Save:** *Save* (`Ctrl/Cmd + S`) writes the edits back to the opened file
+  (atomically, so a failed save cannot corrupt it); *Save a copy*
+  (`Ctrl/Cmd + Shift + S`) writes them to a new PDF instead, leaving the
+  original untouched.
 
 ### How it works
 
