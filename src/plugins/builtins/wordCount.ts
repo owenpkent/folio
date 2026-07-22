@@ -64,7 +64,8 @@ function renderPanel(container: HTMLElement): () => void {
 
 /**
  * A small built-in plugin that demonstrates the plugin API: it contributes a
- * command and a live sidebar panel, and recomputes when a document opens.
+ * command, a toolbar button that runs it, and a live sidebar panel, and
+ * recomputes when a document opens.
  */
 export const wordCountPlugin: FolioPlugin = {
   id: 'app.folio.word-count',
@@ -83,6 +84,14 @@ export const wordCountPlugin: FolioPlugin = {
           kind: stats ? 'info' : 'error',
         });
       },
+    });
+
+    ctx.registerToolbarItem({
+      id: 'plugin.wordCount.toolbar',
+      title: 'Count this document',
+      icon: 'hash',
+      group: 'right',
+      commandId: 'plugin.wordCount.show',
     });
 
     ctx.registerSidebarPanel({

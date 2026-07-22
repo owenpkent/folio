@@ -54,7 +54,7 @@ These commands exist but have **no keyboard binding**; they are reachable from t
 | Digitally sign | `sign.digitallySign` | Toolbar button / Signatures panel |
 | About Folio | `help.about` | Toolbar button |
 | Check for updates (desktop only) | `help.checkForUpdates` | About dialog button |
-| Word Count (built-in plugin) | `plugin.wordCount.show` | Command only (the sidebar panel computes and shows the stats itself) |
+| Word Count (built-in plugin) | `plugin.wordCount.show` | Toolbar button (plugin-contributed); the sidebar panel also shows the stats |
 
 Every one of these is reachable by keyboard through its toolbar button or panel, so no functionality is keyboard-inaccessible (WCAG 2.1.1); they simply have no dedicated chord. The planned command palette is what makes them all directly reachable.
 
