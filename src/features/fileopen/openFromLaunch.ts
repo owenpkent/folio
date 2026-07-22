@@ -5,6 +5,7 @@ import { announce } from '@/a11y/announcer';
 import { pushToast } from '@/components/common';
 import { isTauri, readPath } from '@/core/document/openDocument';
 import { loadSource } from '@/state/actions';
+import { useDocumentStore } from '@/state/documentStore';
 
 /** Read a PDF path from disk and load it into the viewer, toasting on failure. */
 async function openPath(path: string): Promise<void> {
@@ -37,6 +38,10 @@ export async function registerFileOpen(): Promise<() => void> {
     if (path) await openPath(path);
   } catch {
     // No launch file (normal), or the command is unavailable in dev.
+  } finally {
+    // Launch handling has settled: from here on, an empty viewer really means
+    // "no document", so the splash may show its open-a-document controls.
+    useDocumentStore.getState().setBooted();
   }
 
   try {
