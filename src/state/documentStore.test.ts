@@ -41,4 +41,17 @@ describe('documentStore', () => {
     expect(s.info).toBeNull();
     expect(s.metadata).toBeNull();
   });
+
+  it('setSourcePath stores the on-disk origin and reset clears it', () => {
+    useDocumentStore.getState().setSourcePath('C:/docs/a.pdf');
+    expect(useDocumentStore.getState().sourcePath).toBe('C:/docs/a.pdf');
+    useDocumentStore.getState().reset();
+    expect(useDocumentStore.getState().sourcePath).toBeNull();
+  });
+
+  it('setBooted clears the booting gate', () => {
+    useDocumentStore.setState({ booting: true });
+    useDocumentStore.getState().setBooted();
+    expect(useDocumentStore.getState().booting).toBe(false);
+  });
 });
