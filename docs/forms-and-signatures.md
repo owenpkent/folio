@@ -57,8 +57,9 @@ page you can:
   panel.
 
 Signatures are stored per document in a local sidecar (keyed by the PDF
-fingerprint), exactly like annotations, so they persist across sessions and
-never modify the original file until you save a copy.
+fingerprint), exactly like annotations, so they persist across sessions
+without touching the PDF itself; they are only written into the document when
+you save.
 
 ### How signatures are stored and coordinates
 
@@ -69,8 +70,9 @@ stamped.
 
 ## Saving
 
-Run **Save a copy** (`Ctrl/Cmd + S`), the toolbar Save button, or the
-`file.save` command. Folio produces the output in two stages (see
+Run **Save** (`Ctrl/Cmd + S`, the toolbar Save button, or the `file.save`
+command) or **Save a copy…** (`Ctrl/Cmd + Shift + S`, `file.saveAs`). Either
+way, Folio produces the output in two stages (see
 `src/features/export/saveDocument.ts`):
 
 1. PDF.js `saveDocument()` writes the filled form values into a fresh PDF.

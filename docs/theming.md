@@ -88,7 +88,7 @@ The active UI theme is one of `light`, `dark`, or `system`, stored in `themeStor
 - **`dark`** → `data-theme="dark"`.
 - **`system`** → Folio reads `window.matchMedia("(prefers-color-scheme: dark)")`, sets `data-theme` accordingly, and subscribes to the media query so a change to the OS setting flips the app live without a reload.
 
-Because everything keys off a single `data-theme` attribute on `<html>`, there is no flash of the wrong theme and no per-component theme logic. The `theme.toggle` command (see `docs/accessibility.md`) cycles the stored preference and announces the change through the live region.
+Because everything keys off a single `data-theme` attribute on `<html>`, there is no flash of the wrong theme and no per-component theme logic. The `theme.toggle` command (see `docs/accessibility.md`) flips between light and dark based on the currently resolved theme (it never sets the stored preference back to `system`) and announces the change through the live region.
 
 `prefers-color-scheme` also seeds a sensible default on first run, and `prefers-reduced-motion` is honored by neutralizing `--folio-transition` (see Reduced motion below).
 

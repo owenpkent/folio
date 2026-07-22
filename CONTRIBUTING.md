@@ -243,8 +243,9 @@ git config user.name "Jane Developer"
 git config user.email "jane@example.com"
 ```
 
-A DCO check runs on every pull request. PRs with unsigned commits cannot be
-merged until every commit is signed off.
+Sign-off is checked during review (there is no automated DCO status check
+today). PRs with unsigned commits will be asked to add the sign-off before
+they are merged.
 
 ---
 
@@ -365,7 +366,8 @@ Tips for a smooth first contribution:
 - CI must be green: lint, typecheck, unit tests (Node 20 and 22), the end-to-end
   (Playwright) run, and the Tauri build matrix (ubuntu/windows/macos) are
   required status checks enforced by branch protection on `main` — a PR cannot
-  be merged until they pass. The DCO check must also pass.
+  be merged until they pass. Sign-off (see the DCO section) is checked in
+  review.
 - Maintainer review is expected before merge. Maintainers squash-merge with a
   commit that preserves a Conventional Commit summary.
 

@@ -65,9 +65,8 @@ For editor IntelliSense (types), optionally `npm install` here to pull
 
 ## Security fuzzing
 
-Two harnesses in [`fuzz/`](fuzz/) exercise the untrusted-input paths (a PDF's
-filename reaching the webview HTML, and a filename reaching the LibreOffice
-subprocess):
+The harness in [`fuzz/`](fuzz/) exercises this extension's untrusted-input
+path: a PDF's filename reaching the webview HTML.
 
 ```bash
 # Webview HTML escaping — drives adversarial filenames through escapeHtml and
@@ -75,13 +74,13 @@ subprocess):
 # injection; also checks the CSP nonce is CSPRNG hex with no collisions.
 ../../node_modules/.bin/esbuild fuzz/fuzz-html.mjs --bundle --platform=node \
   --packages=external --outfile=fuzz/_fuzz-html.cjs && node fuzz/_fuzz-html.cjs
-
-# to_pdf.py command injection — creates real files named as shell payloads and
-# asserts each lands as a single argv element with no shell (run from ATDev venv).
-python fuzz/fuzz-to-pdf.py
 ```
 
-Both report `ALL PASS` on the current code (60k+ HTML cases, 5k+ injection names).
+It reports `ALL PASS` on the current code (60k+ HTML cases).
+
+`fuzz/fuzz-to-pdf.py` is unrelated to this extension: it fuzzes the `to_pdf`
+document-conversion helper that lives in a separate project (it imports from
+that repo's own scripts directory) and exercises no Folio code.
 
 ## Distribute
 

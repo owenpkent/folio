@@ -62,7 +62,8 @@ On the EV-cert Windows host:
   - [ ] NSIS installer runs end-to-end; installs per-user to `%LOCALAPPDATA%\Folio` with no UAC prompt
   - [ ] App launches and opens a PDF (drag-drop and `Ctrl/Cmd+O`); pages render
   - [ ] Default-viewer: double-clicking a `.pdf` opens it in Folio (cold start renders the file)
-  - [ ] Editing: add a text box + image, Save a copy, reopen — both land correctly
+  - [ ] Save in place: open a PDF from disk, add a text box, `Ctrl/Cmd+S`, reopen the same file — the edit landed and the file is not corrupted
+  - [ ] Editing: add a text box + image, Save a copy (`Ctrl/Cmd+Shift+S`), reopen — both land correctly
   - [ ] Edit text in place: click existing text, replace it, undo with Ctrl+Z, then Save a copy and reopen to confirm the edit landed
   - [ ] OCR: recognize a scanned PDF, select/search text, save, confirm searchable elsewhere (assets load offline)
   - [ ] Auto-update path: install the previous published version first, then verify the in-app updater detects the new version, downloads, and relaunches (point the updater endpoint at a locally-served `release/latest.json` if testing before publish)

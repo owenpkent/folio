@@ -1,6 +1,6 @@
 # Folio Roadmap
 
-Folio is an open-source, MIT-licensed PDF viewer aiming at Adobe Acrobat-caliber quality: fast rendering, accessibility-first (WCAG 2.2 AA), dark-mode native, extensible through a plugin system, and AI-ready. The stack is Tauri 2 (Rust) with React 18, TypeScript 5, and Vite 5, rendering via PDF.js (`pdfjs-dist` v4), Zustand for state, CSS-variable theming, and Vitest plus Playwright for tests.
+Folio is an open-source, MIT-licensed PDF viewer aiming at Adobe Acrobat-caliber quality: fast rendering, accessibility-first (WCAG 2.2 AA), dark-mode native, extensible through a plugin system, and AI-ready. The stack is Tauri 2 (Rust) with React 18, TypeScript 5, and Vite 7, rendering via PDF.js (`pdfjs-dist` v4), Zustand for state, CSS-variable theming, and Vitest plus Playwright for tests.
 
 This roadmap is a direction, not a contract. Milestones ship when they are correct and accessible, not on a fixed date. Each phase lists what "done" means so progress is legible.
 

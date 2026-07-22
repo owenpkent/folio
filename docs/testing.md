@@ -78,7 +78,7 @@ already hold values. The latter is deliberately otherwise blank, so any ink on
 the rendered canvas is a form widget that should have been left to the
 annotation layer, which is what makes the doubled-text assertion below possible.
 
-There are three specs.
+There are four specs.
 
 **`e2e/smoke.spec.ts`** — the core document flows:
 
@@ -107,6 +107,11 @@ text in `/Contents`, annotated pages declare `Tabs = S` while untouched pages do
 not, and the document's original form field survives alongside the new
 annotation. It also writes its export to `test-results/exports/`, which is what
 the CI job feeds to veraPDF (see [Measuring PDF/UA](#measuring-pdfua)).
+
+**`e2e/toolbar.spec.ts`** — responsive toolbar behavior: all controls stay
+on-screen on a narrow window, tools that no longer fit collapse into a
+reachable **More** menu when very narrow, and nothing collapses on a wide
+window.
 
 ### Tests that pin silent failures
 
@@ -168,8 +173,8 @@ npm run dev           # browser-only viewer (no native shell)
 ```
 
 Click through: open (Ctrl+O), scroll/zoom, search (Ctrl+F), highlight
-(Ctrl+Shift+H), fill a form, digitally sign, save a copy (Ctrl+S), toggle dark
-mode (Ctrl+Shift+L).
+(Ctrl+Shift+H), fill a form, digitally sign, save (Ctrl+S) or save a copy
+(Ctrl+Shift+S), toggle dark mode (Ctrl+Shift+L).
 
 ### Signed installer
 
