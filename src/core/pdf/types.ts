@@ -8,7 +8,9 @@
 
 /** Where a document's bytes come from. */
 export type DocumentSource =
-  { kind: 'bytes'; data: Uint8Array; name?: string } | { kind: 'url'; url: string; name?: string };
+  /** `path` is the on-disk origin (desktop only); present iff Save-in-place can write back. */
+  | { kind: 'bytes'; data: Uint8Array; name?: string; path?: string }
+  | { kind: 'url'; url: string; name?: string };
 
 /** Summary returned right after a document loads. */
 export interface PdfDocumentInfo {

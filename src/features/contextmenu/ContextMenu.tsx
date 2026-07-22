@@ -167,10 +167,17 @@ export function ContextMenu() {
     },
     {
       kind: 'item',
+      label: 'Save',
+      icon: 'save',
+      disabled: !hasDoc,
+      onSelect: () => run('file.save'),
+    },
+    {
+      kind: 'item',
       label: 'Save a copy',
       icon: 'download',
       disabled: !hasDoc,
-      onSelect: () => run('file.save'),
+      onSelect: () => run('file.saveAs'),
     },
   ];
 
