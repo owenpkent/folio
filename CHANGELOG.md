@@ -25,6 +25,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   handling has settled, so opening a PDF by double-clicking it no longer
   flashes the open UI before the document loads. Animations respect
   `prefers-reduced-motion`.
+- **Mobile mode.** Narrow windows now get a phone-friendly layout instead of a
+  squashed desktop one. At 640px and below, the sidebar becomes an overlay
+  drawer over the document (it starts closed, a tap on the dimmed area
+  dismisses it, and picking a thumbnail or outline entry navigates and closes
+  it), and the toolbar folds the filename, the theme controls, About, and the
+  secondary view tools (fit width/page, hand tool, auto-scroll) into the
+  **More** menu as labeled rows, so every control stays reachable. At 480px
+  and below, zoom in/out and the zoom readout fold as well. Coarse (touch)
+  pointers get 40px hit targets. Toolbar icon buttons no longer flex-shrink
+  when space runs out; squeezed buttons also distorted the width measurement
+  that decides what collapses into the menu. Breakpoints live in
+  `src/theme/breakpoints.ts`, and `e2e/mobile.spec.ts` pins the drawer and
+  no-clip behavior at a phone viewport.
 
 ### Fixed
 
