@@ -275,7 +275,7 @@ interface PluginUi {
 
 ## Worked example: the Word Count plugin
 
-This is a complete, self-contained plugin that registers a command and a live sidebar panel, and reacts when a document opens. It is the real built-in from `src/plugins/builtins/wordCount.ts`.
+This is a complete, self-contained plugin that registers a command, a toolbar button that runs it, and a live sidebar panel, and reacts when a document opens. It is the real built-in from `src/plugins/builtins/wordCount.ts`.
 
 ```ts
 // src/plugins/builtins/wordCount.ts
@@ -366,7 +366,17 @@ export const wordCountPlugin: FolioPlugin = {
       },
     });
 
-    // 2) Sidebar panel: renders live stats into the container DOM node.
+    // 2) Toolbar button: activates the same command from the toolbar (and
+    //    collapses into the overflow menu on narrow windows like any tool).
+    ctx.registerToolbarItem({
+      id: 'plugin.wordCount.toolbar',
+      title: 'Count this document',
+      icon: 'hash',
+      group: 'right',
+      commandId: 'plugin.wordCount.show',
+    });
+
+    // 3) Sidebar panel: renders live stats into the container DOM node.
     ctx.registerSidebarPanel({
       id: 'app.folio.word-count.panel',
       title: 'Word Count',
@@ -374,7 +384,7 @@ export const wordCountPlugin: FolioPlugin = {
       render: renderPanel,
     });
 
-    // 3) React whenever a new document opens.
+    // 4) React whenever a new document opens.
     ctx.onDocumentOpen(() => {
       ctx.ui.showToast('Word Count is ready for this document', { kind: 'info' });
     });
@@ -384,21 +394,9 @@ export const wordCountPlugin: FolioPlugin = {
 
 Points worth noting in this example:
 
-- The plugin registers a command and a panel and never keeps the returned disposables: the host disposes both automatically on deactivate, so no `deactivate` is needed.
-- The command's `when` gates enablement (`status === 'ready'`), and the command is the single code path that computes the count. A keybinding or a toolbar item pointing at the same `id` would reuse it.
+- The plugin registers a command, a toolbar item, and a panel, and never keeps the returned disposables: the host disposes all of them automatically on deactivate, so no `deactivate` is needed.
+- The command's `when` gates enablement (`status === 'ready'`), and the command is the single code path that computes the count. The toolbar item reuses it by pointing its `commandId` at the same `id`; a keybinding would reuse it the same way.
 - The sidebar panel renders imperatively into `container` and returns a teardown callback that stops the in-flight async work; this is the `render` contract, not a React component.
-
-To add a toolbar button that runs the same command, register a `ToolbarItem` whose `commandId` matches the command id:
-
-```ts
-ctx.registerToolbarItem({
-  id: 'plugin.wordCount.toolbar',
-  title: 'Count this document',
-  icon: 'hash',
-  group: 'right',
-  commandId: 'plugin.wordCount.show',
-});
-```
 
 ## How `PluginHost` loads and activates plugins
 
