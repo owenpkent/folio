@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { isNarrowViewport } from '@/theme/breakpoints';
+
 export type FitMode = 'custom' | 'width' | 'page';
 export type SidebarTab = 'thumbnails' | 'outline' | 'annotations' | (string & {});
 
@@ -76,7 +78,9 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   fitMode: 'width',
   currentPage: 1,
   numPages: 0,
-  sidebarOpen: true,
+  // Phone-narrow windows start with the drawer closed: there it overlays the
+  // document rather than sitting beside it.
+  sidebarOpen: !isNarrowViewport(),
   sidebarTab: 'thumbnails',
   searchOpen: false,
   signatureModalOpen: false,

@@ -4,19 +4,28 @@ import { Icon } from '@/components/common';
 import type { OutlineNode } from '@/core/pdf';
 import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
+import { isNarrowViewport } from '@/theme/breakpoints';
 
 export function Outline() {
   const outline = useDocumentStore((s) => s.outline);
   const goToPage = useViewerStore((s) => s.goToPage);
+  const setSidebarOpen = useViewerStore((s) => s.setSidebarOpen);
 
   if (outline.length === 0) {
     return <p className="folio-sidebar__empty">This document has no outline.</p>;
   }
 
+  // On narrow viewports the sidebar is a drawer covering the page; navigating
+  // to a heading means "show it", so dismiss the drawer.
+  const navigate = (page: number) => {
+    goToPage(page);
+    if (isNarrowViewport()) setSidebarOpen(false);
+  };
+
   return (
     <ul className="folio-outline">
       {outline.map((node, i) => (
-        <OutlineItem key={i} node={node} onNavigate={goToPage} />
+        <OutlineItem key={i} node={node} onNavigate={navigate} />
       ))}
     </ul>
   );

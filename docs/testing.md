@@ -113,6 +113,13 @@ on-screen on a narrow window, tools that no longer fit collapse into a
 reachable **More** menu when very narrow, and nothing collapses on a wide
 window.
 
+**`e2e/mobile.spec.ts`** — the narrow-viewport ("mobile") mode at a phone size
+(390×844): the sidebar starts closed and opens as an overlay drawer rather than
+squeezing the viewer, a tap on the backdrop dismisses it, the toolbar never
+clips and everything folded out of the bar (About, theme, fit modes, zoom)
+stays reachable in the **More** menu, and picking a thumbnail navigates and
+closes the drawer.
+
 ### Tests that pin silent failures
 
 Most of the suite guards behaviour that fails *quietly*, which is why these tests

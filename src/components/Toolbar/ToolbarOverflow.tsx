@@ -8,6 +8,9 @@ interface ToolbarOverflowProps {
   items: OverflowTool[];
   /** How many leading items to show inline; the rest collapse into the menu. */
   visibleCount: number;
+  /** Entries that always live in the menu, after the collapsed items — the
+      controls CSS folds out of the bar on narrow viewports. Never inline. */
+  trailingItems?: OverflowTool[];
 }
 
 /**
@@ -16,9 +19,9 @@ interface ToolbarOverflowProps {
  * the edge on a narrow window. `visibleCount` is computed by the Toolbar from a
  * width measurement; this component only renders the split.
  */
-export function ToolbarOverflow({ items, visibleCount }: ToolbarOverflowProps) {
+export function ToolbarOverflow({ items, visibleCount, trailingItems }: ToolbarOverflowProps) {
   const visible = items.slice(0, visibleCount);
-  const overflow = items.slice(visibleCount);
+  const overflow = [...items.slice(visibleCount), ...(trailingItems ?? [])];
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 

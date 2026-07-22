@@ -29,6 +29,7 @@ import { useViewerStore } from '@/state/viewerStore';
 
 export function App() {
   const sidebarOpen = useViewerStore((s) => s.sidebarOpen);
+  const setSidebarOpen = useViewerStore((s) => s.setSidebarOpen);
   const searchOpen = useViewerStore((s) => s.searchOpen);
 
   useKeyboardShortcuts();
@@ -98,6 +99,15 @@ export function App() {
       <SkipLink />
       <Toolbar />
       <div className="folio-body">
+        {/* Shown only on narrow viewports (CSS), where the sidebar is an
+            overlay drawer; tapping the dimmed page area dismisses it. */}
+        {sidebarOpen && (
+          <div
+            className="folio-sidebar-backdrop"
+            aria-hidden="true"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
         {sidebarOpen && <Sidebar />}
         <main id="folio-main" className="folio-main" tabIndex={-1} aria-label="Document">
           <PdfViewer />

@@ -313,6 +313,9 @@ kbd {
   justify-content: center;
   width: 34px;
   height: 34px;
+  /* Fixed-size by design: as a flex child in a crowded toolbar it must never
+     be squeezed, or the toolbar's width measurement reads distorted values. */
+  flex-shrink: 0;
   padding: 0;
   border: none;
   border-radius: var(--folio-radius-sm);
@@ -1527,4 +1530,74 @@ kbd {
   border: 3px solid transparent;
   background-clip: content-box;
   border-radius: 8px;
+}
+
+/* ---- Narrow-viewport (mobile) mode ----
+   Two width tiers, mirrored in src/theme/breakpoints.ts (the Toolbar appends
+   matching More-menu entries for everything folded here) — keep in sync.
+   ≤640px: the sidebar overlays the viewer as a drawer, and the filename, the
+   pinned toolbar tail, and the secondary view tools leave the bar.
+   ≤480px: zoom in/out and the % readout fold as well. */
+.folio-sidebar-backdrop {
+  display: none;
+}
+@media (max-width: 640px) {
+  .folio-body {
+    position: relative;
+  }
+  .folio-sidebar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 60;
+    width: min(var(--folio-sidebar-width), 85vw);
+    box-shadow: var(--folio-shadow);
+  }
+  .folio-sidebar-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 55;
+    background: rgba(0, 0, 0, 0.35);
+  }
+  /* Tighter chrome; the toolbar's JS measure reads the live widths. */
+  .folio-toolbar {
+    padding: 0 4px;
+    gap: 4px;
+  }
+  /* The filename (the reason the left group may shrink) is hidden here, so pin
+     the group's width: if it shrank to 0 in an overflowing bar, the measure
+     would read leftW = 0 and conclude there is room for every tool. */
+  .folio-toolbar__group--left {
+    flex-shrink: 0;
+  }
+  .folio-toolbar__divider {
+    margin: 0 2px;
+  }
+  .folio-toolbar__title,
+  .folio-toolbar__speed-slot,
+  .folio-toolbar__pinned,
+  .folio-toolbar__fold-narrow {
+    display: none;
+  }
+}
+@media (max-width: 480px) {
+  .folio-toolbar__zoom,
+  .folio-toolbar__divider,
+  .folio-toolbar__fold-compact {
+    display: none;
+  }
+}
+/* Comfortable touch targets on coarse pointers; the toolbar measure adapts. */
+@media (pointer: coarse) {
+  .folio-icon-button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  .folio-dropdown__item {
+    min-height: 40px;
+  }
+  .folio-sidebar__tab {
+    width: 40px;
+    height: 40px;
+  }
 }

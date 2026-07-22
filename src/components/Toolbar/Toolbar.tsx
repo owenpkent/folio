@@ -3,18 +3,24 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { commandRegistry } from '@/commands';
 import { IconButton, type IconName } from '@/components/common';
 import { useNotesUi } from '@/features/annotations';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useTextEditStore } from '@/features/textedit';
 import { useContributionStore } from '@/plugins';
 import { useDocumentStore } from '@/state/documentStore';
 import { focusViewer } from '@/state/viewerElement';
 import { AUTO_SCROLL_MAX, AUTO_SCROLL_MIN, useViewerStore } from '@/state/viewerStore';
-import { useThemeStore } from '@/theme/themeStore';
+import { COMPACT_VIEWPORT_QUERY, NARROW_VIEWPORT_QUERY } from '@/theme/breakpoints';
+import { DARK_SCHEME_LABELS, useThemeStore, type DarkScheme } from '@/theme/themeStore';
 
 import { DarkSchemeMenu } from './DarkSchemeMenu';
 import { ToolbarOverflow } from './ToolbarOverflow';
 import type { OverflowTool } from './toolbarTools';
 
 const run = (id: string) => commandRegistry.execute(id);
+
+// Cycle order for the mobile "Dark color" menu entry (the desktop pinned tail
+// offers the same schemes as a dropdown, which a flat menu row can't host).
+const SCHEME_ORDER: DarkScheme[] = ['night', 'green', 'amber'];
 
 // The auto-scroll slider is geometric, not linear: equal slider travel is equal
 // *ratio* of speed change, so the slow end (where fine control matters) gets as
@@ -38,6 +44,10 @@ export function Toolbar() {
   const setAutoScrollSpeed = useViewerStore((s) => s.setAutoScrollSpeed);
   const goToPage = useViewerStore((s) => s.goToPage);
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme);
+  const darkScheme = useThemeStore((s) => s.darkScheme);
+  const setDarkScheme = useThemeStore((s) => s.setDarkScheme);
+  const isNarrow = useMediaQuery(NARROW_VIEWPORT_QUERY);
+  const isCompact = useMediaQuery(COMPACT_VIEWPORT_QUERY);
   const addingNote = useNotesUi((s) => s.adding);
   const textEditActive = useTextEditStore((s) => s.active);
   const toolbarItems = useContributionStore((s) => s.toolbarItems);
@@ -146,6 +156,92 @@ export function Toolbar() {
     },
   ];
 
+  // Controls that CSS folds out of the bar on narrow viewports (the
+  // __fold-narrow / __fold-compact classes and the pinned tail) reappear here,
+  // appended to the More menu, so nothing becomes unreachable on a phone.
+  const foldedTools: OverflowTool[] = isNarrow
+    ? [
+        ...(isCompact
+          ? ([
+              {
+                id: 'zoom-out',
+                icon: 'zoom-out',
+                label: 'Zoom out (Ctrl/Cmd + -)',
+                menuLabel: 'Zoom out',
+                disabled: !hasDoc,
+                onClick: () => run('view.zoomOut'),
+              },
+              {
+                id: 'zoom-in',
+                icon: 'zoom-in',
+                label: 'Zoom in (Ctrl/Cmd + =)',
+                menuLabel: 'Zoom in',
+                disabled: !hasDoc,
+                onClick: () => run('view.zoomIn'),
+              },
+            ] satisfies OverflowTool[])
+          : []),
+        {
+          id: 'fit-width',
+          icon: 'fit-width',
+          label: 'Fit width',
+          menuLabel: 'Fit width',
+          disabled: !hasDoc,
+          onClick: () => run('view.fitWidth'),
+        },
+        {
+          id: 'fit-page',
+          icon: 'fit-page',
+          label: 'Fit page',
+          menuLabel: 'Fit page',
+          disabled: !hasDoc,
+          onClick: () => run('view.fitPage'),
+        },
+        {
+          id: 'hand',
+          icon: 'hand',
+          label: 'Hand tool (pan to scroll)',
+          menuLabel: 'Hand tool',
+          active: handMode,
+          disabled: !hasDoc,
+          onClick: () => run('view.toggleHandMode'),
+        },
+        {
+          id: 'auto-scroll',
+          icon: 'auto-scroll',
+          label: 'Auto-scroll (continuous)',
+          menuLabel: 'Auto-scroll',
+          active: autoScroll,
+          disabled: !hasDoc,
+          onClick: () => run('view.toggleAutoScroll'),
+        },
+        {
+          id: 'dark-scheme',
+          icon: 'contrast',
+          label: `Dark reading color: ${DARK_SCHEME_LABELS[darkScheme]} (tap to change)`,
+          menuLabel: `Dark color: ${DARK_SCHEME_LABELS[darkScheme]}`,
+          onClick: () =>
+            setDarkScheme(
+              SCHEME_ORDER[(SCHEME_ORDER.indexOf(darkScheme) + 1) % SCHEME_ORDER.length],
+            ),
+        },
+        {
+          id: 'theme-toggle',
+          icon: resolvedTheme === 'dark' ? 'sun' : 'moon',
+          label: 'Toggle light / dark (Ctrl/Cmd + Shift + L)',
+          menuLabel: 'Toggle light / dark',
+          onClick: () => run('theme.toggle'),
+        },
+        {
+          id: 'about',
+          icon: 'info',
+          label: 'About Folio (version, build info, updates)',
+          menuLabel: 'About Folio',
+          onClick: () => run('help.about'),
+        },
+      ]
+    : [];
+
   const toolbarRef = useRef<HTMLElement>(null);
   const leftRef = useRef<HTMLDivElement>(null);
   const centerRef = useRef<HTMLDivElement>(null);
@@ -177,9 +273,14 @@ export function Toolbar() {
     const centerW = sumChildren(center);
     const pinnedW = sumChildren(pinned);
     const pinnedKids = Array.from(pinned.children) as HTMLElement[];
-    const btnW = pinnedKids.length
-      ? pinnedKids[pinnedKids.length - 1].getBoundingClientRect().width
-      : 34;
+    const leftKids = Array.from(left.children) as HTMLElement[];
+    // Slot width from the pinned tail; when the tail is display:none (narrow
+    // viewports) it measures 0, so fall back to the always-visible sidebar
+    // toggle in the left group.
+    const btnW =
+      (pinnedKids.length ? pinnedKids[pinnedKids.length - 1].getBoundingClientRect().width : 0) ||
+      (leftKids.length ? leftKids[0].getBoundingClientRect().width : 0) ||
+      34;
     const flowGap = 2; // .folio-toolbar__group inter-button gap
     // groupGap sits between left|center and center|right; flowGap between the
     // flow and the pinned tail. 8px is a sub-pixel safety margin.
@@ -247,6 +348,7 @@ export function Toolbar() {
         <IconButton
           icon="zoom-out"
           label="Zoom out (Ctrl/Cmd + -)"
+          className="folio-toolbar__fold-compact"
           disabled={!hasDoc}
           onClick={() => run('view.zoomOut')}
         />
@@ -256,24 +358,28 @@ export function Toolbar() {
         <IconButton
           icon="zoom-in"
           label="Zoom in (Ctrl/Cmd + =)"
+          className="folio-toolbar__fold-compact"
           disabled={!hasDoc}
           onClick={() => run('view.zoomIn')}
         />
         <IconButton
           icon="fit-width"
           label="Fit width"
+          className="folio-toolbar__fold-narrow"
           disabled={!hasDoc}
           onClick={() => run('view.fitWidth')}
         />
         <IconButton
           icon="fit-page"
           label="Fit page"
+          className="folio-toolbar__fold-narrow"
           disabled={!hasDoc}
           onClick={() => run('view.fitPage')}
         />
         <IconButton
           icon="hand"
           label="Hand tool (pan to scroll)"
+          className="folio-toolbar__fold-narrow"
           active={handMode}
           disabled={!hasDoc}
           onClick={() => run('view.toggleHandMode')}
@@ -281,6 +387,7 @@ export function Toolbar() {
         <IconButton
           icon="auto-scroll"
           label="Auto-scroll (continuous)"
+          className="folio-toolbar__fold-narrow"
           active={autoScroll}
           disabled={!hasDoc}
           onClick={() => run('view.toggleAutoScroll')}
@@ -305,7 +412,7 @@ export function Toolbar() {
       </div>
 
       <div className="folio-toolbar__group folio-toolbar__group--right">
-        <ToolbarOverflow items={docTools} visibleCount={visibleCount} />
+        <ToolbarOverflow items={docTools} visibleCount={visibleCount} trailingItems={foldedTools} />
         {/* The theme controls and About stay pinned (always visible); the
             document tools to their left collapse into the overflow menu. */}
         <div className="folio-toolbar__pinned" ref={pinnedRef}>

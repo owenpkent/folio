@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { getEngine } from '@/core/pdf';
 import { useViewerStore } from '@/state/viewerStore';
+import { isNarrowViewport } from '@/theme/breakpoints';
 
 const THUMB_SCALE = 0.22;
 
@@ -9,6 +10,7 @@ export function Thumbnails() {
   const numPages = useViewerStore((s) => s.numPages);
   const currentPage = useViewerStore((s) => s.currentPage);
   const goToPage = useViewerStore((s) => s.goToPage);
+  const setSidebarOpen = useViewerStore((s) => s.setSidebarOpen);
 
   if (!numPages) {
     return <p className="folio-sidebar__empty">No document open.</p>;
@@ -21,7 +23,12 @@ export function Thumbnails() {
           key={pageNumber}
           pageNumber={pageNumber}
           active={pageNumber === currentPage}
-          onSelect={() => goToPage(pageNumber)}
+          onSelect={() => {
+            goToPage(pageNumber);
+            // On narrow viewports the sidebar is a drawer covering the page;
+            // picking a page means "show it", so dismiss the drawer.
+            if (isNarrowViewport()) setSidebarOpen(false);
+          }}
         />
       ))}
     </div>

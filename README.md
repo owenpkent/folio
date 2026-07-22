@@ -51,6 +51,9 @@ Folio rendering a two-page form PDF, in light and dark:
 **Dark mode and reading comfort**
 - Native light / dark / system theming via CSS custom properties, unified across the UI chrome and the rendered page: toggling dark darkens the whole app and inverts the page together, rendered at full resolution for crisp text
 - Selectable dark reading schemes (Acrobat-style): Night (white-on-black), Green, and Amber
+- Responsive down to phone widths: on narrow windows the sidebar becomes an
+  overlay drawer, toolbar tools fold into the More menu (everything stays
+  reachable), and touch screens get larger hit targets
 
 **Annotations**
 - Highlight selected text; annotations persist per document
@@ -186,7 +189,8 @@ folio/
 │  ├─ features/          annotations, editing, textedit, ocr, signatures, forms, save/export
 │  ├─ plugins/           plugin host, SDK types, built-in Word Count plugin
 │  ├─ ai/                provider-agnostic AI layer (Claude, experimental) + MCP stubs
-│  ├─ theme/             tokens, ThemeProvider, dark schemes
+│  ├─ theme/             tokens, ThemeProvider, dark schemes, breakpoints
+│  ├─ hooks/             shared React hooks (useMediaQuery)
 │  ├─ a11y/              announcer, focus, keyboard shortcuts
 │  ├─ state/             Zustand stores
 │  ├─ styles/            global CSS
