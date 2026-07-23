@@ -104,7 +104,9 @@
   .folio-sidebar__tab.is-active,
   .folio-modal__tab.is-active,
   .folio-thumb.is-active .folio-thumb__frame,
-  .folio-search__result.is-active {
+  .folio-search__result.is-active,
+  .folio-menubar__trigger[aria-expanded='true'],
+  .folio-menubar__menuitem[aria-checked='true'] {
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }

@@ -89,6 +89,7 @@ Folio exposes a stable landmark structure so screen-reader users can navigate by
 
 | Region | Element/role | ARIA |
 |---|---|---|
+| Application menu bar | `role="menubar"` | `aria-label="Application menu"`; each trigger is `role="menuitem"` with `aria-haspopup` and `aria-expanded`, dropdowns are `role="menu"`, checkable rows are `menuitemcheckbox`/`menuitemradio` with `aria-checked`, and shortcut hints are `aria-hidden` so they stay out of accessible names. On narrow viewports the row is replaced by one "Menu" button opening a grouped dropdown |
 | Top toolbar | `<header role="banner">` | icon buttons carry `aria-label` (for example "Toggle sidebar (Ctrl/Cmd + B)", "Zoom in (Ctrl/Cmd + =)"); the live zoom readout uses `aria-live="polite"` |
 | Sidebar (outline, thumbnails, annotations) | `<aside>` (complementary) | `aria-label="Document tools"`; the rail is `role="tablist"` with `aria-orientation="vertical"`, each tab is `role="tab"` with `aria-selected` and a roving tabindex, and the body is `role="tabpanel"` |
 | Page viewport | `<main>` | `aria-label="Document"` |
@@ -101,6 +102,8 @@ There is no separate status-bar landmark today: the current page (an editable pa
 Additional roles in the sidebar panels: thumbnails present a selectable list, each with `aria-current="page"` for the page in view; toolbar toggles expose their state via `aria-pressed`; the dark-scheme menu exposes its current scheme in its label.
 
 The sidebar rail is a real tablist: it uses a roving tabindex, so `Tab` steps over the rail as one stop and `↑`/`↓` (and `←`/`→`, and `Home`/`End`) move between tabs, with selection following focus. That handler is load-bearing rather than a nicety — a roving tabindex without it leaves every unselected panel unreachable by keyboard.
+
+The menu bar is a real APG menubar on the same principle: the whole row is one `Tab` stop (roving tabindex), `←`/`→` move across the menus (wrapping, and sliding an open menu along with focus), `↓`/`Enter`/`Space` open a menu at its first enabled row and `↑` at its last, `↑`/`↓` move within a menu skipping separators and disabled rows, `Home`/`End` jump to either end, and `Esc` closes the open menu and returns focus to its trigger. Activating an item also returns focus to the trigger. Opening a menu never disturbs the page text selection (mousedown is suppressed the same way the toolbar's Comment/Highlight buttons do it), so selection-driven commands work from the Annotate menu.
 
 **Known gap — the outline is not a tree.** `Outline.tsx` renders nested `<ul>`/`<li>` with a button per entry and `aria-expanded` on the expand/collapse toggle, not `role="tree"` / `role="treeitem"`. It is fully keyboard navigable and every control is named, but a screen reader announces it as a list rather than a tree, so it carries no level or set-position information. Making it a real tree means the ARIA roles plus arrow-key navigation over the same roving-tabindex pattern the rail now uses.
 

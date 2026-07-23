@@ -223,6 +223,145 @@ kbd {
   line-height: 1;
 }
 
+/* ---- Menu bar ----
+   Sits above the toolbar as its own row (ARIA APG menubar pattern). Folds into
+   a single hamburger dropdown on narrow viewports; see the mobile section
+   near the bottom of this file. */
+.folio-menubar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 0 6px;
+  background: var(--folio-surface);
+  border-bottom: 1px solid var(--folio-border);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.folio-menubar__item {
+  position: relative;
+  display: inline-flex;
+}
+.folio-menubar__trigger {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--folio-radius-sm);
+  background: transparent;
+  color: var(--folio-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition:
+    background var(--folio-transition),
+    color var(--folio-transition);
+}
+.folio-menubar__trigger:hover {
+  background: var(--folio-surface-hover);
+}
+.folio-menubar__trigger[aria-expanded='true'] {
+  background: var(--folio-surface-2);
+  color: var(--folio-accent);
+}
+.folio-menubar__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  min-width: 220px;
+  padding: 4px;
+  background: var(--folio-surface);
+  border: 1px solid var(--folio-border);
+  border-radius: var(--folio-radius);
+  box-shadow: var(--folio-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.folio-menubar__menuitem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--folio-text);
+  font-size: 0.875rem;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.folio-menubar__menuitem:hover:not(:disabled),
+.folio-menubar__menuitem:focus-visible {
+  background: var(--folio-surface-hover);
+  outline: none;
+}
+.folio-menubar__menuitem:disabled {
+  color: var(--folio-text-muted);
+  opacity: 0.5;
+  cursor: default;
+}
+.folio-menubar__menuitem-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  flex-shrink: 0;
+  color: var(--folio-text-muted);
+}
+.folio-menubar__menuitem-label {
+  flex: 1;
+}
+.folio-menubar__menuitem-shortcut {
+  color: var(--folio-text-muted);
+  font-size: 0.75rem;
+  padding-left: 16px;
+  white-space: nowrap;
+}
+.folio-menubar__menuitem-check {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--folio-accent);
+}
+.folio-menubar__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--folio-border);
+}
+
+/* The mobile hamburger's single flattened dropdown (see the mobile section
+   near the bottom of this file for the ≤640px switch-over). Its rows reuse
+   .folio-dropdown__item for the same look as the toolbar's "More tools" menu. */
+.folio-menubar__mobile-menu {
+  left: 0;
+  right: auto;
+  min-width: 240px;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+}
+.folio-menubar__mobile-group + .folio-menubar__mobile-group {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--folio-border);
+}
+.folio-menubar__mobile-heading {
+  padding: 6px 10px 2px;
+  color: var(--folio-text-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.folio-menubar__mobile-shortcut {
+  color: var(--folio-text-muted);
+  font-size: 0.75rem;
+  padding-left: 10px;
+}
+
 /* ---- Right-click context menu ---- */
 .folio-context-backdrop {
   position: fixed;
@@ -1599,5 +1738,17 @@ kbd {
   .folio-sidebar__tab {
     width: 40px;
     height: 40px;
+  }
+  .folio-menubar__trigger {
+    min-height: 40px;
+  }
+  .folio-menubar__menuitem {
+    min-height: 40px;
+  }
+  /* The mobile hamburger's dropdown is the primary touch surface for every
+     command that used to be a toolbar button, so it gets the more generous
+     44px target size rather than the app's general 40px convention above. */
+  .folio-menubar__mobile-menu .folio-dropdown__item {
+    min-height: 44px;
   }
 }
