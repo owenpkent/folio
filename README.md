@@ -18,7 +18,7 @@ native [Tauri](https://tauri.app) shell, and is designed from the first commit
 around three things Acrobat treats as afterthoughts: **accessibility**,
 **a real dark mode**, and **extensibility**.
 
-> Status: in development (v0.3). The core viewer, forms, annotations that
+> Status: in development (v0.4). The core viewer, forms, annotations that
 > embed into a saved copy, editing, OCR, visual and cryptographic signing,
 > theming, accessibility (Section 508), the plugin system, and the AI/MCP
 > scaffolding are in place. See the [roadmap](ROADMAP.md).

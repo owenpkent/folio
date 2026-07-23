@@ -191,7 +191,7 @@ From a non-elevated shell with the eToken plugged in and the updater key env set
 
 ```powershell
 npx tauri build --bundles nsis
-Get-AuthenticodeSignature .\src-tauri\target\release\bundle\nsis\Folio_0.1.0_x64-setup.exe | Format-List Status, SignerCertificate
+Get-Item .\src-tauri\target\release\bundle\nsis\Folio_*_x64-setup.exe | Get-AuthenticodeSignature | Format-List Status, SignerCertificate
 ```
 
 Status should be `Valid` with signer `CN=OK Studio Inc.`. Run the installer and

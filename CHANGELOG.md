@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-22
+
 ### Changed
 
 - **The Green dark scheme now uses the Linux console's bright ANSI green**
@@ -27,17 +29,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `prefers-reduced-motion`.
 - **Mobile mode.** Narrow windows now get a phone-friendly layout instead of a
   squashed desktop one. At 640px and below, the sidebar becomes an overlay
-  drawer over the document (it starts closed, a tap on the dimmed area
-  dismisses it, and picking a thumbnail or outline entry navigates and closes
-  it), and the toolbar folds the filename, the theme controls, About, and the
-  secondary view tools (fit width/page, hand tool, auto-scroll) into the
-  **More** menu as labeled rows, so every control stays reachable. At 480px
-  and below, zoom in/out and the zoom readout fold as well. Coarse (touch)
-  pointers get 40px hit targets. Toolbar icon buttons no longer flex-shrink
-  when space runs out; squeezed buttons also distorted the width measurement
-  that decides what collapses into the menu. Breakpoints live in
-  `src/theme/breakpoints.ts`, and `e2e/mobile.spec.ts` pins the drawer and
-  no-clip behavior at a phone viewport.
+  drawer over the document (it starts closed, a tap on the dimmed area or
+  pressing `Esc` dismisses it, and picking a thumbnail or outline entry
+  navigates and closes it), and the toolbar folds the filename, the theme
+  controls, About, and the secondary view tools (fit width/page, hand tool,
+  auto-scroll) into the **More** menu as labeled rows, so every control stays
+  reachable. At 480px and below, zoom in/out and the zoom readout fold as
+  well. Coarse (touch) pointers get 40px hit targets. Toolbar icon buttons no
+  longer flex-shrink when space runs out; squeezed buttons also distorted the
+  width measurement that decides what collapses into the menu. Breakpoints
+  live in `src/theme/breakpoints.ts`, and `e2e/mobile.spec.ts` pins the
+  drawer and no-clip behavior at a phone viewport.
+- **The built-in Word Count plugin now has a toolbar trigger.** Its
+  `plugin.wordCount.show` command was registered but wired to no UI,
+  contradicting the accessibility guide's promise that every command without a
+  shortcut is reachable from the toolbar or a panel. The plugin now
+  contributes a toolbar item, which also puts the worked example in
+  docs/plugins.md back in line with the real source.
 
 ### Fixed
 
@@ -49,6 +57,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   The `ms-settings:` deep link is now launched through ShellExecute (a hidden
   `cmd /C start`) instead of `explorer.exe`, which dropped the URI's query on
   some Windows builds and opened the default web browser instead.
+- **The page indicator stays on one line when the toolbar is squeezed.** In a
+  narrow window the "/ N" page count could wrap, landing the slash above the
+  count and mis-centering the page input. The toolbar now enforces
+  `white-space: nowrap` on itself and pins the page box so it neither shrinks
+  nor wraps, and `e2e/toolbar.spec.ts` guards the single-line indicator and
+  the toolbar's fixed height.
+
+### Security
+
+- **CI verifies the sha256 digests of the release binaries it downloads.**
+  The security workflow installs gitleaks and reviewdog from GitHub releases;
+  those tarballs are now pinned to the digests from each release's
+  `checksums.txt` (independently re-verified against the artifacts), and the
+  install fails on a mismatch. A version tag on a GitHub release is mutable;
+  the digest is not. The downloads also retry transient network faults
+  instead of failing the whole job.
 
 ## [0.3.1] - 2026-07-20
 
@@ -371,7 +395,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
   cargo-deny policy.
 
-[Unreleased]: https://github.com/owenpkent/folio/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/owenpkent/folio/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/owenpkent/folio/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/owenpkent/folio/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/owenpkent/folio/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/owenpkent/folio/compare/v0.1.0...v0.2.0

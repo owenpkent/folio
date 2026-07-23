@@ -4,6 +4,8 @@ Folio is an open-source, MIT-licensed PDF viewer aiming at Adobe Acrobat-caliber
 
 This roadmap is a direction, not a contract. Milestones ship when they are correct and accessible, not on a fixed date. Each phase lists what "done" means so progress is legible.
 
+Phase numbers name thematic milestones, not app release versions. A release ships whatever is done, so the app's version can run ahead of a phase that is still open: Folio 0.2.0 already carried early v0.4-phase editing and OCR work, and Folio 0.4.0 ships while this phase's page operations and redaction remain planned.
+
 Status legend: **Planned** (designed, not started), **In progress**, **Done**.
 
 ## Guiding principles
