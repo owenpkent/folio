@@ -112,17 +112,11 @@ When dark mode is active, `darkScheme` (`src/theme/themeStore.ts`, values `'nigh
 - **`green`** — green text on black.
 - **`amber`** — amber text on black.
 
-The tint is applied at raster time, after the difference-invert: a `multiply` fill of an RGB color over the now-inverted canvas. `DARK_SCHEME_TINT` (`src/core/pdf/PdfJsEngine.ts`) maps `green` to `[74, 222, 128]` and `amber` to `[240, 185, 80]`; `night` has no tint (`null`). Multiplying rather than replacing the color means the now-white ink picks up the tint while black stays black, so anti-aliasing at glyph edges is preserved instead of banding. `DARK_SCHEME_LABELS` supplies the display names shown in the picker.
+The tint is applied at raster time, after the difference-invert: a `multiply` fill of an RGB color over the now-inverted canvas. `DARK_SCHEME_TINT` (`src/theme/themeStore.ts`) maps `green` to `[85, 255, 85]` and `amber` to `[240, 185, 80]`; `night` has no tint (`null`). Multiplying rather than replacing the color means the now-white ink picks up the tint while black stays black, so anti-aliasing at glyph edges is preserved instead of banding. `DARK_SCHEME_LABELS` supplies the display names shown in the picker.
 
 `darkScheme` is chosen from a toolbar dropdown, `DarkSchemeMenu` (`src/components/Toolbar/DarkSchemeMenu.tsx`, using the contrast/◐ icon), which sits next to the light/dark toggle. The setting is tied to dark mode: in light mode the page renders as authored regardless of which scheme is selected; in dark mode, the selected scheme is what you see. Changing the scheme while dark mode is active re-renders visible pages immediately, the same as toggling the theme itself.
 
-**Thumbnails are the one place still using a CSS filter**, since they are small enough that the blur the raster approach fixes for full pages is not visible on them:
-
-```css
-[data-theme='dark'] .folio-thumb__canvas {
-  filter: invert(1) hue-rotate(180deg);
-}
-```
+**Thumbnails follow the same raster-time path**: `Thumbnails.tsx` passes the same `invert`/`tint` options into `renderPage` that `Page.tsx` does, so the sidebar previews match the page exactly in every scheme. No CSS filter is involved anywhere anymore; already-rendered thumbnails re-render when the theme or scheme changes.
 
 ## Adding a new UI theme
 

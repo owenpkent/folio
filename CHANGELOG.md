@@ -6,6 +6,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Thumbnails follow the current page.** The sidebar thumbnail strip scrolls
+  its highlighted page into view as you move through the document, using
+  nearest-edge scrolling so it never jumps when the thumb is already visible,
+  and stands down for a moment while you scroll the sidebar by hand.
+  Respects `prefers-reduced-motion`.
+
+### Fixed
+
+- **Green and Amber dark schemes now apply to thumbnails.** Sidebar previews
+  used a plain CSS invert, so they stayed white-on-black while the page showed
+  the selected scheme. Thumbnails now render through the same raster-time
+  invert-and-tint path as the page (`renderPage` `invert`/`tint`) and re-render
+  when the theme or scheme changes, so the strip always matches the page.
+
 ## [0.4.0] - 2026-07-23
 
 ### Changed
