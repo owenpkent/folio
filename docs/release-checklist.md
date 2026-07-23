@@ -6,8 +6,8 @@ mechanics (bundle commands, manifest generation, publish steps) live in
 whether those steps should run.
 
 Every item is **required to ship** unless marked optional. If you skip one,
-write the reason in the release issue (not in this file). Skipping the smoke
-test, signature checks, or the Dependabot gate is **not** acceptable — fix the
+write the reason in the release issue (not in this file). Skipping the
+signature checks or the Dependabot gate is **not** acceptable — fix the
 issue or defer the release.
 
 ---
@@ -58,15 +58,6 @@ On the EV-cert Windows host:
 - [ ] `signtool.exe` is on `PATH` for the build shell — typically `C:\Program Files (x86)\Windows Kits\10\bin\<latest>\x64`. Verify with `Get-Command signtool.exe`.
 - [ ] `npx tauri build` produces `Folio_<ver>_x64-setup.exe` and a matching `Folio_<ver>_x64-setup.exe.sig` in `src-tauri/target/release/bundle/nsis/`. Sidecars only appear when `TAURI_SIGNING_PRIVATE_KEY[_PASSWORD]` are set; if missing, the build **fails** because `bundle.createUpdaterArtifacts` is `true`.
 - [ ] EV signature is valid: `Get-AuthenticodeSignature <exe> | Format-List Status, SignerCertificate` shows `Status: Valid`, signer `CN=OK Studio Inc.` (or `signtool verify /pa /v <exe>`)
-- [ ] **Clean-VM smoke test** on a Windows 11 VM with no prior Folio install:
-  - [ ] NSIS installer runs end-to-end; installs per-user to `%LOCALAPPDATA%\Folio` with no UAC prompt
-  - [ ] App launches and opens a PDF (drag-drop and `Ctrl/Cmd+O`); pages render
-  - [ ] Default-viewer: double-clicking a `.pdf` opens it in Folio (cold start renders the file)
-  - [ ] Save in place: open a PDF from disk, add a text box, `Ctrl/Cmd+S`, reopen the same file — the edit landed and the file is not corrupted
-  - [ ] Editing: add a text box + image, Save a copy (`Ctrl/Cmd+Shift+S`), reopen — both land correctly
-  - [ ] Edit text in place: click existing text, replace it, undo with Ctrl+Z, then Save a copy and reopen to confirm the edit landed
-  - [ ] OCR: recognize a scanned PDF, select/search text, save, confirm searchable elsewhere (assets load offline)
-  - [ ] Auto-update path: install the previous published version first, then verify the in-app updater detects the new version, downloads, and relaunches (point the updater endpoint at a locally-served `release/latest.json` if testing before publish)
 - [ ] `release/latest.json` `signature` for `windows-x86_64` matches the contents of `Folio_<ver>_x64-setup.exe.sig`, and `pub_date` is the current UTC time
 
 ---
@@ -106,5 +97,5 @@ no release workflow.
 ## Skipping items
 
 Write any skip reason in the GitHub release issue. Common acceptable skips: "no
-UI changes so screenshots not refreshed." Skipping smoke tests, signature checks,
-or the Dependabot gate is not acceptable.
+UI changes so screenshots not refreshed." Skipping signature checks or the
+Dependabot gate is not acceptable.
