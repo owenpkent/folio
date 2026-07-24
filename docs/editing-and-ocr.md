@@ -31,13 +31,19 @@ Three capabilities:
 
 ### Using it
 
-- **Add text:** toolbar *Add text box* (the `T` icon) drops an empty box on the
-  current page and focuses it. Type directly. While a box is selected an inline
-  inspector offers font (Sans / Serif / Mono), size, **bold**, and color. Drag
-  the top grip to move it, the corner to resize. Click empty space or press
-  Escape to deselect.
-- **Add image:** toolbar *Add image* opens a PNG/JPEG picker; the image is placed
-  centered, preserving its aspect ratio, and can be dragged and resized.
+- **Add text:** *Edit -> Add text box* arms click-to-place: the next click on a
+  page drops an empty box with its top-left corner there and focuses it, so
+  typing starts where you clicked. Escape, the banner's *Cancel*, or a click
+  anywhere off a page disarms it, and the banner's *Place in the middle* drops
+  the box centered on the current page instead — the keyboard path into the
+  tool, since picking a spot needs a pointer (see
+  [accessibility.md](accessibility.md#keyboard-shortcuts)). While a box is
+  selected an inline inspector offers font (Sans / Serif / Mono), size,
+  **bold**, and color. Drag anywhere on the box to move it, the corner to
+  resize. Click empty space or press Escape to deselect.
+- **Add image:** *Edit -> Add image* opens a PNG/JPEG picker, then arms
+  click-to-place the same way; the image lands centered on the click,
+  preserving its aspect ratio, and can be dragged and resized.
 - **Save:** *Save* (`Ctrl/Cmd + S`) writes the edits back to the opened file
   (atomically, so a failed save cannot corrupt it); *Save a copy*
   (`Ctrl/Cmd + Shift + S`) writes them to a new PDF instead, leaving the
@@ -84,7 +90,7 @@ open document as soon as you commit it, not only when you save a copy.
 
 ### Using it
 
-- Toggle toolbar **Edit text** (the pencil icon, `textedit.toggle`). While it is
+- Toggle **Edit text** in the Edit menu (`textedit.toggle`). While it is
   on, the page becomes clickable: click a run of text to open an inline editor
   prefilled with it, sized and colored to match the original as closely as
   PDF.js's own styles allow (font family, size, and fill color).

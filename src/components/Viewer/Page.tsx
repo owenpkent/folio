@@ -7,6 +7,7 @@ import { getEngine } from '@/core/pdf';
 import { AnnotationLayer, NotesLayer } from '@/features/annotations';
 import { EditLayer } from '@/features/editing';
 import { OcrTextLayer } from '@/features/ocr';
+import { PlacementLayer } from '@/features/placement';
 import { SignatureLayer } from '@/features/signatures';
 import { TextEditLayer } from '@/features/textedit';
 import { pluginHost } from '@/plugins';
@@ -148,6 +149,9 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
       <SignatureLayer pageNumber={pageNumber} />
       <EditLayer pageNumber={pageNumber} />
       <TextEditLayer pageNumber={pageNumber} />
+      {/* Last, so while a placement is armed it catches the click before the
+          overlays underneath it. */}
+      <PlacementLayer pageNumber={pageNumber} />
     </div>
   );
 });

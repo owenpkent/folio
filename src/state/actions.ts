@@ -4,6 +4,9 @@ import { announce } from '@/a11y/announcer';
 import { useAnnotationStore } from '@/features/annotations';
 import { useEditStore } from '@/features/editing';
 import { useOcrStore } from '@/features/ocr';
+// Store only, not the feature barrel: that also exports components, which pull
+// in UI modules this low-level orchestration module has no business importing.
+import { usePlacementStore } from '@/features/placement/store';
 import { useSignatureStore } from '@/features/signatures';
 import { detectSignatures, useSigningStore } from '@/features/signing';
 // Import the store directly rather than the feature barrel: the barrel also
@@ -47,6 +50,7 @@ export async function loadSource(source: DocumentSource): Promise<void> {
     // Not persisted (nothing to load per fingerprint), but a fresh document is
     // never mid-edit, so any leftover session/undo history from a prior one goes.
     useTextEditStore.getState().reset();
+    usePlacementStore.getState().cancel();
     try {
       const original = engine.getOriginalBytes();
       useSigningStore.getState().setDetected(original ? detectSignatures(original) : []);
@@ -77,6 +81,7 @@ export async function closeDocument(): Promise<void> {
   useEditStore.getState().reset();
   useOcrStore.getState().reset();
   useTextEditStore.getState().reset();
+  usePlacementStore.getState().cancel();
   useSigningStore.getState().setDetected([]);
   document.title = 'Folio';
   announce('Closed document');

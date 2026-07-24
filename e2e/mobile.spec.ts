@@ -93,3 +93,22 @@ test('picking a thumbnail navigates and closes the drawer', async ({ page }) => 
   await page.locator('.folio-thumb').first().click();
   await expect(page.locator('.folio-sidebar')).toHaveCount(0);
 });
+
+// The menu bar replaces its seven-menu desktop row with a single hamburger at
+// this width; every command still needs to be reachable, including the ones
+// that only ever lived in the menu bar (never on the narrow toolbar at all).
+test('the menu bar collapses into a hamburger that reaches every command', async ({ page }) => {
+  await page.goto('/');
+  await openFixture(page);
+
+  const menuButton = page.getByRole('button', { name: 'Menu' });
+  await expect(menuButton).toBeVisible();
+  await menuButton.click();
+
+  const menu = page.getByRole('menu', { name: 'Menu' });
+  await expect(menu.getByRole('menuitem', { name: 'Save a copy' })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'Digitally sign' })).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+});

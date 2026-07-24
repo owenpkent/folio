@@ -38,18 +38,26 @@ unsaved edits.
 
 ## Signatures
 
-Open the signature dialog from the toolbar (the signature icon) or the
+Open the signature dialog from the Sign menu or the
 Signatures sidebar tab, or run the `sign.addSignature` command. You can create a
 signature three ways:
 
 - **Draw** on a canvas with a mouse, pen, or finger. The drawing is trimmed to
   its ink bounds and exported as a transparent PNG.
 - **Type** your name and choose a script, serif, or sans style. The text is
-  rendered to a PNG.
+  rendered to a PNG. The last few names you signed with are offered as chips and
+  the most recent one is prefilled, so a returning user never retypes their
+  name. Only the text and chosen font are remembered (in `localStorage`, keyed
+  `folio.signatures.recentNames`), never the rendered image, and the list is
+  global rather than per document.
 - **Upload** a PNG or JPEG image of a signature.
 
-Once created, the signature is placed in the center of the current page. On the
-page you can:
+*Place on page* closes the dialog and arms click-to-place: the next click on a
+page drops the signature centered on that point. Escape, the banner's *Cancel*,
+or a click anywhere off a page backs out, and its *Place in the middle* drops
+the signature in the center of the current page without a click on it — the
+keyboard path into the tool (see
+[accessibility.md](accessibility.md#keyboard-shortcuts)). On the page you can:
 
 - **Drag** it to reposition (drag the image).
 - **Resize** it from the corner handle (aspect ratio is preserved).
@@ -104,7 +112,7 @@ is the original name with a `(filled)`, `(edited)`, or `(signed)` suffix.
 
 Beyond visual signatures, Folio can apply a real cryptographic signature (PKCS#7
 detached) that PDF readers, including Acrobat, recognize under "Signatures." Open
-it from the toolbar (the shield icon), the Signatures panel ("Digitally sign"),
+it from the Sign menu, the Signatures panel ("Digitally sign"),
 or the `sign.digitallySign` command.
 
 ### Signing identities

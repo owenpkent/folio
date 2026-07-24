@@ -38,6 +38,8 @@ Folio rendering a two-page form PDF, in light and dark:
 - Zoom (snaps to clean preset levels), fit-to-width, fit-to-page, and a live page indicator
 - Hand (pan) tool with 1:1 cursor tracking, plus middle-click drag-to-pan in any mode
 - Continuous auto-scroll (teleprompter-style), with adjustable speed and keyboard control
+- Classic application menu bar (File, Edit, View, Annotate, Sign, Tools, Help)
+  with full keyboard operation; the toolbar keeps the everyday buttons
 - Acrobat-style right-click context menu for common tools and actions
 - Thumbnail strip and document outline (bookmarks)
 - Fast in-document text search with a results list
@@ -52,8 +54,9 @@ Folio rendering a two-page form PDF, in light and dark:
 - Native light / dark / system theming via CSS custom properties, unified across the UI chrome and the rendered page: toggling dark darkens the whole app and inverts the page together, rendered at full resolution for crisp text
 - Selectable dark reading schemes (Acrobat-style): Night (white-on-black), Green, and Amber
 - Responsive down to phone widths: on narrow windows the sidebar becomes an
-  overlay drawer, toolbar tools fold into the More menu (everything stays
-  reachable), and touch screens get larger hit targets
+  overlay drawer, the menu bar folds into a hamburger menu, toolbar tools fold
+  into the More menu (everything stays reachable), and touch screens get
+  larger hit targets
 
 **Annotations**
 - Highlight selected text; annotations persist per document
@@ -68,7 +71,8 @@ Folio rendering a two-page form PDF, in light and dark:
 
 **Editing and OCR**
 - Add **text boxes** (typewriter tool with font, size, bold, and color) and place
-  **images** (PNG/JPEG); drag, resize, and bake them into a saved copy
+  **images** (PNG/JPEG): click where it goes, then drag from anywhere on it,
+  resize, and bake it into a saved copy
 - **Edit text already on the page**, in place: click a run of text to replace
   it; the original is removed from the page's content, not just covered up
   (undo with Ctrl/Cmd + Z, up to 10 edits)
@@ -81,7 +85,8 @@ Folio rendering a two-page form PDF, in light and dark:
 
 **Forms and signing**
 - Fill interactive AcroForm fields (text, checkbox, radio, dropdown)
-- Sign by drawing, typing, or uploading a signature; place, drag, and resize it
+- Sign by drawing, typing, or uploading a signature; click where it goes, then
+  drag and resize it. Typed names are remembered, so signing again is two clicks
 - Cryptographic digital signatures (PKCS#7): import a `.p12` or create a
   self-signed identity; opened signed PDFs show the signer and tamper status
 - Save back to the opened file (atomically), or save a copy, with form values,
@@ -186,7 +191,7 @@ folio/
 │  ├─ core/pdf/          PdfEngine interface + PDF.js implementation
 │  ├─ commands/          command registry (every user action)
 │  ├─ components/        Viewer, Toolbar, Sidebar, Search, common
-│  ├─ features/          annotations, editing, textedit, ocr, signatures, forms, save/export
+│  ├─ features/          annotations, editing, placement, textedit, ocr, signatures, forms, save/export
 │  ├─ plugins/           plugin host, SDK types, built-in Word Count plugin
 │  ├─ ai/                provider-agnostic AI layer (Claude, experimental) + MCP stubs
 │  ├─ theme/             tokens, ThemeProvider, dark schemes, breakpoints
