@@ -1182,8 +1182,10 @@ kbd {
   cursor: text;
   outline: none;
 }
+/* The whole box drags, so an unselected one reads as draggable; once it is
+   selected the caret takes over and a press only drags if it travels. */
 .folio-edit--text:not(.is-selected) .folio-edit__text {
-  cursor: default;
+  cursor: move;
 }
 .folio-edit__text:empty::before {
   content: 'Text';
@@ -1197,16 +1199,6 @@ kbd {
   cursor: move;
   user-select: none;
   -webkit-user-drag: none;
-}
-.folio-edit__grip {
-  position: absolute;
-  top: -10px;
-  left: -1px;
-  width: 22px;
-  height: 10px;
-  border-radius: 3px 3px 0 0;
-  background: var(--folio-accent);
-  cursor: move;
 }
 .folio-edit__delete {
   position: absolute;
@@ -1279,6 +1271,39 @@ kbd {
   border-radius: 4px;
   background: none;
   cursor: pointer;
+}
+
+/* ---- Click-to-place (text boxes, images, signatures) ---- */
+/* Only rendered while a placement is armed, so it never steals pointer events
+   (or blocks scrolling) otherwise. Above every other page overlay. */
+.folio-placement-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  cursor: crosshair;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  appearance: none;
+}
+/* Also the keyboard path into the placing tools: its buttons are what makes
+   "click somewhere on the page" operable without a pointer. */
+.folio-placement-hint {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--folio-surface);
+  border: 1px solid var(--folio-border);
+  border-left: 3px solid var(--folio-accent);
+  border-radius: var(--folio-radius-sm);
+  box-shadow: var(--folio-shadow);
 }
 
 /* ---- OCR (selectable text overlay + progress) ---- */
@@ -1431,6 +1456,29 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+.folio-sig-recents {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.folio-sig-recent {
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid var(--folio-border);
+  border-radius: 999px;
+  background: var(--folio-surface);
+  color: var(--folio-text);
+  cursor: pointer;
+  font-size: 1rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.folio-sig-recent.is-active {
+  border-color: var(--folio-accent);
+  outline: 1px solid var(--folio-accent);
 }
 .folio-sig-fonts {
   display: flex;

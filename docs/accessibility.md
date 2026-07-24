@@ -35,38 +35,40 @@ Bindings are declared on the command, wherever that command lives — mostly `sr
 
 `↑`/`↓`, unmodified `Home`/`End` and `Space` are unbound and scroll natively, which works because the viewer takes focus when a document opens and gets it back when the find bar closes. `←`/`→` do **not** scroll: they are bound to page navigation and the dispatcher calls `preventDefault()`, so they never reach the browser's own scrolling. That is a deliberate trade — paging is the more useful binding — but it means horizontal scrolling at high zoom needs the scrollbar, the hand tool, or shift-scroll.
 
-These commands exist but have **no keyboard binding**; they are reachable from the toolbar (and via the registry) only:
+These commands exist but have **no keyboard binding**; they are reachable from the menu bar or the toolbar (and via the registry) only. The menu bar implements the full ARIA menubar keyboard pattern, so every menu item is operable with arrow keys, `Home`/`End`, `Enter`, and `Escape`:
 
 | Action | Command id | Trigger |
 |---|---|---|
 | Close document | `file.close` | Command / menu |
 | Set Folio as default PDF viewer | `file.setDefaultViewer` | Command (desktop only) |
-| Fit width | `view.fitWidth` | Toolbar button |
-| Fit page | `view.fitPage` | Toolbar button |
-| Hand tool (pan to scroll) | `view.toggleHandMode` | Toolbar button |
-| Auto-scroll (continuous, teleprompter-style) | `view.toggleAutoScroll` | Toolbar button |
-| Edit text | `textedit.toggle` | Toolbar button |
-| Add text box | `edit.addText` | Toolbar button |
-| Add image | `edit.addImage` | Toolbar button |
-| Recognize text (OCR) | `ocr.recognizeDocument` | Toolbar button |
+| Fit width | `view.fitWidth` | Toolbar button / View menu |
+| Fit page | `view.fitPage` | Toolbar button / View menu |
+| Hand tool (pan to scroll) | `view.toggleHandMode` | Toolbar button / View menu |
+| Auto-scroll (continuous, teleprompter-style) | `view.toggleAutoScroll` | Toolbar button / View menu |
+| Edit text | `textedit.toggle` | Edit menu |
+| Add text box | `edit.addText` | Edit menu |
+| Add image | `edit.addImage` | Edit menu |
+| Recognize text (OCR) | `ocr.recognizeDocument` | Edit menu |
 | Recognize text on this page | `ocr.recognizePage` | Command |
-| Add signature | `sign.addSignature` | Toolbar button / Signatures panel |
-| Digitally sign | `sign.digitallySign` | Toolbar button / Signatures panel |
-| About Folio | `help.about` | Toolbar button |
+| Add signature | `sign.addSignature` | Sign menu / Signatures panel |
+| Digitally sign | `sign.digitallySign` | Sign menu / Signatures panel |
+| About Folio | `help.about` | Toolbar button / Help menu |
 | Check for updates (desktop only) | `help.checkForUpdates` | About dialog button |
-| Word Count (built-in plugin) | `plugin.wordCount.show` | Toolbar button (plugin-contributed); the sidebar panel also shows the stats |
+| Word Count (built-in plugin) | `plugin.wordCount.show` | Tools menu (plugin-contributed); the sidebar panel also shows the stats |
 
-Every one of these is reachable by keyboard through its toolbar button or panel, so no functionality is keyboard-inaccessible (WCAG 2.1.1); they simply have no dedicated chord. The planned command palette is what makes them all directly reachable.
+Every one of these is reachable by keyboard through its menu item, toolbar button, or panel, so no functionality is keyboard-inaccessible (WCAG 2.1.1); they simply have no dedicated chord. The planned command palette is what makes them all directly reachable.
+
+Three of them — **Add text box**, **Add image**, and **Add signature** — do not act immediately: they arm [click-to-place](editing-and-ocr.md#editing-text-boxes-and-images), where the next click on a page decides where the item lands. Picking a spot that way is inherently a pointer affordance, so the mode's banner carries the keyboard path: a focusable **Place in the middle** button that drops the item centered on the current page (what the tools did before click-to-place existed), plus **Cancel**. The banner takes focus when it opens, so the button is one key away rather than a full tab traversal, and `Escape` cancels from anywhere. Nothing is placed until one of those two is chosen.
 
 Once auto-scroll is running, it has its own keyboard controls rather than a fixed chord: `Esc` stops it, `ArrowUp`/`+` speeds it up, and `ArrowDown`/`-` slows it down. It also pauses automatically while hand-panning and stops on its own at the end of the document.
 
-The hand tool, middle-mouse-button page panning (available in any mode, not just with the hand tool on), and the right-click context menu are pointer-only affordances layered on top of the command system, not replacements for it. The context menu duplicates a subset of toolbar commands (select/hand tool, copy, highlight, add comment/text box/image/signature, find, save, save a copy) for convenience; every one of those remains reachable from the toolbar and keyboard as usual, so nothing the context menu offers is keyboard-inaccessible.
+The hand tool, middle-mouse-button page panning (available in any mode, not just with the hand tool on), and the right-click context menu are pointer-only affordances layered on top of the command system, not replacements for it. The context menu duplicates a subset of the command set (select/hand tool, copy, highlight, add comment/text box/image/signature, find, save, save a copy) for convenience; every one of those remains reachable from the menu bar, the toolbar, and the keyboard as usual, so nothing the context menu offers is keyboard-inaccessible.
 
 Planned, **not yet implemented** (no command is registered for these today): a command palette (`Ctrl/Cmd+Shift+P`) and an in-app keyboard-shortcuts help overlay (`?`). Every toolbar button whose command has a binding names it in the button's label, which is both its `aria-label` and its tooltip (`IconButton` sets the two from one `label` prop), so bindings stay discoverable until the help overlay lands. If you give an existing command a binding, add it to that label too.
 
-Form fields and signatures: filled AcroForm fields are native HTML inputs, so they are keyboard-operable, and Folio names each one from the field's `/TU` (falling back to `/T`) — see [The text layer and screen readers](#the-text-layer-and-screen-readers) for why PDF.js does not do this on its own. A field with neither entry has no name to give, which is a defect in the source PDF rather than in the viewer. The signature dialog is a focus-trapped modal (dismiss with `Escape`), and placed signatures expose a keyboard-focusable delete button; keyboard placement and resizing of signatures are planned. Signatures and placed images carry **no alternative text** in the exported file, and there is no UI to supply one — a known gap, tracked in [508-conformance.md](508-conformance.md). See [forms-and-signatures.md](forms-and-signatures.md).
+Form fields and signatures: filled AcroForm fields are native HTML inputs, so they are keyboard-operable, and Folio names each one from the field's `/TU` (falling back to `/T`) — see [The text layer and screen readers](#the-text-layer-and-screen-readers) for why PDF.js does not do this on its own. A field with neither entry has no name to give, which is a defect in the source PDF rather than in the viewer. The signature dialog is a focus-trapped modal (dismiss with `Escape`); its Type tab prefills the name last signed with and offers the recent ones as buttons, so the common case is reachable without typing at all. Placing the created signature has a keyboard path (the placement banner's **Place in the middle**, see above), and placed signatures expose a keyboard-focusable delete button; keyboard *repositioning* and resizing are still planned — dragging and the corner handle are pointer-only. Signatures and placed images carry **no alternative text** in the exported file, and there is no UI to supply one — a known gap, tracked in [508-conformance.md](508-conformance.md). See [forms-and-signatures.md](forms-and-signatures.md).
 
-Editing text in place: the **Edit text** tool toggle (`textedit.toggle`) is a command reachable from its toolbar button, like the others above. Once it is on, clicking a run of text opens an inline editor: a focused `role="textbox"` with its own `aria-label`, committing on `Enter` and cancelling on `Escape` like a native control. Choosing *which* run to edit is pointer-only today: the hit target is sized to the page and keyed to click coordinates, with no keyboard-driven way to tab between editable runs. See [editing-and-ocr.md](editing-and-ocr.md#editing-existing-text).
+Editing text in place: the **Edit text** tool toggle (`textedit.toggle`) is a command reachable from its Edit-menu item, like the others above. Once it is on, clicking a run of text opens an inline editor: a focused `role="textbox"` with its own `aria-label`, committing on `Enter` and cancelling on `Escape` like a native control. Choosing *which* run to edit is pointer-only today: the hit target is sized to the page and keyed to click coordinates, with no keyboard-driven way to tab between editable runs. See [editing-and-ocr.md](editing-and-ocr.md#editing-existing-text).
 
 Everything reachable by mouse is reachable by keyboard. If you add a feature, add its command with a `keybinding` rather than wiring a bespoke key handler.
 
@@ -197,7 +199,7 @@ Planned: **axe-core** violation scanning wired into the end-to-end suite across 
 **Manual (per release):**
 
 - **NVDA** on Windows and **VoiceOver** on macOS passes covering: opening a document, navigating pages, reading page text, using the outline tree, searching, and switching themes and dark schemes.
-- Keyboard-only pass with no mouse: confirm every action in the shortcuts table works, focus is always visible, and no overlay traps focus.
+- Keyboard-only pass with no mouse: confirm every action in the shortcuts table works, focus is always visible, and no overlay traps focus. Include the placing tools (add text box / image / signature), where the banner's **Place in the middle** is the only keyboard route in.
 - Reduced-motion and high-contrast passes with the OS setting enabled.
 
 ## WCAG 2.2 AA mapping

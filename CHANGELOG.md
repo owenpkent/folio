@@ -24,8 +24,25 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and stands down for a moment while you scroll the sidebar by hand.
   Respects `prefers-reduced-motion`.
 
+- **Recent signature names.** The Type tab of the signature dialog remembers the
+  last five names you signed with (and the style you picked for each), offers
+  them as one-click chips, and prefills the most recent one, so signing a second
+  document no longer means retyping your name. Stored locally, text and font
+  only, never the rendered image.
+
 ### Changed
 
+- **Text boxes, images, and signatures are placed where you click.** Adding one
+  no longer drops it in the middle of the page for you to drag into position:
+  the tool arms a click-to-place mode (with a banner; Escape, the banner's
+  Cancel, or a click anywhere off a page backs out) and the next click on a page
+  decides where the item lands. Text boxes start at the click, images and
+  signatures land centered on it. Picking a spot is a pointer affordance, so the
+  banner takes focus and carries the keyboard path: **Place in the middle**
+  centers the item on the current page, which is what these tools did before.
+- **A text box moves by dragging anywhere on it.** The narrow grip above the box
+  is gone; press anywhere on the box and drag. A press that does not travel is
+  still a plain click, so selecting a box and placing the caret work as before.
 - **The toolbar slimmed down.** With the menu bar carrying the full command
   set, the toolbar's right side keeps only Save and Find next to the pinned
   theme controls and About; comment, highlight, edit text, add text box, add

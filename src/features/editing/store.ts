@@ -50,6 +50,8 @@ interface EditState {
   remove(id: string): void;
 
   select(id: string | null): void;
+  /** Select a text box and put the caret in it (used after a click that was not a drag). */
+  focus(id: string): void;
   clearFocus(): void;
 }
 
@@ -138,6 +140,7 @@ export const useEditStore = create<EditState>((set, get) => {
     },
 
     select: (id) => set({ selectedId: id }),
+    focus: (id) => set({ selectedId: id, focusId: id }),
     clearFocus: () => set({ focusId: null }),
   };
 });

@@ -18,6 +18,7 @@ import { registerEditCommands } from '@/features/editing';
 import { registerExportCommands } from '@/features/export';
 import { registerFileOpen } from '@/features/fileopen';
 import { OcrProgressModal, registerOcrCommands } from '@/features/ocr';
+import { PlacementHint } from '@/features/placement';
 import { AboutModal } from '@/features/about';
 import { ContextMenu } from '@/features/contextmenu';
 import { registerSignatureCommands, SignatureModal } from '@/features/signatures';
@@ -116,6 +117,7 @@ export function App() {
         </main>
       </div>
       {searchOpen && <SearchBar />}
+      <PlacementHint />
       <SignatureModal />
       <SigningModal />
       <OcrProgressModal />

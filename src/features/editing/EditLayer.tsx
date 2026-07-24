@@ -13,6 +13,12 @@ const pageRectFrom = (el: Element | null) =>
 
 const FONT_FAMILIES: FontFamily[] = ['Helvetica', 'Times', 'Courier'];
 
+/**
+ * How far the pointer must travel before a press on a text box counts as a
+ * drag rather than a click. Below it, the press places the caret / selects.
+ */
+const DRAG_THRESHOLD_PX = 4;
+
 /** Overlay of placed text boxes and images for a page. */
 export function EditLayer({ pageNumber }: { pageNumber: number }) {
   const all = useEditStore((s) => s.edits);
@@ -68,6 +74,7 @@ function TextItem({ item }: { item: TextEdit }) {
   const selectedId = useEditStore((s) => s.selectedId);
   const focusId = useEditStore((s) => s.focusId);
   const select = useEditStore((s) => s.select);
+  const focus = useEditStore((s) => s.focus);
   const move = useEditStore((s) => s.move);
   const updateText = useEditStore((s) => s.updateText);
   const remove = useEditStore((s) => s.remove);
@@ -105,27 +112,52 @@ function TextItem({ item }: { item: TextEdit }) {
     if (el) updateText(item.id, { text: el.textContent ?? '' });
   };
 
-  const startDrag = (e: PointerEvent<HTMLSpanElement>) => {
+  /**
+   * Press anywhere on the box to move it: a press that travels turns into a
+   * drag, one that does not is a plain click (select the box, or place the
+   * caret if it was already selected). No grip to hunt for.
+   */
+  const startDrag = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    // The inspector and the handles have their own behavior.
+    if (target.closest('.folio-edit__inspector, .folio-edit__delete, .folio-edit__resize')) return;
     const pageRect = pageRectFrom(e.currentTarget);
     if (!pageRect) return;
-    e.preventDefault();
+
+    const wasSelected = isSelected;
+    select(item.id);
+    // An unselected box is not editable, so nothing there needs the browser's
+    // default press handling, and suppressing it avoids a text-selection drag.
+    if (!wasSelected) e.preventDefault();
+
     const startX = e.clientX;
     const startY = e.clientY;
     const start = { ...item.rect };
+    let dragging = false;
 
     const onMove = (ev: globalThis.PointerEvent) => {
-      const dx = (ev.clientX - startX) / pageRect.width;
-      const dy = (ev.clientY - startY) / pageRect.height;
+      const dxPx = ev.clientX - startX;
+      const dyPx = ev.clientY - startY;
+      if (!dragging) {
+        if (Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX) return;
+        dragging = true;
+        // Dragging out of the editable would otherwise select its text.
+        editableRef.current?.blur();
+        window.getSelection()?.removeAllRanges();
+      }
       move(item.id, {
         ...start,
-        x: clamp(start.x + dx, 0, 1 - start.width),
-        y: clamp(start.y + dy, 0, 1 - start.height),
+        x: clamp(start.x + dxPx / pageRect.width, 0, 1 - start.width),
+        y: clamp(start.y + dyPx / pageRect.height, 0, 1 - start.height),
       });
     };
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      // A click, not a drag: start typing. A box that was already selected
+      // keeps the caret the browser just placed.
+      if (!dragging && !wasSelected) focus(item.id);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -162,7 +194,7 @@ function TextItem({ item }: { item: TextEdit }) {
     <div
       className={`folio-edit folio-edit--text${isSelected ? ' is-selected' : ''}`}
       style={positionStyle(item.rect)}
-      onPointerDown={() => select(item.id)}
+      onPointerDown={startDrag}
     >
       {isSelected && <TextInspector item={item} onChange={(patch) => updateText(item.id, patch)} />}
       <div
@@ -183,12 +215,6 @@ function TextItem({ item }: { item: TextEdit }) {
       />
       {isSelected && (
         <>
-          <span
-            className="folio-edit__grip"
-            aria-hidden="true"
-            title="Drag to move"
-            onPointerDown={startDrag}
-          />
           <button
             type="button"
             className="folio-edit__delete"
