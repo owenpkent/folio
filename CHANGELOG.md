@@ -6,6 +6,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **Updated `postcss` to 8.5.24 and the VS Code extension's `esbuild` to 0.25**,
+  clearing the two Dependabot alerts that appeared once alerts were enabled for
+  the repository. Both are development-only dependencies and neither ships in a
+  built artifact: postcss arrives transitively through Vite
+  ([GHSA-r28c-9q8g-f849](https://github.com/advisories/GHSA-r28c-9q8g-f849), path
+  traversal in source-map auto-loading), and esbuild is the extension's bundler
+  ([GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99), dev
+  server request handling). The postcss one was a **high**, which the release
+  checklist gates on, so it would have blocked the next release.
+
+
 ## [0.5.0] - 2026-07-28
 
 ### Added
