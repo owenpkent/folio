@@ -6,6 +6,7 @@ import 'pdfjs-dist/web/pdf_viewer.css';
 import { getEngine } from '@/core/pdf';
 import { AnnotationLayer, NotesLayer } from '@/features/annotations';
 import { EditLayer } from '@/features/editing';
+import { ImageEditLayer } from '@/features/imageedit';
 import { OcrTextLayer } from '@/features/ocr';
 import { PlacementLayer } from '@/features/placement';
 import { SignatureLayer } from '@/features/signatures';
@@ -149,6 +150,7 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
       <SignatureLayer pageNumber={pageNumber} />
       <EditLayer pageNumber={pageNumber} />
       <TextEditLayer pageNumber={pageNumber} />
+      <ImageEditLayer pageNumber={pageNumber} />
       {/* Last, so while a placement is armed it catches the click before the
           overlays underneath it. */}
       <PlacementLayer pageNumber={pageNumber} />

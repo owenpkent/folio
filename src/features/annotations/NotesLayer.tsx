@@ -105,6 +105,17 @@ export function NotesLayer({ pageNumber }: { pageNumber: number }) {
                 setDragId(null);
                 if (!movedRef.current) setActive(activeId === note.id ? null : note.id);
               }}
+              // Opening on pointerup is what lets the handler above tell a
+              // click apart from the end of a drag, but keyboard activation
+              // fires no pointer events at all, so Enter and Space on a
+              // focused pin did nothing despite it being a named button.
+              // detail === 0 is the standard signal for a non-pointer
+              // activation, so this adds the keyboard path without
+              // double-firing on a real click.
+              onClick={(e) => {
+                if (e.detail !== 0) return;
+                setActive(activeId === note.id ? null : note.id);
+              }}
             >
               <Icon name="comment" size={13} />
             </button>

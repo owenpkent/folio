@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { commandRegistry } from '@/commands';
 import { Icon, IconButton, type IconName } from '@/components/common';
+import { useImageEditStore } from '@/features/imageedit';
+import { useTextEditStore } from '@/features/textedit';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useContributionStore } from '@/plugins';
 import { isTauri } from '@/core/document/openDocument';
@@ -140,6 +142,10 @@ export function MenuBar() {
   const darkScheme = useThemeStore((s) => s.darkScheme);
   const setDarkScheme = useThemeStore((s) => s.setDarkScheme);
   const toolbarItems = useContributionStore((s) => s.toolbarItems);
+  // The two in-place editing tools are toggles, so their menu rows carry live
+  // checked state the same way the View menu's do.
+  const textEditActive = useTextEditStore((s) => s.active);
+  const imageEditActive = useImageEditStore((s) => s.active);
   const isMobile = useMediaQuery(NARROW_VIEWPORT_QUERY);
 
   // A row backed by a command that requires an open document, e.g. Save.
@@ -213,11 +219,18 @@ export function MenuBar() {
       id: 'edit',
       label: 'Edit',
       entries: [
-        docItem('textedit.toggle', 'Edit text', 'pencil'),
+        // The two in-place tools (editing content the PDF already has) sit
+        // above the separator with the additive ones below, so "Edit text" and
+        // "Edit images" read as a pair rather than "Edit images" looking like a
+        // variant of "Add image".
+        checkItem('textedit.toggle', 'Edit text', 'pencil', textEditActive, true),
+        checkItem('imageedit.toggle', 'Edit images', 'crop', imageEditActive, true),
+        sep('edit-sep-1'),
         docItem('edit.addText', 'Add text box', 'type'),
         docItem('edit.addImage', 'Add image', 'image'),
+        docItem('edit.addCheckmark', 'Add check mark', 'check'),
         docItem('ocr.recognizeDocument', 'Recognize text (OCR)', 'scan'),
-        sep('edit-sep-1'),
+        sep('edit-sep-2'),
         docItem('search.toggle', 'Find', 'search'),
       ],
     },

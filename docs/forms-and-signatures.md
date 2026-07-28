@@ -71,10 +71,10 @@ you save.
 
 ### How signatures are stored and coordinates
 
-A signature is `{ pageNumber, dataUrl, rect }`, where `rect` is normalized to the
-page (fractions from 0 to 1, top-left origin) so it survives zoom. On save, each
-rect is converted to PDF user space (bottom-left origin) when the image is
-stamped.
+A signature is `{ id, pageNumber, dataUrl, rect, createdAt }`, where `rect` is
+normalized to the page (fractions from 0 to 1, top-left origin) so it survives
+zoom. On save, each rect is converted to PDF user space (bottom-left origin)
+when the image is stamped.
 
 ## Saving
 
@@ -86,10 +86,21 @@ way, Folio produces the output in two stages (see
 1. PDF.js `saveDocument()` writes the filled form values into a fresh PDF.
 2. If there is anything else to bake, [pdf-lib](https://pdf-lib.js.org) loads
    those bytes once and stamps, in order: the invisible OCR text layer, placed
-   edits (text boxes and images), signature images, and review annotations
-   (highlights and sticky notes, written as real `/Highlight` and `/Text`
-   annotations, not flattened graphics). When none of those are present, the
-   step-1 bytes are returned as-is.
+   edits (text boxes, images, and check marks), signature images, and review
+   annotations (highlights and sticky notes, written as real `/Highlight` and
+   `/Text` annotations, not flattened graphics). When none of those are
+   present, the step-1 bytes are returned as-is.
+
+Step 2 also mints a fresh trailer `/ID` whenever it runs, so a baked export no
+longer carries the source document's PDF.js fingerprint. This is deliberate:
+every placed edit, signature, and OCR result lives in a fingerprint-keyed
+local sidecar until it is baked, and if the export kept the source's
+fingerprint, reopening it would make Folio load that same sidecar again on
+top of content that was now also baked into the page, doubling everything. One
+consequence worth knowing: once you reopen a saved or exported copy, its baked
+content (edits, signatures, OCR text, and annotations) is ordinary page
+content with no sidecar entry behind it, so it can no longer be dragged,
+resized, or deleted the way it could in the source document.
 
 Text edited in place with the **Edit text** tool (see
 [editing-and-ocr.md](editing-and-ocr.md#editing-existing-text)) is already part

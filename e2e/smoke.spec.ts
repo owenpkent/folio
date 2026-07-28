@@ -6,10 +6,25 @@ const FORM_PDF = resolve('e2e/fixtures/form.pdf');
 /** Same shape as form.pdf, but its fields carry values and baked appearances. */
 const FILLED_FORM_PDF = resolve('e2e/fixtures/filled-form.pdf');
 
+/** Open a top-level menu and click one of its rows. Toggle rows (Edit text,
+    Edit images, the View menu's checkables) carry role="menuitemcheckbox"
+    rather than "menuitem", so both are accepted. */
+async function runMenuItem(page: Page, menu: string, item: string) {
+  await page.getByRole('menuitem', { name: menu, exact: true }).click();
+  const dropdown = page.getByRole('menu', { name: menu });
+  await dropdown
+    .getByRole('menuitem', { name: item })
+    .or(dropdown.getByRole('menuitemcheckbox', { name: item }))
+    .click();
+}
+
 async function openFixture(page: Page, file: string = FORM_PDF) {
   const [chooser] = await Promise.all([
     page.waitForEvent('filechooser'),
-    page.locator('.folio-empty').getByRole('button', { name: /open document/i }).click(),
+    page
+      .locator('.folio-empty')
+      .getByRole('button', { name: /open document/i })
+      .click(),
   ]);
   await chooser.setFiles(file);
   await expect(page.locator('.folio-page-canvas').first()).toBeVisible();
@@ -51,16 +66,19 @@ test('does not paint filled field values into the page canvas', async ({ page })
   await expect
     .poll(
       () =>
-        page.locator('.folio-page-canvas').first().evaluate((el) => {
-          const canvas = el as HTMLCanvasElement;
-          const ctx = canvas.getContext('2d')!;
-          const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          let dark = 0;
-          for (let i = 0; i < data.length; i += 4) {
-            if (data[i] < 100 && data[i + 1] < 100 && data[i + 2] < 100) dark++;
-          }
-          return dark;
-        }),
+        page
+          .locator('.folio-page-canvas')
+          .first()
+          .evaluate((el) => {
+            const canvas = el as HTMLCanvasElement;
+            const ctx = canvas.getContext('2d')!;
+            const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            let dark = 0;
+            for (let i = 0; i < data.length; i += 4) {
+              if (data[i] < 100 && data[i + 1] < 100 && data[i + 2] < 100) dark++;
+            }
+            return dark;
+          }),
       { message: 'dark pixels on the page canvas' },
     )
     .toBe(0);
@@ -132,6 +150,122 @@ test('the find bar hands focus back to the document when it closes', async ({ pa
   await expect.poll(() => viewer.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
 });
 
+test('a real checkbox widget renders, is keyboard reachable, and toggles', async ({ page }) => {
+  await page.goto('/');
+  await openFixture(page);
+
+  // Real AcroForm checkbox widgets are handled entirely by PDF.js's own
+  // annotation layer (renderForms), not by anything Folio adds on top; this
+  // guards that nothing regresses that path. Ticking a checkbox that has no
+  // real form field is a separate tool (Add check mark) covered elsewhere.
+  const checkbox = page.locator('.folio-forms-layer input[type="checkbox"]');
+  await expect(checkbox).toHaveCount(1);
+  await expect(checkbox).not.toBeChecked();
+
+  // Keyboard reachable: it can take focus and be toggled without a pointer.
+  await checkbox.focus();
+  await expect(checkbox).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(checkbox).toBeChecked();
+
+  // And toggles back off on a real pointer click.
+  await checkbox.click();
+  await expect(checkbox).not.toBeChecked();
+});
+
+test('a checkbox still toggles while the Edit text tool is on', async ({ page }) => {
+  await page.goto('/');
+  await openFixture(page);
+
+  // Edit text lives in the Edit menu now, not on the toolbar.
+  await runMenuItem(page, 'Edit', 'Edit text');
+  // Assert the tool is actually armed: without this, a broken toggle would
+  // leave the click-catcher unmounted and the rest of the test would pass for
+  // the wrong reason (the checkbox getting a normal, uncontested click). One
+  // catcher mounts per page, so `.first()` avoids a strict-mode violation on
+  // this two-page fixture.
+  await expect(page.locator('.folio-textedit-hit').first()).toBeVisible();
+
+  // The catcher covers the whole page above the forms layer (see
+  // TextEditLayer.tsx), so a real click on the checkbox lands on the catcher
+  // first, same as a user's click would. `force` skips Playwright's own
+  // topmost-element check so the click still fires at the checkbox's
+  // coordinates instead of timing out there; whether it actually reaches the
+  // checkbox is then entirely down to Folio's own redirect.
+  const checkbox = page.locator('.folio-forms-layer input[type="checkbox"]');
+  await expect(checkbox).not.toBeChecked();
+  await checkbox.click({ force: true });
+  await expect(checkbox).toBeChecked();
+});
+
+test('a check mark is placed where you click, through the shared placement mode', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await openFixture(page);
+
+  await runMenuItem(page, 'Edit', 'Add check mark');
+  // The one shared placement banner and catcher, not a tool-specific one: the
+  // check-mark tool was migrated onto features/placement so all four placing
+  // tools have the same visible mode, Escape handling, and keyboard path.
+  await expect(page.locator('.folio-placement-hint')).toBeVisible();
+  await expect(page.locator('.folio-edit--mark')).toHaveCount(0);
+
+  const box = (await page.locator('.folio-page').first().boundingBox())!;
+  // Near the top of the page for two reasons: at the default zoom the bottom of
+  // this page sits below the window, where a click would miss entirely, and the
+  // fixture's widgets occupy roughly 16-34% of the height, which would exercise
+  // the defer-to-widget path below instead of placement.
+  await page.mouse.click(box.x + box.width * 0.75, box.y + box.height * 0.1);
+
+  const mark = page.locator('.folio-edit--mark');
+  await expect(mark).toHaveCount(1);
+  await expect(page.locator('.folio-placement-hint')).toHaveCount(0);
+  // Centered on the click, so its middle sits at the 75% mark, not its corner.
+  const style = await mark.evaluate((el) => ({ left: el.style.left, width: el.style.width }));
+  expect(parseFloat(style.left) + parseFloat(style.width) / 2).toBeCloseTo(75, 0);
+});
+
+test('an armed check mark yields to a real checkbox widget instead of stamping', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await openFixture(page);
+
+  await runMenuItem(page, 'Edit', 'Add check mark');
+  await expect(page.locator('.folio-placement-hint')).toBeVisible();
+
+  // The one placing tool that defers to a real field: a mark exists only to
+  // stand in for a printed box with no AcroForm field behind it, so a click on
+  // an actual widget means the widget. `force` skips Playwright's topmost-element
+  // check, since the placement catcher legitimately covers the page.
+  const checkbox = page.locator('.folio-forms-layer input[type="checkbox"]');
+  await checkbox.click({ force: true });
+  await expect(checkbox).toBeChecked();
+  // No mark stamped on top of the widget, and the tool stays armed so the next
+  // click can still place one somewhere the widget is not.
+  await expect(page.locator('.folio-edit--mark')).toHaveCount(0);
+  await expect(page.locator('.folio-placement-hint')).toBeVisible();
+});
+
+test('a real radio group renders and keeps its options mutually exclusive', async ({ page }) => {
+  await page.goto('/');
+  await openFixture(page);
+
+  const radios = page.locator('.folio-forms-layer input[type="radio"]');
+  await expect(radios).toHaveCount(2);
+  await expect(radios.first()).not.toBeChecked();
+  await expect(radios.nth(1)).not.toBeChecked();
+
+  await radios.first().click();
+  await expect(radios.first()).toBeChecked();
+  await expect(radios.nth(1)).not.toBeChecked();
+
+  await radios.nth(1).click();
+  await expect(radios.nth(1)).toBeChecked();
+  await expect(radios.first()).not.toBeChecked();
+});
+
 test('fills a form field and digitally signs the document', async ({ page }) => {
   await page.goto('/');
   await openFixture(page);
@@ -158,4 +292,3 @@ test('fills a form field and digitally signs the document', async ({ page }) => 
   ]);
   expect(download.suggestedFilename()).toContain('signed');
 });
-

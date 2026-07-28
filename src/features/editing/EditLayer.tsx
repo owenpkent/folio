@@ -4,7 +4,16 @@ import { Icon } from '@/components/common';
 import { useViewerStore } from '@/state/viewerStore';
 
 import { useEditStore } from './store';
-import { FONT_CSS, FONT_LABELS, type FontFamily, type ImageEdit, type TextEdit } from './types';
+import {
+  FONT_CSS,
+  FONT_LABELS,
+  MARK_GLYPH_PATHS,
+  MARK_GLYPH_STROKE_WIDTH,
+  type FontFamily,
+  type ImageEdit,
+  type MarkEdit,
+  type TextEdit,
+} from './types';
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
@@ -19,7 +28,12 @@ const FONT_FAMILIES: FontFamily[] = ['Helvetica', 'Times', 'Courier'];
  */
 const DRAG_THRESHOLD_PX = 4;
 
-/** Overlay of placed text boxes and images for a page. */
+const MARK_GLYPH_LABEL: Record<MarkEdit['glyph'], string> = {
+  check: 'Check mark',
+  cross: 'Cross mark',
+};
+
+/** Overlay of placed text boxes, images, and check marks for a page. */
 export function EditLayer({ pageNumber }: { pageNumber: number }) {
   const all = useEditStore((s) => s.edits);
   const items = useMemo(() => all.filter((e) => e.pageNumber === pageNumber), [all, pageNumber]);
@@ -28,13 +42,11 @@ export function EditLayer({ pageNumber }: { pageNumber: number }) {
 
   return (
     <div className="folio-edit-layer" data-pan-exclude>
-      {items.map((item) =>
-        item.kind === 'text' ? (
-          <TextItem key={item.id} item={item} />
-        ) : (
-          <ImageItem key={item.id} item={item} />
-        ),
-      )}
+      {items.map((item) => {
+        if (item.kind === 'text') return <TextItem key={item.id} item={item} />;
+        if (item.kind === 'mark') return <MarkItem key={item.id} item={item} />;
+        return <ImageItem key={item.id} item={item} />;
+      })}
     </div>
   );
 }
@@ -388,6 +400,163 @@ function ImageItem({ item }: { item: ImageEdit }) {
           />
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * A stamped check/cross mark: for ticking a printed checkbox that has no real
+ * form field behind it (see the module doc). Modeled directly on ImageItem
+ * above, including its aspect-locked resize (the glyph is placed as a square
+ * and stays one, so it never renders squashed).
+ */
+function MarkItem({ item }: { item: MarkEdit }) {
+  const selectedId = useEditStore((s) => s.selectedId);
+  const select = useEditStore((s) => s.select);
+  const move = useEditStore((s) => s.move);
+  const remove = useEditStore((s) => s.remove);
+  const updateMark = useEditStore((s) => s.updateMark);
+  const isSelected = selectedId === item.id;
+  useDeselectOnOutside(isSelected);
+
+  const startDrag = (e: PointerEvent<SVGSVGElement>) => {
+    if (e.button !== 0) return;
+    const pageRect = pageRectFrom(e.currentTarget);
+    if (!pageRect) return;
+    e.preventDefault();
+    select(item.id);
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const start = { ...item.rect };
+
+    const onMove = (ev: globalThis.PointerEvent) => {
+      const dx = (ev.clientX - startX) / pageRect.width;
+      const dy = (ev.clientY - startY) / pageRect.height;
+      move(item.id, {
+        ...start,
+        x: clamp(start.x + dx, 0, 1 - start.width),
+        y: clamp(start.y + dy, 0, 1 - start.height),
+      });
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  const startResize = (e: PointerEvent<HTMLSpanElement>) => {
+    if (e.button !== 0) return;
+    const pageRect = pageRectFrom(e.currentTarget);
+    if (!pageRect) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const start = { ...item.rect };
+    // Keep the mark square, the same way ImageItem locks its aspect ratio.
+    const aspect = (start.width * pageRect.width) / (start.height * pageRect.height || 1);
+
+    const onMove = (ev: globalThis.PointerEvent) => {
+      const dx = (ev.clientX - startX) / pageRect.width;
+      let width = clamp(start.width + dx, 0.02, 1 - start.x);
+      let height = (width * pageRect.width) / aspect / pageRect.height;
+      if (start.y + height > 1) {
+        height = 1 - start.y;
+        width = (height * pageRect.height * aspect) / pageRect.width;
+      }
+      move(item.id, { ...start, width, height });
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  return (
+    <div
+      className={`folio-edit folio-edit--mark${isSelected ? ' is-selected' : ''}`}
+      style={positionStyle(item.rect)}
+    >
+      {isSelected && (
+        <MarkInspector item={item} onChange={(patch) => updateMark(item.id, patch)} />
+      )}
+      {/* viewBox matches MARK_GLYPH_PATHS' 0-100 unit square; scales to the
+          rect at any zoom instead of rasterising, so it stays crisp. */}
+      <svg
+        className="folio-edit__mark"
+        viewBox="0 0 100 100"
+        role="img"
+        aria-label={MARK_GLYPH_LABEL[item.glyph]}
+        onPointerDown={startDrag}
+      >
+        <path
+          d={MARK_GLYPH_PATHS[item.glyph]}
+          fill="none"
+          stroke={item.colorHex}
+          strokeWidth={MARK_GLYPH_STROKE_WIDTH}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      {isSelected && (
+        <>
+          <button
+            type="button"
+            className="folio-edit__delete"
+            aria-label={`Delete ${MARK_GLYPH_LABEL[item.glyph].toLowerCase()}`}
+            title="Delete check mark"
+            onClick={() => remove(item.id)}
+          >
+            <Icon name="x" size={13} />
+          </button>
+          <span
+            className="folio-edit__resize"
+            aria-hidden="true"
+            title="Drag to resize"
+            onPointerDown={startResize}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The inline inspector for a selected mark: switch its glyph between check and cross. */
+function MarkInspector({
+  item,
+  onChange,
+}: {
+  item: MarkEdit;
+  onChange: (patch: Partial<MarkEdit>) => void;
+}) {
+  // Keep pointerdown inside the inspector from bubbling to the page/deselect,
+  // matching TextInspector above.
+  const stop = (e: PointerEvent) => e.stopPropagation();
+  return (
+    <div className="folio-edit__inspector" onPointerDown={stop}>
+      <button
+        type="button"
+        className={`folio-edit__glyph${item.glyph === 'check' ? ' is-on' : ''}`}
+        aria-label={MARK_GLYPH_LABEL.check}
+        title={MARK_GLYPH_LABEL.check}
+        aria-pressed={item.glyph === 'check'}
+        onClick={() => onChange({ glyph: 'check' })}
+      >
+        <Icon name="check" size={14} />
+      </button>
+      <button
+        type="button"
+        className={`folio-edit__glyph${item.glyph === 'cross' ? ' is-on' : ''}`}
+        aria-label={MARK_GLYPH_LABEL.cross}
+        title={MARK_GLYPH_LABEL.cross}
+        aria-pressed={item.glyph === 'cross'}
+        onClick={() => onChange({ glyph: 'cross' })}
+      >
+        <Icon name="cross" size={14} />
+      </button>
     </div>
   );
 }

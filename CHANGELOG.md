@@ -30,10 +30,42 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   document no longer means retyping your name. Stored locally, text and font
   only, never the rendered image.
 
+- **Text inside Form XObjects is now editable.** The content-stream parser
+  descends into `Do`-invoked Form XObjects, composing each form's own
+  `/Matrix` with the transform at the invocation site, so text placed by a
+  template, a letterhead, or a form generator can be clicked and replaced like
+  any other run. Previously all of it reported "cannot be edited", which read
+  as though the page were a scan even when the text was ordinary vector text.
+  An edit never rewrites the form in place: the same form can be drawn by
+  other pages, so the whole chain from the edited form up to the page is
+  copied and only this page's resources are redirected at the copy. Text in a
+  form the page draws more than once is still refused, because removing it
+  would clear every copy while the replacement is drawn only once.
+- **Check marks.** A mark placed by clicking a spot on the page, for forms that
+  show a printed box with no interactive field behind it. Selecting a placed
+  mark offers a check or a cross. It goes through the same click-to-place mode
+  as text boxes, images, and signatures, with one difference: a click that lands
+  on a *real* form widget reaches the widget instead, since a mark exists only to
+  stand in for a checkbox that has no field. Like the other placement tools, a
+  mark is an overlay until you save, then it is baked as a stroked vector path,
+  so it stays sharp at any zoom.
+- **Select, move, resize, replace, and delete images already in a PDF.** A new
+  **Edit images** tool, in the Edit menu beside *Edit text*, lets you click an image
+  already drawn on a page, then drag it, resize it from the corner, delete it,
+  or replace it with a different PNG/JPEG, committing immediately the same way
+  in-place text edits do, rather than waiting for a save. A move or resize
+  rewrites the page's `/Name Do` operator in place with a new matrix, keeping
+  the graphics state and z-order exactly as they were; a replace embeds the
+  new image under a fresh resource name and repoints only that operator, so
+  the original image XObject (and any other page still drawing it) is never
+  touched. Rotated or skewed images can still be replaced in place but not
+  moved or resized, and an image inside a Form XObject is not editable yet.
+
 ### Changed
 
-- **Text boxes, images, and signatures are placed where you click.** Adding one
-  no longer drops it in the middle of the page for you to drag into position:
+- **Text boxes, images, signatures, and check marks are placed where you
+  click.** Adding one no longer drops it in the middle of the page for you to
+  drag into position:
   the tool arms a click-to-place mode (with a banner; Escape, the banner's
   Cancel, or a click anywhere off a page backs out) and the next click on a page
   decides where the item lands. Text boxes start at the click, images and
@@ -45,9 +77,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   still a plain click, so selecting a box and placing the caret work as before.
 - **The toolbar slimmed down.** With the menu bar carrying the full command
   set, the toolbar's right side keeps only Save and Find next to the pinned
-  theme controls and About; comment, highlight, edit text, add text box, add
-  image, OCR, both signature actions, save a copy, and plugin buttons moved
-  into the menus.
+  theme controls and About; comment, highlight, edit text, edit images, add text
+  box, add image, add check mark, OCR, both signature actions, save a copy, and
+  plugin buttons all live in the menus.
 
 ### Fixed
 
@@ -56,6 +88,45 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the selected scheme. Thumbnails now render through the same raster-time
   invert-and-tint path as the page (`renderPage` `invert`/`tint`) and re-render
   when the theme or scheme changes, so the strip always matches the page.
+
+- **Signatures, text boxes, images, annotations, and the OCR layer no longer
+  render twice after saving and reopening a document.** Overlay content is
+  kept in a per-document sidecar keyed by the PDF fingerprint, which PDF.js
+  derives from the trailer `/ID`. Saving baked that content into the page but
+  carried the source `/ID` through unchanged, so the saved file kept its
+  source's fingerprint and reopening it loaded the same sidecar back on top of
+  content already in the page. A flattened export now gets its own document
+  identity. One consequence worth knowing: overlay content in a reopened
+  export is part of the page, so it can no longer be dragged or deleted, the
+  same way Acrobat treats flattened content.
+- **Form fields stay clickable while an editing tool is armed.** Edit text, Edit
+  images, and any armed placement each cover the whole page with a
+  click-catcher, and all of them sit above the form layer, which only takes
+  clicks over each field's own rect. Any of them would swallow a click meant for
+  a checkbox, radio button, or text field. A click that lands on a widget now
+  reaches the widget instead.
+- **Clicking an image Folio cannot edit explains why.** The Edit images tool
+  ignored a click on an image inside a Form XObject without saying anything,
+  the same silent dead end that made the original text-editing problem so hard
+  to place. Such an image is now selected and the reason shown. Dragging one
+  is refused up front, rather than tracking the pointer and snapping back on
+  release.
+- **Sticky note pins open from the keyboard.** A pin is a focusable button
+  that announces the note it holds, but it opened the note only on
+  `pointerup`, which is what lets that handler tell a click apart from the end
+  of a drag. Keyboard activation fires no pointer events, so `Enter` and
+  `Space` on a focused pin did nothing at all, a WCAG 2.1.1 failure on a
+  control that named itself as actionable.
+
+### Security
+
+- **The content-stream parser bounds how much work one document can make it
+  do.** Descending into Form XObjects checks for cycles along the current path
+  only, so a form reached down a different branch is descended into again. A
+  document whose forms each invoke the next one several times therefore cost
+  fan-out to the power of the depth limit in stream traversals, enough to hang
+  the tab on a file the user only meant to open. Total descents per parse are
+  now capped, well above what real documents use.
 
 ## [0.4.0] - 2026-07-23
 

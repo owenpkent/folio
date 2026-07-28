@@ -15,7 +15,7 @@ New here? Start with **[Getting started](getting-started.md)**, then
 | --- | --- |
 | [Getting started](getting-started.md) | Install, run in dev, build, project layout, and troubleshooting. |
 | [Accessibility](accessibility.md) | The keyboard map, focus rules, ARIA structure, the text layer, dark mode and dark schemes, and the WCAG 2.2 AA approach. |
-| [Editing and OCR](editing-and-ocr.md) | Text boxes, images, editing text already on a page, and recognising text on scanned pages. |
+| [Editing and OCR](editing-and-ocr.md) | Text boxes, images, and check marks; editing text or images already on a page; and recognising text on scanned pages. |
 | [Forms and signatures](forms-and-signatures.md) | Filling AcroForms, placing ink signatures, and certificate-based digital signing. |
 | [Theming](theming.md) | Design tokens, light/dark, and the dark reading schemes. |
 
@@ -56,8 +56,8 @@ most of the design:
   the renderer be replaced without touching the UI.
 - **The text layer is not optional.** Every page is a raster `<canvas>` with real
   positioned text over it. That text layer is what screen readers read, what
-  selection copies, and what search highlights — the canvas is `aria-hidden`.
+  selection copies, and what search highlights. The canvas is `aria-hidden`.
 - **Accessibility is a requirement, not a later pass.** The target is WCAG 2.2
   AA. Section 508 incorporates WCAG 2.0 A/AA by reference, so that target is a
-  superset of it — the gaps that remain are catalogued in
+  superset of it. The gaps that remain are catalogued in
   [508-conformance.md](508-conformance.md) rather than glossed over.

@@ -123,7 +123,7 @@ Run these before opening a pull request. They also run in CI.
 
 ```bash
 npm run test        # Vitest unit tests
-npm run lint        # ESLint over src/
+npm run lint        # ESLint over the codebase
 npm run typecheck   # tsc --noEmit against tsconfig.json
 ```
 
@@ -151,7 +151,7 @@ folio/
 │  ├─ commands/             # command registry: every user action is a Command
 │  ├─ components/           # Viewer/, Toolbar/, Sidebar/, Search/, common/
 │  ├─ core/                 # engine-agnostic PDF core: pdf/ (PdfEngine + PdfJsEngine), document/
-│  ├─ features/             # annotations, editing (text/image), placement, ocr, signatures, forms, export
+│  ├─ features/             # annotations, editing (text/image/checkmarks), placement, in-place text & image edits, ocr, signatures, forms, export
 │  ├─ plugins/              # plugin host + SDK types + builtins/ (Word Count)
 │  ├─ state/                # Zustand stores
 │  ├─ styles/               # global CSS

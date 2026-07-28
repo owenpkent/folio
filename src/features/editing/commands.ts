@@ -11,7 +11,12 @@ import {
 import { useDocumentStore } from '@/state/documentStore';
 
 import { useEditStore } from './store';
-import { DEFAULT_FONT_SIZE_PT, type ImageEdit } from './types';
+import {
+  DEFAULT_FONT_SIZE_PT,
+  DEFAULT_MARK_SIZE_PT,
+  type ImageEdit,
+  type MarkGlyph,
+} from './types';
 
 const ready = () => useDocumentStore.getState().status === 'ready';
 
@@ -74,7 +79,46 @@ export function beginImagePlacement(
   });
 }
 
-interface PickedImage {
+/**
+ * Drop a check mark centered on the click. Unlike the text and image rects,
+ * which are fractions of the page, the mark is a fixed PDF-point square
+ * (DEFAULT_MARK_SIZE_PT) converted to fractions per page, so it renders as a
+ * true square at roughly the size of a printed checkbox whatever the page's own
+ * aspect ratio; see EditLayer's resize handling for how it stays square if the
+ * user resizes it afterward.
+ */
+async function placeMarkAt(
+  pageNumber: number,
+  point: PagePoint,
+  anchor: PlacementAnchor = 'center',
+  glyph: MarkGlyph = 'check',
+): Promise<void> {
+  const { width: pw, height: ph } = await getEngine().getPageDimensions(pageNumber, 1);
+  const w = DEFAULT_MARK_SIZE_PT / (pw || 612);
+  const h = DEFAULT_MARK_SIZE_PT / (ph || 792);
+
+  useEditStore.getState().addMark(pageNumber, rectAt(point, w, h, anchor), glyph);
+  announce('Check mark placed. Drag it to reposition, or drag the corner to resize.');
+}
+
+/** Arm click-to-place for a check mark. */
+export function beginMarkPlacement(glyph: MarkGlyph = 'check'): void {
+  if (!ready()) return;
+  usePlacementStore.getState().begin({
+    label: 'check mark',
+    // The one placing tool that yields to a real form field. A mark exists only
+    // to stand in for a printed checkbox with no AcroForm field behind it (see
+    // MarkEdit in ./types.ts); a real checkbox widget is handled entirely by
+    // PDF.js's own annotation layer. So a click landing on an actual widget
+    // means the widget, even with this tool deliberately armed -- whereas for a
+    // text box or an image, the armed click is unambiguous and a field
+    // underneath is just unrelated content that happens to overlap.
+    deferToFormWidget: true,
+    place: (pageNumber, point, anchor) => placeMarkAt(pageNumber, point, anchor, glyph),
+  });
+}
+
+export interface PickedImage {
   dataUrl: string;
   mime: ImageEdit['mime'];
   aspect: number;
@@ -83,9 +127,11 @@ interface PickedImage {
 /**
  * Open a file picker for a PNG/JPEG and return it as a data URL plus aspect
  * ratio. Uses a hidden file input, which works in both the desktop WebView and
- * a plain browser (mirrors the open-file fallback in core/document).
+ * a plain browser (mirrors the open-file fallback in core/document). Exported
+ * for features/imageedit's "Replace image…" action, which needs the exact
+ * same picker rather than a second copy of it.
  */
-function pickImageFile(): Promise<PickedImage | null> {
+export function pickImageFile(): Promise<PickedImage | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -132,7 +178,7 @@ function pickImageFile(): Promise<PickedImage | null> {
 
 let registered = false;
 
-/** Register the editing (add text / add image) commands. Idempotent. */
+/** Register the editing (add text / add image / add check mark) commands. Idempotent. */
 export function registerEditCommands(): void {
   if (registered) return;
   registered = true;
@@ -154,5 +200,13 @@ export function registerEditCommands(): void {
       const picked = await pickImageFile();
       if (picked) beginImagePlacement(picked.dataUrl, picked.mime, picked.aspect);
     },
+  });
+
+  commandRegistry.register({
+    id: 'edit.addCheckmark',
+    title: 'Add check mark',
+    category: 'Edit',
+    when: ready,
+    run: () => beginMarkPlacement(),
   });
 }

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { matchRunToItem, parseContentStreams, spliceRun } from './contentStream';
+import {
+  matchRunToItem,
+  parseContentStreams,
+  spliceRun,
+  type FormResolver,
+  type LocatedImageOp,
+  type ResolvedForm,
+} from './contentStream';
 import type { LocatedRun } from './types';
 
 const encode = (s: string) => new TextEncoder().encode(s);
@@ -175,6 +182,215 @@ describe('parseContentStreams', () => {
       expect(runs[0].blockedReason).toBe('Rotated or skewed text is not supported yet');
     });
   });
+
+  describe('Form XObjects (Do)', () => {
+    it('descends into a Do-invoked form, composing its Matrix into page space', () => {
+      const formSrc = 'BT /F1 10 Tf 5 5 Td (Hi) Tj ET';
+      const resolver = formResolver({
+        Fm1: { streamId: 1, bytes: encode(formSrc), matrix: [2, 0, 0, 2, 100, 200] },
+      });
+      const runs = parseContentStreams([encode('/Fm1 Do')], resolver);
+
+      expect(runs).toHaveLength(1);
+      // tm after "5 5 Td" is [1 0 0 1 5 5]; ctm is the form's Matrix (page
+      // ctm is identity, so cm-composition leaves it unchanged); combined =
+      // tm x ctm = [2 0 0 2 110 210] (x: 5*2+100, y: 5*2+200).
+      expect(runs[0].x).toBeCloseTo(110);
+      expect(runs[0].y).toBeCloseTo(210);
+      expect(runs[0].fontSize).toBeCloseTo(20); // 10 * scaleY (2)
+      expect(runs[0].streamIndex).toBe(1); // the resolver's assigned id, not the page's
+      expect(runs[0].editable).toBe(true);
+    });
+
+    it('skips Do when the resolver reports it is not a form (e.g. an image)', () => {
+      const src = 'q /Im1 Do Q BT /F1 12 Tf 0 0 Td (After) Tj ET';
+      const runs = parseContentStreams([encode(src)], () => undefined);
+
+      expect(runs).toHaveLength(1);
+      expect(runs[0].x).toBeCloseTo(0);
+      expect(runs[0].y).toBeCloseTo(0);
+    });
+
+    it('does not leak tm/tlm across a Do boundary, and does not treat the runs on either side as sharing positioning', () => {
+      // No BT in the form itself: entering and leaving relies entirely on
+      // Do's own save/restore of tm/tlm, not on the BT-reset every other
+      // test in this file exercises.
+      const formSrc = '1 0 0 1 9 9 Tm (FormText) Tj';
+      const src = 'BT /F1 10 Tf 100 100 Td (Before) Tj /Fm1 Do (After) Tj ET';
+      const resolver = formResolver({ Fm1: { streamId: 1, bytes: encode(formSrc) } });
+      const runs = parseContentStreams([encode(src)], resolver);
+
+      expect(runs).toHaveLength(3);
+      expect(runs[0].x).toBeCloseTo(100); // "Before", at the outer Td
+      expect(runs[0].y).toBeCloseTo(100);
+      expect(runs[1].x).toBeCloseTo(9); // "FormText", the form's own Tm
+      expect(runs[1].y).toBeCloseTo(9);
+      // "After": the outer tm as restored, not "FormText"'s (9, 9) leaking out.
+      expect(runs[2].x).toBeCloseTo(100);
+      expect(runs[2].y).toBeCloseTo(100);
+      expect(runs.every((r) => r.editable)).toBe(true);
+    });
+
+    it('still blocks rotated or skewed text located inside a form', () => {
+      const formSrc = 'BT /F1 12 Tf 0 1 -1 0 50 50 Tm (R) Tj ET';
+      const resolver = formResolver({ Fm1: { streamId: 1, bytes: encode(formSrc) } });
+      const runs = parseContentStreams([encode('/Fm1 Do')], resolver);
+
+      expect(runs).toHaveLength(1);
+      expect(runs[0].editable).toBe(false);
+      expect(runs[0].blockedReason).toBe('Rotated or skewed text is not supported yet');
+    });
+
+    it('does not descend into a form that would create a cycle', () => {
+      const formSrc = 'BT /F1 10 Tf 0 0 Td (A) Tj ET /Fm1 Do BT /F1 10 Tf 0 -20 Td (B) Tj ET';
+      const resolver = formResolver({ Fm1: { streamId: 1, bytes: encode(formSrc) } });
+      const runs = parseContentStreams([encode('/Fm1 Do')], resolver);
+
+      // The nested, self-referential Do is simply skipped: both of the
+      // form's own runs are still located once each, and nothing loops.
+      expect(runs).toHaveLength(2);
+      expect(runs[0].x).toBeCloseTo(0);
+      expect(runs[0].y).toBeCloseTo(0);
+      expect(runs[1].x).toBeCloseTo(0);
+      expect(runs[1].y).toBeCloseTo(-20);
+      expect(runs[0].editable).toBe(true);
+      expect(runs[1].editable).toBe(true);
+    });
+
+    it('does not descend past MAX_FORM_DEPTH nested forms', () => {
+      const DEPTH = 8; // must match MAX_FORM_DEPTH in contentStream.ts
+      const forms: Record<string, ResolvedForm> = {};
+      for (let level = 1; level <= DEPTH + 1; level++) {
+        const nextDo = level <= DEPTH ? ` /Fm${level + 1} Do` : '';
+        forms[`Fm${level}`] = {
+          streamId: level,
+          bytes: encode(`BT /F1 10 Tf 0 0 Td (L${level}) Tj ET${nextDo}`),
+        };
+      }
+      const runs = parseContentStreams([encode('/Fm1 Do')], formResolver(forms));
+
+      // Forms 1..DEPTH are reached (their own text is located); the form one
+      // level deeper than that is never descended into.
+      expect(runs).toHaveLength(DEPTH);
+      expect(runs.some((r) => r.streamIndex === DEPTH + 1)).toBe(false);
+    });
+
+    it('bounds total descents, so a wide nest of forms cannot blow up the parse', () => {
+      // The depth cap alone does not bound the work: only the CURRENT path is
+      // checked for cycles, so a form reached down a different branch is
+      // descended into again. Each of these levels invokes the next one four
+      // times, which without a total-work cap costs 4^8 = 65536 traversals of
+      // an untrusted document's streams.
+      const FANOUT = 4;
+      const LEVELS = 8;
+      const forms: Record<string, ResolvedForm> = {};
+      for (let level = 1; level <= LEVELS; level++) {
+        const nextDo = level < LEVELS ? ` /Fm${level + 1} Do`.repeat(FANOUT) : '';
+        forms[`Fm${level}`] = {
+          streamId: level,
+          bytes: encode(`BT /F1 10 Tf 0 0 Td (L${level}) Tj ET${nextDo}`),
+        };
+      }
+
+      const started = performance.now();
+      const runs = parseContentStreams([encode('/Fm1 Do'.repeat(FANOUT))], formResolver(forms));
+      const elapsedMs = performance.now() - started;
+
+      // MAX_FORM_DESCENTS is 512, and every located run comes from one
+      // descent, so the run count cannot exceed it however wide the nest is.
+      expect(runs.length).toBeLessThanOrEqual(512);
+      // Generous enough not to flake on a loaded machine, while still far
+      // below what an unbounded traversal of this fixture would take.
+      expect(elapsedMs).toBeLessThan(2000);
+    });
+
+    it('blocks runs inside a Form XObject invoked more than once on the page', () => {
+      const formSrc = 'BT /F1 10 Tf 0 0 Td (Stamp) Tj ET';
+      const resolver = formResolver({ Fm1: { streamId: 1, bytes: encode(formSrc) } });
+      const runs = parseContentStreams([encode('/Fm1 Do /Fm1 Do')], resolver);
+
+      expect(runs).toHaveLength(2);
+      for (const run of runs) {
+        expect(run.editable).toBe(false);
+        expect(run.blockedReason).toBe(
+          'This text is part of a template used more than once on the page',
+        );
+        expect(run.blockedCode).toBe('run-in-shared-xobject');
+      }
+    });
+
+    it('does not block a form invoked once each across two independent parseContentStreams calls', () => {
+      // Guards against a regression where invocationCounts leaked across
+      // calls; each call (i.e. each page) gets its own guard state.
+      const formSrc = 'BT /F1 10 Tf 0 0 Td (Stamp) Tj ET';
+      const resolver = formResolver({ Fm1: { streamId: 1, bytes: encode(formSrc) } });
+      const first = parseContentStreams([encode('/Fm1 Do')], resolver);
+      const second = parseContentStreams([encode('/Fm1 Do')], resolver);
+
+      expect(first[0].editable).toBe(true);
+      expect(second[0].editable).toBe(true);
+    });
+  });
+
+  describe('image ops (Do sink)', () => {
+    it('reports the CTM for an image drawn under cm, even with no resolveForm at all', () => {
+      const src = '2 0 0 2 50 50 cm /Im1 Do';
+      const bytes = encode(src);
+      const ops: LocatedImageOp[] = [];
+      const runs = parseContentStreams([bytes], undefined, (op) => ops.push(op));
+
+      // The sink is a side channel: Do never produces a LocatedRun.
+      expect(runs).toHaveLength(0);
+      expect(ops).toHaveLength(1);
+      expect(ops[0].streamIndex).toBe(0);
+      expect(ops[0].name).toBe('Im1');
+      expect(ops[0].ctm).toEqual([2, 0, 0, 2, 50, 50]);
+      // start is the name token's start, end is just past the operator token.
+      expect(decode(bytes.slice(ops[0].start, ops[0].end))).toBe('/Im1 Do');
+    });
+
+    it('reports the CTM in effect inside q/Q, and does not leak it to a Do afterward', () => {
+      const src = 'q 3 0 0 3 10 10 cm /Im1 Do Q /Im2 Do';
+      const ops: LocatedImageOp[] = [];
+      parseContentStreams(
+        [encode(src)],
+        () => undefined,
+        (op) => ops.push(op),
+      );
+
+      expect(ops).toHaveLength(2);
+      expect(ops[0].name).toBe('Im1');
+      expect(ops[0].ctm).toEqual([3, 0, 0, 3, 10, 10]);
+      // Q restored the identity CTM saved before q, so Im2 sees it undisturbed.
+      expect(ops[1].name).toBe('Im2');
+      expect(ops[1].ctm).toEqual([1, 0, 0, 1, 0, 0]);
+    });
+
+    it('reports the CTM for an image inside a Form XObject, composing the form Matrix', () => {
+      const formSrc = '/Im1 Do';
+      const resolver = formResolver({
+        Fm1: { streamId: 1, bytes: encode(formSrc), matrix: [2, 0, 0, 2, 100, 200] },
+      });
+      const ops: LocatedImageOp[] = [];
+      parseContentStreams([encode('q 1 0 0 1 5 5 cm /Fm1 Do Q')], resolver, (op) => ops.push(op));
+
+      expect(ops).toHaveLength(1);
+      // Page ctm at the Do is [1 0 0 1 5 5]; composed with the form's own
+      // Matrix (a form invocation is `q Matrix cm ... Q`, 8.10.2):
+      // [2 0 0 2 100 200] x [1 0 0 1 5 5] = [2 0 0 2 105 205].
+      expect(ops[0].streamIndex).toBe(1); // the resolver's assigned form id
+      expect(ops[0].name).toBe('Im1');
+      expect(ops[0].ctm).toEqual([2, 0, 0, 2, 105, 205]);
+    });
+
+    it('does not fire the sink for a Do that resolves to a form', () => {
+      const resolver = formResolver({ Fm1: { streamId: 1, bytes: encode('') } });
+      const ops: LocatedImageOp[] = [];
+      parseContentStreams([encode('/Fm1 Do')], resolver, (op) => ops.push(op));
+
+      expect(ops).toHaveLength(0);
+    });
+  });
 });
 
 describe('spliceRun', () => {
@@ -294,4 +510,14 @@ function bytesOf(...parts: Array<string | number[]>): Uint8Array {
     }
   }
   return Uint8Array.from(chunks);
+}
+
+/**
+ * A FormResolver backed by a plain name->form map, standing in for mutate.ts's
+ * real one (which walks pdf-lib's Resources/XObject dictionaries). Good
+ * enough for these tests: they only care about the descent and matrix
+ * composition, not the object model (see contentStream.ts's file header).
+ */
+function formResolver(forms: Record<string, ResolvedForm>): FormResolver {
+  return (name) => forms[name];
 }

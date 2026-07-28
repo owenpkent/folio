@@ -399,7 +399,84 @@ function buildRun(
   return run;
 }
 
-export function parseContentStreams(streams: Uint8Array[]): LocatedRun[] {
+/**
+ * A `Do` operator the parser did not descend into because `resolveForm`
+ * (see below) returned undefined for it: an Image XObject is the common
+ * case, but this also fires for a name the resolver could not place at all.
+ * Reported to the optional `onImageOp` sink (see parseContentStreams), which
+ * is how features/imageedit enumerates image draws without this file
+ * knowing anything about the PDF object model (see the file header): the
+ * sink's caller is the one that resolves `name` against Resources/XObject
+ * and decides whether it is actually an image.
+ */
+export interface LocatedImageOp {
+  /** Index into the page's Contents array, or a resolved form's assigned streamId. */
+  streamIndex: number;
+  /** Byte offset of the operator's first operand (the name token). */
+  start: number;
+  /** Byte offset just past the operator token. */
+  end: number;
+  /** XObject resource name, e.g. "Im1". */
+  name: string;
+  /**
+   * CTM in effect at the Do, as [a, b, c, d, e, f]. An image XObject paints
+   * the unit square, so this matrix alone is the image's position and size
+   * on the page; unlike buildRun's runs, there is no text matrix involved.
+   */
+  ctm: [number, number, number, number, number, number];
+}
+
+/** Reports one image-painting `Do` (see {@link LocatedImageOp}). */
+export type ImageOpSink = (op: LocatedImageOp) => void;
+
+/** A Form XObject resolved by the caller-supplied FormResolver; see below. */
+export interface ResolvedForm {
+  /** Caller-assigned opaque id, used as LocatedRun.streamIndex. */
+  streamId: number;
+  bytes: Uint8Array;
+  /** The form's own /Matrix, or undefined when absent (defaults to identity). */
+  matrix?: [number, number, number, number, number, number];
+}
+
+/**
+ * Resolve an XObject resource name to a Form XObject, scoped to the stream
+ * that invoked it (so the same name can mean different things in different
+ * forms' resource dictionaries). Returns undefined for anything that is not
+ * a form (an Image XObject, most commonly) or that cannot be resolved at
+ * all; parseContentStreams treats that exactly like Do always used to be
+ * treated, i.e. it skips the operator. Owned by the caller (see mutate.ts)
+ * because resolving a name requires walking the PDF object model, which this
+ * file deliberately has none of (see the file header).
+ */
+export type FormResolver = (name: string, fromStreamId: number) => ResolvedForm | undefined;
+
+/**
+ * Forms nested this many levels deep are not descended into. A defensive cap
+ * against pathological or maliciously self-referential PDFs; legitimate
+ * nesting (a stamp inside a letterhead inside a watermark, say) is nowhere
+ * near this deep.
+ */
+const MAX_FORM_DEPTH = 8;
+
+/**
+ * Total form descents allowed per parse, across the whole traversal.
+ *
+ * MAX_FORM_DEPTH alone does not bound the work: a form is re-entered whenever
+ * it is reached down a different branch (only the *current* path is checked
+ * for cycles), so a PDF whose forms each invoke the next one F times costs
+ * F^MAX_FORM_DEPTH stream traversals. At F=10 that is 100 million, which
+ * hangs the tab on a file the user only meant to open. Content streams are
+ * untrusted input, so bound the total instead of trusting the shape. Real
+ * documents come nowhere near this: a form per page region, each drawn once
+ * or twice, is a few dozen at most.
+ */
+const MAX_FORM_DESCENTS = 512;
+
+export function parseContentStreams(
+  streams: Uint8Array[],
+  resolveForm?: FormResolver,
+  onImageOp?: ImageOpSink,
+): LocatedRun[] {
   const runs: LocatedRun[] = [];
   const state = initialState();
 
@@ -418,7 +495,20 @@ export function parseContentStreams(streams: Uint8Array[]): LocatedRun[] {
     pending = null;
   }
 
-  streams.forEach((bytes, streamIndex) => {
+  // How many times each resolved form (keyed by ResolvedForm.streamId) was
+  // descended into. A form invoked more than once, whether by two Do's
+  // naming it directly or by two different ancestors, has all of its runs
+  // blocked after the fact (the sweep below): splicing text out of its bytes
+  // would remove it from every invocation, while mutate.ts only ever draws
+  // the replacement once. This is scoped to one parseContentStreams call, so
+  // it does not penalize the same form being used once each on several
+  // different pages.
+  const invocationCounts = new Map<number, number>();
+
+  /** Descents made so far, against MAX_FORM_DESCENTS. */
+  let descents = 0;
+
+  function interpretStream(bytes: Uint8Array, streamIndex: number, path: readonly number[]): void {
     scanOperations(bytes, ({ operator, operatorEnd, operands, start }) => {
       switch (operator) {
         case 'q':
@@ -545,13 +635,114 @@ export function parseContentStreams(streams: Uint8Array[]): LocatedRun[] {
           pending = run;
           break;
         }
+        case 'Do': {
+          // Only a Form XObject is worth descending into; an Image XObject,
+          // or a name the resolver cannot place at all, is left alone
+          // exactly as Do always used to be. resolveForm is the only thing
+          // that knows the difference, since this file has no PDF object
+          // model of its own (see the file header) and cannot resolve the
+          // name itself.
+          const nameTok = operands.find((t) => t.kind === 'name');
+          const resolved =
+            nameTok && resolveForm ? resolveForm(nameTok.text ?? '', streamIndex) : undefined;
+          if (!resolved) {
+            // Exactly the case Do always used to be left alone in: most
+            // often an Image XObject, occasionally a name the resolver
+            // could not place at all. Either way this file has no way to
+            // tell the difference (see the file header), so it just reports
+            // the geometry and lets the sink's caller resolve the name.
+            if (nameTok && onImageOp) {
+              onImageOp({
+                streamIndex,
+                start,
+                end: operatorEnd,
+                name: nameTok.text ?? '',
+                ctm: [...state.ctm],
+              });
+            }
+            break;
+          }
+
+          // Depth, cycle, and total-work guards. None throws: they simply
+          // decline to descend, so any text inside is never located at all (a
+          // click on it falls back to the generic "could not find that text"
+          // case, rather than this parse blowing up over a pathological PDF).
+          if (path.length >= MAX_FORM_DEPTH || path.includes(resolved.streamId)) break;
+          if (descents >= MAX_FORM_DESCENTS) break;
+          descents++;
+
+          invocationCounts.set(
+            resolved.streamId,
+            (invocationCounts.get(resolved.streamId) ?? 0) + 1,
+          );
+
+          // Do does not itself depend on text position, but entering a form
+          // resets tm/tlm to identity (below) and leaving it restores
+          // whatever they were before, so the run right before this Do and
+          // the one right after it are never positionally dependent on one
+          // another (nor is the form's own first or last run on whichever
+          // neighbor sits just across this boundary). Without this, such a
+          // pair could be wrongly blocked as sharing positioning even though
+          // the reset/restore already makes that impossible.
+          resolvePending(false);
+
+          // 8.10.2: invoking a form is equivalent to `q <Matrix> cm ... Q`.
+          // tm/tlm are not part of the graphics state, so q/Q would not
+          // otherwise save and restore them, but they must not leak into the
+          // form (it starts with a fresh text object, the same as a nested
+          // BT would give it) or back out of it once the form returns.
+          // Swapping in a fresh stack (rather than pushing onto the outer
+          // one) means an unbalanced q left inside the form cannot corrupt
+          // the outer stream's later Q handling either.
+          const savedCtm = state.ctm;
+          const savedFillColor = state.fillColor;
+          const savedFontResource = state.fontResource;
+          const savedTfSize = state.tfSize;
+          const savedTl = state.tl;
+          const savedTm = state.tm;
+          const savedTlm = state.tlm;
+          const savedStack = state.stack;
+
+          state.ctm = concatMatrix(resolved.matrix ?? IDENTITY, state.ctm);
+          state.tm = IDENTITY;
+          state.tlm = IDENTITY;
+          state.stack = [];
+
+          interpretStream(resolved.bytes, resolved.streamId, [...path, resolved.streamId]);
+          resolvePending(false);
+
+          state.ctm = savedCtm;
+          state.fillColor = savedFillColor;
+          state.fontResource = savedFontResource;
+          state.tfSize = savedTfSize;
+          state.tl = savedTl;
+          state.tm = savedTm;
+          state.tlm = savedTlm;
+          state.stack = savedStack;
+          break;
+        }
         default:
-          // Includes Do (Form XObjects are never located, by design) and any
-          // other operator outside this feature's scope.
+          // Any other operator outside this feature's scope (painting,
+          // clipping, marked content, compatibility operators, and so on).
           break;
       }
     });
-  });
+  }
+
+  streams.forEach((bytes, streamIndex) => interpretStream(bytes, streamIndex, []));
+
+  // A form invoked more than once cannot be safely spliced (see
+  // invocationCounts above); block every run found inside one, without
+  // clobbering a more specific reason (rotated text, say) already set.
+  if (invocationCounts.size > 0) {
+    for (const run of runs) {
+      if (run.editable && (invocationCounts.get(run.streamIndex) ?? 0) > 1) {
+        run.editable = false;
+        run.blockedReason = 'This text is part of a template used more than once on the page';
+        run.blockedCode = 'run-in-shared-xobject';
+      }
+    }
+  }
 
   return runs;
 }
@@ -585,7 +776,14 @@ const EMPTY_BYTES = new Uint8Array(0);
 const SPACE_BYTE = new Uint8Array([0x20]);
 const textEncoder = new TextEncoder();
 
-function spliceBytes(
+/**
+ * Replace stream[start:end] with `replacement`, otherwise byte-identical.
+ * Exported for features/imageedit, which builds its own well-formed
+ * replacement operator text (a `/Name Do`, or a `q ... cm /Name Do Q`) rather
+ * than needing the token-boundary glue logic below spliceRun uses when it
+ * closes a gap instead of filling it.
+ */
+export function spliceBytes(
   stream: Uint8Array,
   start: number,
   end: number,
@@ -598,16 +796,25 @@ function spliceBytes(
   return out;
 }
 
+/**
+ * Remove an operator's bytes outright: closes the gap when the bytes on
+ * either side are already token boundaries, otherwise leaves a single space
+ * so closing the gap does not glue two tokens together (e.g. a preceding
+ * number's last digit with the next operator's first letter). Used below for
+ * a plain Tj/TJ, and by features/imageedit to delete a `/Name Do` image draw
+ * the same way: neither operator has a side effect worth preserving once
+ * removed, unlike ' and " below.
+ */
+export function removeOperatorBytes(stream: Uint8Array, start: number, end: number): Uint8Array {
+  const before = start > 0 ? stream[start - 1] : 0x20;
+  const after = end < stream.length ? stream[end] : 0x20;
+  const glue = isBoundaryByte(before) && isBoundaryByte(after) ? EMPTY_BYTES : SPACE_BYTE;
+  return spliceBytes(stream, start, end, glue);
+}
+
 export function spliceRun(stream: Uint8Array, run: LocatedRun): Uint8Array {
   if (run.op === 'Tj' || run.op === 'TJ') {
-    // Removing the operation entirely is fine as long as the bytes on either
-    // side of the gap are already boundaries; otherwise closing the gap
-    // would glue two tokens together (e.g. a preceding number's last digit
-    // with the next operator's first letter), so keep a single space.
-    const before = run.start > 0 ? stream[run.start - 1] : 0x20;
-    const after = run.end < stream.length ? stream[run.end] : 0x20;
-    const glue = isBoundaryByte(before) && isBoundaryByte(after) ? EMPTY_BYTES : SPACE_BYTE;
-    return spliceBytes(stream, run.start, run.end, glue);
+    return removeOperatorBytes(stream, run.start, run.end);
   }
 
   if (run.op === "'") {

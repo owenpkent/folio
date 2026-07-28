@@ -83,12 +83,12 @@ Change document content, reorganize pages, make scans searchable, and redact.
 
 | Area | Deliverable | Status |
 | --- | --- | --- |
-| Add text and images | Place text boxes and images on a page; baked into a saved copy | Done |
-| Edit existing content | Edit text runs already in the PDF and replace/move embedded images | In progress (text runs done; embedded image replace/move planned) |
+| Add text, images, and check marks | Place text boxes, images, and check marks on a page; baked into a saved copy | Done |
+| Edit existing content | Edit text runs already in the PDF and move, resize, replace, or delete embedded images | In progress (text runs done, including Form XObjects invoked once per page; a form invoked more than once is still refused; embedded images move/resize/replace/delete done, except rotated/skewed images, replace only, and images inside a Form XObject, not yet editable) |
 | OCR | Recognize text in scanned pages and add a searchable text layer | Done (English via tesseract.js; invisible baked layer + on-screen selection) |
 | Page operations | Insert, delete, reorder, rotate, split, and merge pages | Planned |
 | Redaction | True redaction that removes underlying content, not just a black box | Planned |
-| Accessibility | Editing operations keyboard-driven; OCR output feeds search and screen readers | In progress (OCR text feeds search; more languages planned) |
+| Accessibility | Editing operations keyboard-driven; OCR output feeds search and screen readers | In progress (OCR text feeds search; more languages planned; the new image-edit tool's select, move, and resize are pointer-only, with no keyboard path yet) |
 
 **Milestone: edit, reorganize, and redact.** A user can edit content, restructure pages, run OCR to make a scan searchable, and redact sensitive content so it is actually gone.
 

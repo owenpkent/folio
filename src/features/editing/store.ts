@@ -2,19 +2,23 @@ import { create } from 'zustand';
 
 import {
   DEFAULT_FONT_SIZE_PT,
+  DEFAULT_MARK_COLOR,
   DEFAULT_TEXT_COLOR,
   type EditItem,
   type ImageEdit,
+  type MarkEdit,
+  type MarkGlyph,
+  type MarkStylePatch,
   type NormalizedRect,
   type TextEdit,
   type TextStylePatch,
 } from './types';
 
 /**
- * Placed edits (text boxes + images) for the current document, persisted per
- * PDF fingerprint in a local sidecar. Mirrors features/signatures/store. The
- * `selectedId` / `focusId` fields are transient UI state and are never
- * persisted.
+ * Placed edits (text boxes, images, check marks) for the current document,
+ * persisted per PDF fingerprint in a local sidecar. Mirrors
+ * features/signatures/store. The `selectedId` / `focusId` fields are
+ * transient UI state and are never persisted.
  */
 
 function uid(): string {
@@ -45,8 +49,10 @@ interface EditState {
     mime: ImageEdit['mime'],
     rect: NormalizedRect,
   ): ImageEdit;
+  addMark(pageNumber: number, rect: NormalizedRect, glyph: MarkGlyph): MarkEdit;
   move(id: string, rect: NormalizedRect): void;
   updateText(id: string, patch: TextStylePatch): void;
+  updateMark(id: string, patch: MarkStylePatch): void;
   remove(id: string): void;
 
   select(id: string | null): void;
@@ -118,6 +124,21 @@ export const useEditStore = create<EditState>((set, get) => {
       return item;
     },
 
+    addMark: (pageNumber, rect, glyph) => {
+      const item: MarkEdit = {
+        id: uid(),
+        kind: 'mark',
+        pageNumber,
+        rect,
+        glyph,
+        colorHex: DEFAULT_MARK_COLOR,
+        createdAt: Date.now(),
+      };
+      set((s) => ({ edits: [...s.edits, item], selectedId: item.id }));
+      persist();
+      return item;
+    },
+
     move: (id, rect) => {
       set((s) => ({ edits: s.edits.map((e) => (e.id === id ? { ...e, rect } : e)) }));
       persist();
@@ -126,6 +147,13 @@ export const useEditStore = create<EditState>((set, get) => {
     updateText: (id, patch) => {
       set((s) => ({
         edits: s.edits.map((e) => (e.id === id && e.kind === 'text' ? { ...e, ...patch } : e)),
+      }));
+      persist();
+    },
+
+    updateMark: (id, patch) => {
+      set((s) => ({
+        edits: s.edits.map((e) => (e.id === id && e.kind === 'mark' ? { ...e, ...patch } : e)),
       }));
       persist();
     },

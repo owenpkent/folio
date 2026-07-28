@@ -72,15 +72,16 @@ points the tests at `http://localhost:1420`.
 
 `e2e/global-setup.ts` generates the fixtures with pdf-lib and writes them to
 `e2e/fixtures/` (gitignored, regenerated each run). Nothing binary is committed.
-There are two: `form.pdf`, a two-page PDF with an empty fillable text field, and
-`filled-form.pdf`, a single page whose only content is three text fields that
-already hold values. The latter is deliberately otherwise blank, so any ink on
-the rendered canvas is a form widget that should have been left to the
-annotation layer, which is what makes the doubled-text assertion below possible.
+There are two: `form.pdf`, a two-page PDF with an empty fillable text field, a
+checkbox, and a radio group, and `filled-form.pdf`, a single page whose only
+content is three text fields that already hold values. The latter is
+deliberately otherwise blank, so any ink on the rendered canvas is a form
+widget that should have been left to the annotation layer, which is what makes
+the doubled-text assertion below possible.
 
 There are six specs.
 
-**`e2e/smoke.spec.ts`** — the core document flows:
+**`e2e/smoke.spec.ts`** covers the core document flows:
 
 1. The empty state renders on launch.
 2. Toggling dark mode sets `data-theme="dark"`.
@@ -92,28 +93,34 @@ There are six specs.
    for the toolbar.
 7. Closing the find bar hands focus back to the document, so the scroll keys
    keep working.
-8. Filling an AcroForm field and digitally signing produces a downloaded
-   `(signed)` copy.
+8. A real AcroForm checkbox widget renders, is keyboard reachable (focus and
+   `Space` toggle it), and also toggles on a pointer click.
+9. That checkbox still toggles via a (forced) pointer click while the Edit
+   text tool is armed, guarding that its full-page click-catcher redirects the
+   click to the widget underneath rather than swallowing it.
+10. A real radio group renders two mutually exclusive options.
+11. Filling an AcroForm field and digitally signing produces a downloaded
+    `(signed)` copy.
 
-**`e2e/accessibility.spec.ts`** — platform settings, which Section 508 503.2
+**`e2e/accessibility.spec.ts`** covers platform settings, which Section 508 503.2
 requires and WCAG does not: UI text scales with the user's root font size, and
 under forced colors (Windows High Contrast) the design tokens resolve to system
 colors, toggled buttons stay distinguishable from untoggled ones, and the page
 canvas opts out of recoloring.
 
-**`e2e/annotations.spec.ts`** — that a saved copy really contains what you
+**`e2e/annotations.spec.ts`** confirms that a saved copy really contains what you
 marked up: a highlight round-trips as a real `/Highlight` annotation carrying its
 text in `/Contents`, annotated pages declare `Tabs = S` while untouched pages do
 not, and the document's original form field survives alongside the new
 annotation. It also writes its export to `test-results/exports/`, which is what
 the CI job feeds to veraPDF (see [Measuring PDF/UA](#measuring-pdfua)).
 
-**`e2e/toolbar.spec.ts`** — responsive toolbar behavior: all controls stay
+**`e2e/toolbar.spec.ts`** covers responsive toolbar behavior: all controls stay
 on-screen on a narrow window, tools that no longer fit collapse into a
 reachable **More** menu when very narrow, and nothing collapses on a wide
 window.
 
-**`e2e/mobile.spec.ts`** — the narrow-viewport ("mobile") mode at a phone size
+**`e2e/mobile.spec.ts`** covers the narrow-viewport ("mobile") mode at a phone size
 (390×844): the sidebar starts closed and opens as an overlay drawer rather than
 squeezing the viewer, a tap on the backdrop or an **Escape** dismisses it
 (peeling the topmost layer first, before find closes), the toolbar never
@@ -139,7 +146,7 @@ are worth more than their line count and why you should be careful editing them:
 - **A wrong `annotationMode` renders every field twice** and looks like a
   rendering quirk. This is the cautionary one: the plausible-looking
   `ENABLE_STORAGE` leaves the duplicate text exactly where it was, and **only a
-  canvas-pixel assertion catches it** — every DOM-level check passes.
+  canvas-pixel assertion catches it**; every DOM-level check passes.
 - **The scroll keys simply do nothing** when focus is not where they need it.
   There is no error, just a dead key.
 - **Form labels**: the test asserts through `getByRole(..., { name })`, the real
@@ -150,7 +157,7 @@ are worth more than their line count and why you should be careful editing them:
   dict is invisible to a text search and the assertions would happily pass
   against a file containing nothing.
 - **Forced colors** are emulated with `page.emulateMedia`, not the `forcedColors`
-  fixture — the fixture does not take effect here, the media query never
+  fixture: the fixture does not take effect here, the media query never
   matches, and every assertion passes vacuously against unstyled defaults.
 
 The rule these share: **when you touch one of these, first check it actually
@@ -167,7 +174,7 @@ It is **informational and non-blocking on purpose**: PDF/UA export is a known
 "Does Not Support" (see [508-conformance.md](508-conformance.md)), so it reports
 failures today. The point is that the gap is a tracked number rather than a
 guess, and that a regression in the parts we *do* satisfy shows up. Note veraPDF
-implements only the machine-checkable subset of PDF/UA — a clean run would still
+implements only the machine-checkable subset of PDF/UA: a clean run would still
 say nothing about reading order, which is human-judged.
 
 Useful flags:
@@ -232,7 +239,7 @@ Install the app first (the `.pdf` association is written by the installer, not b
   viewer*. Windows *Settings -> Default apps* opens so you can pick Folio for
   `.pdf`.
 
-### Editing (text boxes + images)
+### Editing (text boxes, images, and check marks)
 
 Works in both the browser build (`npm run dev`) and the desktop app.
 
@@ -243,8 +250,17 @@ Works in both the browser build (`npm run dev`) and the desktop app.
   *Place in the middle* button (focused on open) is the no-pointer route.
 - **Image:** *Edit -> Add image*, pick a PNG/JPEG, click to place it, then
   drag/resize it.
+- **Check mark:** *Edit -> Add check mark*, then click a spot on the page to
+  stamp it there. Check that clicking a *real* checkbox widget while the tool is
+  armed ticks the widget instead of stamping a mark. Drag it to reposition, drag
+  the corner to resize, or delete it, and switch it between check and cross in
+  its inline inspector.
+- **Edit images:** *Edit -> Edit images*, click an image already on the page,
+  then drag it, resize it from the corner, *Replace image...* it with a
+  differently shaped PNG/JPEG (it should letterbox into the old box, not
+  stretch), or delete it.
 - **Round-trip:** Save a copy (Ctrl+S), reopen in Folio **and** a third-party
-  reader; the text and image should sit where you placed them.
+  reader; the text, image, and check mark should sit where you placed them.
 
 ### Editing text in place
 
@@ -260,6 +276,26 @@ Works in both the browser build (`npm run dev`) and the desktop app.
 - **Round-trip:** commit an edit, Save a copy (Ctrl+S), reopen in Folio **and**
   a third-party reader; the new text should read correctly with no trace of the
   original run underneath it.
+
+### Editing embedded images
+
+Use a PDF with at least one image already on the page (not one placed with
+Folio's own *Add image*).
+
+- Toolbar *Edit images* (the corner-brackets icon), then click the image: a
+  bordered box appears with a resize handle, a *Replace image…* button, and a
+  delete button.
+- Drag the box to move the image, and its corner to resize it; release the
+  pointer and confirm the page updates in place.
+- *Replace image…*, pick a different PNG/JPEG, and confirm it appears in the
+  same spot at the same size.
+- Delete the image and confirm it is gone from the page.
+- If the document has a rotated image or one inside a template/letterhead,
+  click it and confirm either a toast explains why it is not editable, or (for
+  a rotated image) that only *Replace image…* and delete are offered.
+- **Round-trip:** commit an edit, Save a copy (Ctrl+S), reopen in Folio **and**
+  a third-party reader; the change should be there with no trace of the
+  original image underneath it.
 
 ### OCR (scanned pages)
 
@@ -319,7 +355,8 @@ the update prompt. It can't be exercised from a single local build.
   [accessibility.md](accessibility.md)).
 - Component tests for the viewer, toolbar, sidebar, and modals.
 - Engine-level rendering and text-extraction tests against sample PDFs.
-- More e2e flows: search, thumbnails, and outline navigation.
+- More e2e flows: search, thumbnails, outline navigation, check-mark
+  stamping, and image editing.
 - Screen-reader verification is still manual (NVDA on Windows, VoiceOver on
   macOS). The e2e suite asserts accessible names and roles, which is not the
   same as confirming a document reads well.

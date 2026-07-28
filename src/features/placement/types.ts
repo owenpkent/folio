@@ -30,6 +30,19 @@ export interface PendingPlacement {
   /** Names the thing being placed, for the hint banner and screen readers. */
   label: string;
   /**
+   * Let a click that lands on an interactive AcroForm widget reach the widget
+   * instead of placing anything, leaving the tool armed.
+   *
+   * Off by default, and rightly so: the click-catcher covers the whole page
+   * above PDF.js's forms layer, but for most tools the user has explicitly
+   * armed "put one here" and a field underneath is unrelated content that
+   * happens to overlap. Only the check-mark tool sets this, because a mark is
+   * *defined* as the stand-in for a printed checkbox with no field behind it
+   * (see features/editing/types.ts), so a real widget under the click is
+   * exactly the case where a mark is the wrong answer.
+   */
+  deferToFormWidget?: boolean;
+  /**
    * Drop the item on `pageNumber` at `point`. `anchor` overrides the tool's
    * own default, which is what the keyboard path uses to center the item on
    * the page rather than hang it off the middle.

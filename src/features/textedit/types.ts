@@ -45,12 +45,19 @@ export interface LocatedRun {
   color: RunColor;
   /**
    * False when editing this run is unsafe: the next show op in the same BT
-   * block depends on this run's advance (no intervening positioning op), or
-   * the text matrix is rotated/skewed.
+   * block depends on this run's advance (no intervening positioning op), the
+   * text matrix is rotated/skewed, or (for a run inside a Form XObject) the
+   * form is invoked more than once on the page.
    */
   editable: boolean;
   /** Human-readable reason when editable is false. */
   blockedReason?: string;
+  /**
+   * Error code a caller should raise for this block, when a more specific
+   * one than the default 'run-not-editable' helps (see mutate.ts). Only set
+   * for a subset of blockedReason cases.
+   */
+  blockedCode?: TexteditErrorCode;
 }
 
 /** Baseline origin of a PDF.js text item (transform[4], transform[5]). */
@@ -62,6 +69,7 @@ export interface PageTextItemRef {
 export type TexteditErrorCode =
   | 'run-not-found'
   | 'run-not-editable'
+  | 'run-in-shared-xobject'
   | 'unencodable-text'
   | 'page-out-of-range';
 
