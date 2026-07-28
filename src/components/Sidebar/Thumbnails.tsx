@@ -20,6 +20,12 @@ export function Thumbnails() {
 
   // Don't fight the user: while they're working the sidebar scrollbar by hand
   // (wheel, touch, or grabbing it), suppress the follow effect below.
+  //
+  // Keyed on numPages, not []: thumbnails is the default sidebar tab, so this
+  // component usually mounts with no document open, and the early return below
+  // means containerRef is not attached on that render. With an empty dep list
+  // the effect would run once against a null ref, find no scroller, and never
+  // look again once a PDF actually opened.
   useEffect(() => {
     const scroller = containerRef.current?.closest('.folio-sidebar__body');
     if (!scroller) return;
@@ -34,7 +40,7 @@ export function Thumbnails() {
       scroller.removeEventListener('touchmove', markUserScroll);
       scroller.removeEventListener('pointerdown', markUserScroll);
     };
-  }, []);
+  }, [numPages]);
 
   // Keep the active thumbnail in view as the current page changes while the
   // document scrolls. 'nearest' does nothing when the thumb is already fully

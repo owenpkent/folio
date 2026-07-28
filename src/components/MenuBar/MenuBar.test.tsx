@@ -9,11 +9,12 @@ import { useViewerStore } from '@/state/viewerStore';
 import { MenuBar } from './MenuBar';
 
 /** MenuBar reads window.matchMedia (via useMediaQuery) to pick the desktop bar
-    or the mobile hamburger. jsdom does not implement it, so stub a version
-    that never matches: every test below wants the desktop bar. */
-function stubMatchMedia() {
+    or the mobile hamburger. jsdom does not implement it, so stub one. Defaults
+    to never matching, i.e. the desktop bar, which is what most tests want; the
+    mobile block at the bottom of this file opts in. */
+function stubMatchMedia(matches = false) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: false,
+    matches,
     media: query,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
@@ -157,5 +158,90 @@ describe('MenuBar', () => {
 
     act(() => useDocumentStore.setState({ status: 'ready' }));
     expect(screen.getByRole('menuitem', { name: 'Test Tool' })).toBeEnabled();
+  });
+
+  it('slides the open menu on hover without moving focus off the row being read', () => {
+    render(<MenuBar />);
+    const file = screen.getByRole('menuitem', { name: 'File' });
+    const edit = screen.getByRole('menuitem', { name: 'Edit' });
+
+    file.focus();
+    fireEvent.click(file);
+    const open = screen.getByRole('menuitem', { name: 'Open' });
+    open.focus();
+
+    // A pointer merely crossing the bar slides the open menu, the way a native
+    // menu bar moves its highlight -- but it must not yank DOM focus, which
+    // would strand a keyboard or screen-reader user mid-row.
+    fireEvent.mouseEnter(edit);
+    expect(edit).toHaveAttribute('aria-expanded', 'true');
+    expect(file).toHaveAttribute('aria-expanded', 'false');
+    expect(edit).not.toHaveFocus();
+  });
+
+  it('keeps the roving tab stop on one trigger only, so the bar is a single tab stop', () => {
+    render(<MenuBar />);
+    const triggers = within(screen.getByRole('menubar')).getAllByRole('menuitem');
+    expect(triggers.filter((t) => t.getAttribute('tabindex') === '0')).toHaveLength(1);
+  });
+
+  it('takes the positioning wrapper out of the accessibility tree', () => {
+    // A menubar may only own menuitem / menuitemcheckbox / menuitemradio /
+    // group / separator. The div that positions each dropdown sits between the
+    // two, so it carries role="none" or the ownership (and the "item 2 of 7"
+    // set semantics a screen reader derives from it) is broken.
+    render(<MenuBar />);
+    const trigger = screen.getByRole('menuitem', { name: 'File' });
+    expect(trigger.parentElement).toHaveAttribute('role', 'none');
+  });
+});
+
+describe('MenuBar (narrow viewport)', () => {
+  beforeEach(() => {
+    stubMatchMedia(true);
+    useDocumentStore.setState({ status: 'ready' });
+    useViewerStore.setState({ sidebarOpen: false, handMode: false, autoScroll: false });
+  });
+
+  afterEach(() => {
+    cleanup();
+    useContributionStore.setState({ toolbarItems: [] });
+  });
+
+  it('collapses to one hamburger holding every command, grouped by menu', () => {
+    render(<MenuBar />);
+    expect(screen.queryByRole('menubar')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    const menu = screen.getByRole('menu', { name: 'Menu' });
+    expect(within(menu).getByRole('menuitem', { name: 'Save a copy' })).toBeInTheDocument();
+    expect(within(menu).getByRole('group', { name: 'File' })).toBeInTheDocument();
+  });
+
+  it('navigates the flat dropdown with the arrow keys, as its menu role promises', () => {
+    render(<MenuBar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    const menu = screen.getByRole('menu', { name: 'Menu' });
+
+    // Focus is still on the hamburger, so the first ArrowDown enters the list
+    // at its top rather than doing nothing.
+    const rows = within(menu).getAllByRole('menuitem');
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(rows[0]).toHaveFocus();
+
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(rows[1]).toHaveFocus();
+
+    fireEvent.keyDown(menu, { key: 'ArrowUp' });
+    expect(rows[0]).toHaveFocus();
+
+    // Wraps backwards off the top to the last row, and End jumps there too.
+    fireEvent.keyDown(menu, { key: 'ArrowUp' });
+    const last = document.activeElement;
+    fireEvent.keyDown(menu, { key: 'End' });
+    expect(document.activeElement).toBe(last);
+
+    fireEvent.keyDown(menu, { key: 'Home' });
+    expect(rows[0]).toHaveFocus();
   });
 });

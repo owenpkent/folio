@@ -101,6 +101,9 @@ function commandEnabled(commandId: string): boolean {
   return !command?.when || command.when();
 }
 
+/** itemRefs key for one row: the owning menu plus its index within that menu. */
+const itemKey = (menuId: string, entryIndex: number) => `${menuId}:${entryIndex}`;
+
 function firstEnabledIndex(entries: MenuEntryDef[]): number {
   return entries.findIndex((e) => e.kind === 'item' && !e.disabled);
 }
@@ -297,7 +300,12 @@ export function MenuBar() {
 
   const barRef = useRef<HTMLDivElement>(null);
   const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  // Keyed by owning menu + row index, not a bare index into a shared array:
+  // only one menu is open at a time, so a flat array happens to work today,
+  // but it silently relies on that and on the index helpers never returning a
+  // separator's slot (which no ref ever fills). Keying by menu makes a stale
+  // row from a previously-open, longer menu unreachable by construction.
+  const itemRefs = useRef(new Map<string, HTMLButtonElement>());
   // Which item to focus once the menu that is about to open has mounted (its
   // items do not exist yet on the tick that opens it).
   const pendingFocusRef = useRef<'first' | 'last' | null>(null);
@@ -325,7 +333,7 @@ export function MenuBar() {
     const menu = menusRef.current.find((m) => m.id === openId);
     if (!menu) return;
     const idx = focus === 'first' ? firstEnabledIndex(menu.entries) : lastEnabledIndex(menu.entries);
-    if (idx !== -1) itemRefs.current[idx]?.focus();
+    focusRow(menu.id, idx);
   }, [openId]);
 
   // The mobile hamburger's single dropdown: same outside-click / Escape
@@ -348,6 +356,11 @@ export function MenuBar() {
 
   const focusTrigger = (id: string) => triggerRefs.current.get(id)?.focus();
 
+  /** Focus one row of `menuId`. A -1 index (nothing enabled) is a no-op. */
+  const focusRow = (menuId: string, entryIndex: number) => {
+    if (entryIndex !== -1) itemRefs.current.get(itemKey(menuId, entryIndex))?.focus();
+  };
+
   /** Open `id`'s menu and focus its first/last enabled row. If it is already
       open (focus can still be on the trigger right after a click), its rows
       already exist, so focus is applied immediately; otherwise the layout
@@ -361,7 +374,7 @@ export function MenuBar() {
           ? firstEnabledIndex(menu.entries)
           : lastEnabledIndex(menu.entries)
         : -1;
-      if (idx !== -1) itemRefs.current[idx]?.focus();
+      focusRow(id, idx);
       return;
     }
     pendingFocusRef.current = focus;
@@ -402,12 +415,18 @@ export function MenuBar() {
 
   // While any menu is open, hovering a different trigger slides the open menu
   // across to it (click-then-slide), matching a native app menu bar.
+  //
+  // The open menu and the roving tab stop follow the pointer, but DOM focus
+  // does not: a native menu bar moves the *highlight* on hover, not the
+  // keyboard focus. Calling focusTrigger here would yank focus out from under
+  // a screen-reader or keyboard user whose pointer merely passed over the bar,
+  // and fire a focus/blur pair per trigger crossed. A click still focuses
+  // explicitly (see onTriggerClick), which is the interaction that should.
   const onTriggerMouseEnter = (id: string) => {
     if (openId && openId !== id) {
       pendingFocusRef.current = null;
       setActiveId(id);
       setOpenId(id);
-      focusTrigger(id);
     }
   };
 
@@ -466,30 +485,22 @@ export function MenuBar() {
   ) => {
     const { entries } = menu;
     switch (e.key) {
-      case 'ArrowDown': {
+      case 'ArrowDown':
         e.preventDefault();
-        const idx = stepEnabledIndex(entries, entryIndex, 1);
-        if (idx !== -1) itemRefs.current[idx]?.focus();
+        focusRow(menu.id, stepEnabledIndex(entries, entryIndex, 1));
         break;
-      }
-      case 'ArrowUp': {
+      case 'ArrowUp':
         e.preventDefault();
-        const idx = stepEnabledIndex(entries, entryIndex, -1);
-        if (idx !== -1) itemRefs.current[idx]?.focus();
+        focusRow(menu.id, stepEnabledIndex(entries, entryIndex, -1));
         break;
-      }
-      case 'Home': {
+      case 'Home':
         e.preventDefault();
-        const idx = firstEnabledIndex(entries);
-        if (idx !== -1) itemRefs.current[idx]?.focus();
+        focusRow(menu.id, firstEnabledIndex(entries));
         break;
-      }
-      case 'End': {
+      case 'End':
         e.preventDefault();
-        const idx = lastEnabledIndex(entries);
-        if (idx !== -1) itemRefs.current[idx]?.focus();
+        focusRow(menu.id, lastEnabledIndex(entries));
         break;
-      }
       case 'ArrowRight': {
         e.preventDefault();
         const next = menus[(menuIndex + 1) % menus.length];
@@ -514,6 +525,32 @@ export function MenuBar() {
       default:
         break;
     }
+  };
+
+  /**
+   * Arrow / Home / End navigation for the mobile hamburger's single flat
+   * dropdown. Unlike the desktop bar, whose rows are indexed per menu, this
+   * one is one scrollable list of every command grouped by heading, so it
+   * navigates the enabled buttons in DOM order and needs no model of its own.
+   */
+  const onMobileMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+    if (!step && e.key !== 'Home' && e.key !== 'End') return;
+
+    const rows = Array.from(
+      e.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'),
+    );
+    if (rows.length === 0) return;
+    e.preventDefault();
+
+    if (e.key === 'Home') return rows[0].focus();
+    if (e.key === 'End') return rows[rows.length - 1].focus();
+
+    // Wrapping, and starting from the top (or bottom) when focus is still on
+    // the hamburger itself rather than on a row.
+    const current = rows.indexOf(document.activeElement as HTMLButtonElement);
+    if (current === -1) return (step === 1 ? rows[0] : rows[rows.length - 1]).focus();
+    rows[(current + step + rows.length) % rows.length].focus();
   };
 
   const renderGlyph = (entry: MenuItemDef) => (
@@ -551,6 +588,19 @@ export function MenuBar() {
               className="folio-dropdown__menu folio-menubar__mobile-menu"
               role="menu"
               aria-label="Menu"
+              // Programmatically focusable but not a tab stop, which is the
+              // APG shape for a menu container and what lets it legitimately
+              // own the key handler below (a listener on an element that can
+              // never hold focus is the anti-pattern the lint rule is aimed
+              // at, even though these events arrive by bubbling from the rows).
+              tabIndex={-1}
+              // role="menu" is a promise about keyboard behavior, not just a
+              // label: a screen reader announces "menu" and its user reaches
+              // for the arrow keys. Tab alone reaching the rows contradicts
+              // that, so the whole dropdown handles arrows / Home / End once
+              // here, delegating off the focused row rather than wiring a
+              // handler onto every button.
+              onKeyDown={onMobileMenuKeyDown}
             >
               {menus.map((menu) => (
                 <div key={menu.id} role="group" aria-label={menu.label} className="folio-menubar__mobile-group">
@@ -602,7 +652,13 @@ export function MenuBar() {
       {menus.map((menu, menuIndex) => {
         const isOpen = openId === menu.id;
         return (
-          <div className="folio-menubar__item" key={menu.id}>
+          // role="none" because a menubar may only own menuitem /
+          // menuitemcheckbox / menuitemradio / group / separator: an unroled
+          // div between the bar and its triggers breaks that ownership, and
+          // with it the set semantics a screen reader announces ("item 2 of
+          // 7"). The wrapper exists purely to position the dropdown, so
+          // removing it from the accessibility tree is exactly right.
+          <div className="folio-menubar__item" role="none" key={menu.id}>
             <button
               type="button"
               role="menuitem"
@@ -639,7 +695,8 @@ export function MenuBar() {
                       className="folio-menubar__menuitem"
                       disabled={entry.disabled}
                       ref={(el) => {
-                        itemRefs.current[entryIndex] = el;
+                        if (el) itemRefs.current.set(itemKey(menu.id, entryIndex), el);
+                        else itemRefs.current.delete(itemKey(menu.id, entryIndex));
                       }}
                       onMouseDown={entry.preserveSelection ? (e) => e.preventDefault() : undefined}
                       onClick={() => activateEntry(entry, menu.id)}
