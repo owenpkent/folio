@@ -6,7 +6,7 @@ updates:
   # pdfjs-dist, react, eslint) must be reviewed and migrated individually, not
   # batched into one unmergeable PR.
   #
-  # The two exceptions below are *cohorts*: packages whose peer ranges pin them
+  # The grouped majors below are *cohorts*: packages whose peer ranges pin them
   # to each other, so a PR bumping one alone cannot even `npm ci`, let alone
   # tell us anything about whether the upgrade works. react-dom@19 peers on
   # react@^19 and @types/react-dom@19 peers on @types/react@^19, so splitting
@@ -14,6 +14,16 @@ updates:
   # React 19; @eslint/js@10 peers on eslint@^10 the same way (#22). Grouping the
   # cohort keeps one dedicated, reviewable PR per breaking upgrade -- the intent
   # above -- while making that PR installable.
+  #
+  # Adding a cohort is NOT the fix for every install failure. An `ERESOLVE` at
+  # `npm ci` has two causes that print the same error: a cohort member left
+  # behind when a compatible release exists (fix it here), or upstream not
+  # having shipped support at all, where no group change helps and the PR simply
+  # waits. #47 was the second kind: `eslint-plugin-*` below already matches
+  # eslint-plugin-jsx-a11y, which had no eslint 10 release to move to. Check
+  # `npm view <pkg> peerDependencies` before editing this file, and do not reach
+  # for --legacy-peer-deps in either case -- CI runs `npm ci` and would fail
+  # anyway. See the Dependabot section of CONTRIBUTING.md.
   - package-ecosystem: npm
     directory: "/"
     schedule:
