@@ -56,7 +56,7 @@ You do not have to write code to make a difference:
 ## Development setup
 
 Folio is a [Tauri 2](https://tauri.app) desktop app: a Rust backend with a
-React 18 + TypeScript 5 frontend built by Vite 7, rendering PDFs with
+React 19 + TypeScript 5 frontend built by Vite 7, rendering PDFs with
 [PDF.js](https://mozilla.github.io/pdf.js/) and managing state with
 [Zustand](https://github.com/pmndrs/zustand).
 
@@ -303,15 +303,33 @@ organized and what is covered. All tests must pass in CI before a PR can merge.
   specific version or a narrow range; don't hand-edit the lockfile.
 - Verify a package exists on its registry before adding it, and prefer
   well-vetted libraries over obscure ones (see the security rules in
-  [CLAUDE.md](CLAUDE.md)). Run `npm audit` and treat new high/critical findings
-  as blocking.
+  [CLAUDE.md](CLAUDE.md)). Run `npm audit` and treat *new* high/critical findings
+  as blocking — but check them against the known-accepted list first. The gate
+  that actually blocks a release is **Dependabot alerts**, not `npm audit`: the
+  two disagree, because `npm audit` counts an advisory once per dependency path
+  and reports findings that cannot be fixed from here at all. Two are open and
+  documented, with the evidence for why each is unfixable and what would unblock
+  it: [#57](https://github.com/owenpkent/folio/issues/57)
+  (`brace-expansion`, six of the current high findings, all one advisory) and
+  [#58](https://github.com/owenpkent/folio/issues/58) (`glib`, Linux-only, pinned
+  by Tauri). Add to that list rather than silently carrying a finding.
 - **Dependabot** opens monthly update PRs (npm, cargo, GitHub Actions), grouped
   to cut noise. For npm, **minor and patch** bumps are grouped into a single PR
   that should stay green and be easy to merge. **Major** bumps are intentionally
-  *not* grouped: each opens as its own PR, because a breaking upgrade (for
-  example `pdfjs-dist`, `react`, or `eslint`) needs an individual, tested
-  migration rather than a batch merge. Never merge a dependency PR with failing
-  CI.
+  *not* batched together: each breaking upgrade opens as its own PR, because it
+  needs an individual, tested migration.
+
+  The exception is a **cohort** — packages whose peer ranges pin them to each
+  other, so no member can cross a major alone. `react` with `react-dom` and both
+  `@types`; `eslint` with `@eslint/*` and the plugins; `vite` with `@vitejs/*`;
+  `vitest` with `@vitest/*`. Those are grouped for major updates in
+  `.github/dependabot.yml`, and the reason is concrete: before they were, a PR
+  bumping half a cohort could not even `npm ci`, so it sat red for weeks without
+  saying anything about whether the upgrade worked. Grouping keeps one dedicated
+  PR per breaking upgrade while making that PR installable. If you meet a new
+  half-bump that fails at install, add its cohort rather than closing the PR.
+
+  Never merge a dependency PR with failing CI.
 
 ---
 

@@ -247,7 +247,7 @@ operator that draws it.
 
 ### Using it
 
-- Toggle toolbar **Edit images** (the corner-brackets icon, `imageedit.toggle`).
+- Toggle **Edit** → **Edit images** (the corner-brackets icon, `imageedit.toggle`).
   While it is on, click an image on the page to select it: a bordered box
   appears with a draggable surface, a corner resize handle, a **Replace
   image…** button, and a delete button. A click that lands on a real AcroForm

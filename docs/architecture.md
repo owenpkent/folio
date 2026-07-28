@@ -1,6 +1,6 @@
 # Folio Architecture
 
-Folio is a desktop PDF viewer built on **Tauri 2** (Rust backend) with a **React 18 + TypeScript 5** frontend, bundled by **Vite 7**. Rendering is delegated to **PDF.js** (`pdfjs-dist` v4). Application state lives in **Zustand** stores. Theming is driven entirely by **CSS custom properties**.
+Folio is a desktop PDF viewer built on **Tauri 2** (Rust backend) with a **React 19 + TypeScript 5** frontend, bundled by **Vite 7**. Rendering is delegated to **PDF.js** (`pdfjs-dist` v4). Application state lives in **Zustand** stores. Theming is driven entirely by **CSS custom properties**.
 
 This document describes the layer stack, the data flow for opening and rendering a PDF, the engine abstraction, the PDF.js worker threading model, state management, extension points, and the Tauri command boundary.
 
@@ -19,7 +19,7 @@ This document describes the layer stack, the data flow for opening and rendering
 │                          Tauri 2 shell (native window)                     │
 │  WebView (Chromium/WebKit)                          Rust backend           │
 │  ┌───────────────────────────────────────────┐    ┌──────────────────┐    │
-│  │              React 18 UI layer             │    │  Tauri commands  │    │
+│  │              React 19 UI layer             │    │  Tauri commands  │    │
 │  │  components/  Viewer · Toolbar · Sidebar    │◄──►│  file IO         │    │
 │  │              Search · common                │ IPC│  recent files    │    │
 │  │                     │                       │    │  native menus    │    │
@@ -153,6 +153,42 @@ Two rules of the rendering contract are easy to break by accident, and both show
 
 - **A page is drawn by three renders that must agree, and any of them can be superseded.** `renderPage`, `renderTextLayer` and `renderAnnotationLayer` all take an `AbortSignal` (`RenderPageOptions` / `RenderLayerOptions`), and the caller re-checks staleness between them. The layer renders are also serialised per container inside the engine, because PDF.js builds a layer by appending across `await` points: two overlapping passes on one element interleave, and the older pass's leftovers survive the newer one's `replaceChildren()` as duplicated elements. Pass the signal through; do not render a layer into an element another pass may still own.
 - **Form widgets are drawn exactly once, by whoever owns them.** `renderPage({ overlayForms: true })` tells the engine that the caller will overlay real DOM inputs, so the widgets are left out of the raster (`annotationMode: ENABLE_FORMS`, which is the only mode that suppresses them; `ENABLE_STORAGE` sets a different intent flag and paints them anyway). Callers that rasterise a page on its own, like thumbnails, leave the flag unset and get the values painted in. Setting it without an annotation layer loses the values; omitting it under one doubles them.
+
+### The per-page overlay stack
+
+Every page is a `.folio-page` box holding the canvas plus a stack of absolutely
+positioned overlays, rendered by `components/Viewer/Page.tsx`. The order is
+load-bearing and is set by `z-index` in `styles/global.css`, not by DOM order:
+
+| z | Layer | What it is |
+| --- | --- | --- |
+| 0 | `.folio-page-canvas` | The rasterized page |
+| 1 | `.folio-annotation-layer` | PDF.js annotations (links, existing markup) |
+| 2 | `.folio-text-layer` | The real text layer: selection, find, screen readers |
+| 3 | `.folio-forms-layer` | PDF.js AcroForm widgets, as native inputs |
+| 3 | `.folio-ocr-layer` | Selectable OCR text, when a page has been recognised |
+| 4 | `.folio-signature-layer`, `.folio-notes-layer` | Placed signatures, sticky-note pins |
+| 5 | `.folio-edit-layer` | Placed text boxes, images, and check marks |
+| 8 | `.folio-placement-hit`, `.folio-imageedit-layer` | Armed click-catchers |
+
+**The rule that is easy to break: a full-page click-catcher sits above the forms
+layer.** `.folio-forms-layer` only takes pointer events over each field's own
+small rect, so the rest of a page falls through to whatever is under it. But a
+tool that covers the whole page at a higher z-index takes *everything*, including
+the clicks meant for a checkbox or a text field. Three tools do this — in-place
+text editing, image selection, and any armed placement — and all three would
+otherwise make forms unfillable while switched on.
+
+The fix is one shared hit-test, `state/formsLayer.ts`, which each catcher calls
+before acting: `formWidgetAt(x, y)` walks `document.elementsFromPoint` for the
+topmost interactive widget inside `.folio-forms-layer`, and the catcher replays
+the click on it and returns. What "acting" means differs per tool, and one of
+them inverts the rule deliberately: the check-mark tool *yields* to a real widget
+rather than stamping over it, because a mark exists only to stand in for a
+printed box that has no field behind it. That is why `PendingPlacement` carries
+an opt-in `deferToFormWidget` rather than the behaviour being unconditional.
+
+If you add a tool that covers the page, call `formWidgetAt` first.
 
 ### Rendering resolution, virtualization, and DPI changes
 
