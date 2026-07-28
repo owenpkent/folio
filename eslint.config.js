@@ -38,6 +38,19 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       ...jsxA11y.flatConfigs.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      // A placed overlay (text box, image, check mark, signature) is a focusable
+      // composite: `role="group"` with a name, an accessible description of its
+      // keys, and a keydown handler that moves and resizes it (see
+      // src/a11y/useNudgeKeys.ts). ARIA allows a focusable group -- the APG's
+      // own toolbar and grid patterns rely on it -- but both rules below assume
+      // any non-widget role is inert, which is the false positive they are known
+      // for. Allowlisting `group` specifically keeps them enforcing everywhere
+      // else, rather than scattering per-line disables across four layers.
+      'jsx-a11y/no-noninteractive-tabindex': ['error', { tags: [], roles: ['group'] }],
+      'jsx-a11y/no-noninteractive-element-interactions': [
+        'error',
+        { handlers: ['onClick', 'onMouseDown', 'onMouseUp', 'onKeyPress', 'onKeyUp'] },
+      ],
       '@typescript-eslint/no-unused-vars': [
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },

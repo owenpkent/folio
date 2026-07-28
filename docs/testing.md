@@ -79,7 +79,7 @@ deliberately otherwise blank, so any ink on the rendered canvas is a form
 widget that should have been left to the annotation layer, which is what makes
 the doubled-text assertion below possible.
 
-There are six specs.
+There are seven specs.
 
 **`e2e/smoke.spec.ts`** covers the core document flows:
 
@@ -137,6 +137,15 @@ box is dragged from anywhere on it while a press that does not travel still edit
 it,
 and a typed signature lands centered on the click and is offered back, prefilled,
 the next time the dialog opens.
+
+**`e2e/keyboard-manipulation.spec.ts`** — the keyboard path for direct
+manipulation (WCAG 2.1.1), which dragging and the corner handle were previously
+the only route to: a placed text box moves with the arrow keys and ten times as
+far with **Shift** held, `+`/`-` resize it and **Delete** removes it, a placed
+signature does the same with its aspect ratio locked, and two guards that matter
+more than the happy path -- arrows *inside* a text box move the caret rather than
+the box, and a nudge key moves the item **without** also scrolling the document
+out from under it.
 
 ### Tests that pin silent failures
 
@@ -255,6 +264,12 @@ Works in both the browser build (`npm run dev`) and the desktop app.
   armed ticks the widget instead of stamping a mark. Drag it to reposition, drag
   the corner to resize, or delete it, and switch it between check and cross in
   its inline inspector.
+- **Keyboard, any placed item:** focus a text box, image, check mark, or
+  signature with `Tab` (the Edit images tool focuses its own selection) and check
+  the arrow keys move it, **Shift** + arrow moves further, `+`/`-` resize it, and
+  **Delete** removes it. Two things to watch specifically: arrows typed *inside*
+  a text box must move the caret, not the box, and a nudge must not scroll the
+  document at the same time.
 - **Edit images:** *Edit -> Edit images*, click an image already on the page,
   then drag it, resize it from the corner, *Replace image...* it with a
   differently shaped PNG/JPEG (it should letterbox into the old box, not

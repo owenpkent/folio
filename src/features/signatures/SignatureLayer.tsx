@@ -1,5 +1,6 @@
 import { useMemo, type PointerEvent } from 'react';
 
+import { useNudgeKeys } from '@/a11y/useNudgeKeys';
 import { Icon } from '@/components/common';
 
 import { useSignatureStore } from './store';
@@ -26,6 +27,17 @@ export function SignatureLayer({ pageNumber }: { pageNumber: number }) {
 function SignatureItem({ sig }: { sig: Signature }) {
   const move = useSignatureStore((s) => s.move);
   const remove = useSignatureStore((s) => s.remove);
+
+  // Aspect-locked, matching startResize below: a signature stretched on one
+  // axis reads as a forgery rather than a resize.
+  const onKeyDown = useNudgeKeys({
+    rect: sig.rect,
+    label: 'Signature',
+    aspectLocked: true,
+    minWidth: 0.05,
+    onChange: (rect) => move(sig.id, rect),
+    onDelete: () => remove(sig.id),
+  });
 
   const pageRectFrom = (el: Element | null) =>
     el?.closest('.folio-page')?.getBoundingClientRect() ?? null;
@@ -89,6 +101,13 @@ function SignatureItem({ sig }: { sig: Signature }) {
 
   return (
     <div
+      // Focusable, so Tab reaches the signature and the arrow keys below can
+      // move it: dragging was the only way to reposition one. There is no
+      // selection state to mirror here, unlike features/editing -- a signature
+      // always shows its handles -- so focus is the selection.
+      tabIndex={0}
+      role="group"
+      aria-label="Placed signature. Arrow keys move it, plus and minus resize it, Delete removes it."
       className="folio-signature"
       style={{
         left: `${sig.rect.x * 100}%`,
@@ -96,6 +115,7 @@ function SignatureItem({ sig }: { sig: Signature }) {
         width: `${sig.rect.width * 100}%`,
         height: `${sig.rect.height * 100}%`,
       }}
+      onKeyDown={onKeyDown}
     >
       <img
         className="folio-signature__img"
