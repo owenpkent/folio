@@ -18,17 +18,38 @@ async function writeFixture(path: string, bytes: Uint8Array): Promise<void> {
   await writeFile(out, bytes);
 }
 
-/** A two-page PDF with one empty fillable text field. */
+/**
+ * A two-page PDF with one empty fillable text field, a checkbox, and a radio
+ * group. No fixture in this repo had ever created a checkbox or radio field
+ * before, so a regression in their handling (e.g. an overlay swallowing their
+ * clicks; see smoke.spec.ts) would otherwise be invisible to the suite.
+ */
 async function buildEmptyForm(): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
+  const form = doc.getForm();
 
   const page = doc.addPage([420, 560]);
   page.drawText('Folio end-to-end form', { x: 40, y: 500, size: 18, font });
   page.drawText('Name:', { x: 40, y: 452, size: 12, font });
 
-  const nameField = doc.getForm().createTextField('name');
+  const nameField = form.createTextField('name');
   nameField.addToPage(page, { x: 100, y: 446, width: 220, height: 22 });
+
+  page.drawText('Agree to terms:', { x: 40, y: 412, size: 12, font });
+  const agree = form.createCheckBox('agree');
+  agree.addToPage(page, { x: 220, y: 406, width: 18, height: 18 });
+  for (const widget of agree.acroField.getWidgets()) {
+    widget.dict.set(PDFName.of('TU'), PDFString.of('Agree to terms'));
+  }
+
+  page.drawText('Plan:', { x: 40, y: 378, size: 12, font });
+  const plan = form.createRadioGroup('plan');
+  plan.addOptionToPage('basic', page, { x: 100, y: 372, width: 18, height: 18 });
+  plan.addOptionToPage('pro', page, { x: 160, y: 372, width: 18, height: 18 });
+  for (const widget of plan.acroField.getWidgets()) {
+    widget.dict.set(PDFName.of('TU'), PDFString.of('Plan'));
+  }
 
   const page2 = doc.addPage([420, 560]);
   page2.drawText('Page two', { x: 40, y: 500, size: 18, font });

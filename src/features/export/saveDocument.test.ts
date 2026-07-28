@@ -1,23 +1,35 @@
+import { PDFDocument, PDFHexString } from 'pdf-lib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type * as PdfCore from '@/core/pdf';
 import type { PdfDocumentInfo } from '@/core/pdf';
 
-const { invoke, saveDialog } = vi.hoisted(() => ({ invoke: vi.fn(), saveDialog: vi.fn() }));
+const { invoke, saveDialog, mockSaveDocument } = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  saveDialog: vi.fn(),
+  // Explicit return type widens this to plain `Uint8Array` (not the narrower
+  // `Uint8Array<ArrayBuffer>` TS infers for an array literal): pdf-lib's own
+  // `.save()` returns the wider type, and mockResolvedValueOnce below needs to
+  // accept its output.
+  mockSaveDocument: vi.fn(async (): Promise<Uint8Array> => new Uint8Array([1, 2, 3])),
+}));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ save: saveDialog }));
 // Stub the engine so exporting needs no real document; with no edits,
-// signatures, OCR, or annotations staged, these bytes come back as-is.
+// signatures, OCR, or annotations staged, these bytes come back as-is. Tests
+// that need real, loadable PDF bytes (to inspect a baked trailer /ID) override
+// this per call with mockSaveDocument.mockResolvedValueOnce(...).
 vi.mock('@/core/pdf', async (orig) => {
   const actual = (await orig()) as typeof PdfCore;
-  return { ...actual, getEngine: () => ({ saveDocument: async () => new Uint8Array([1, 2, 3]) }) };
+  return { ...actual, getEngine: () => ({ saveDocument: mockSaveDocument }) };
 });
 
 import { useToastStore } from '@/components/common';
+import { useSignatureStore } from '@/features/signatures';
 import { useDocumentStore } from '@/state/documentStore';
 
-import { saveDocumentInPlace } from './saveDocument';
+import { exportDocument, saveDocumentInPlace } from './saveDocument';
 
 const info: PdfDocumentInfo = { numPages: 1, fingerprint: 'fp', name: 'report.pdf' };
 
@@ -97,5 +109,85 @@ describe('saveDocumentInPlace', () => {
     await saveDocumentInPlace();
     expect(invoke).not.toHaveBeenCalled();
     expect(saveDialog).not.toHaveBeenCalled();
+  });
+});
+
+describe('exportDocument document identity', () => {
+  // A valid 1x1 transparent PNG (same fixture bake.test.ts uses for image edits).
+  const PNG_1x1 =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+  const oneSignature = {
+    id: 'sig-1',
+    pageNumber: 1,
+    dataUrl: PNG_1x1,
+    rect: { x: 0.1, y: 0.1, width: 0.2, height: 0.1 },
+    createdAt: 0,
+  };
+
+  /**
+   * A one-page PDF whose trailer /ID is the given hex pair, standing in for a
+   * real file's original producer-assigned ID.
+   */
+  async function sourcePdfWithId(id: [string, string]): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    doc.addPage([200, 200]);
+    doc.context.trailerInfo.ID = doc.context.obj([PDFHexString.of(id[0]), PDFHexString.of(id[1])]);
+    return doc.save();
+  }
+
+  /** Pull the trailer's /ID hex pair back out of raw saved PDF bytes. */
+  function extractTrailerId(bytes: Uint8Array): [string, string] | null {
+    const text = new TextDecoder('latin1').decode(bytes);
+    const match = /\/ID\s*\[\s*<([0-9a-fA-F]*)>\s*<([0-9a-fA-F]*)>\s*\]/.exec(text);
+    return match ? [match[1], match[2]] : null;
+  }
+
+  beforeEach(() => useSignatureStore.getState().reset());
+  afterEach(() => useSignatureStore.getState().reset());
+
+  it('mints a fresh trailer /ID when it bakes overlay content', async () => {
+    const sourceId: [string, string] = ['ab'.repeat(16), 'cd'.repeat(16)];
+    const source = await sourcePdfWithId(sourceId);
+    mockSaveDocument.mockResolvedValueOnce(source);
+    useSignatureStore.setState({ signatures: [oneSignature] });
+
+    const out = await exportDocument();
+
+    const baked = extractTrailerId(out);
+    // Assert the shape too, not just that it changed: a dropped or malformed
+    // /ID would also read as "not the source ID" and pass vacuously.
+    expect(baked).not.toBeNull();
+    expect(baked?.[0]).toMatch(/^[0-9a-f]{32}$/);
+    expect(baked?.[1]).toMatch(/^[0-9a-f]{32}$/);
+    expect(baked).not.toEqual(sourceId);
+  });
+
+  it('produces a different ID on each successive export of the same source', async () => {
+    const sourceId: [string, string] = ['ab'.repeat(16), 'cd'.repeat(16)];
+    const source = await sourcePdfWithId(sourceId);
+    useSignatureStore.setState({ signatures: [oneSignature] });
+
+    mockSaveDocument.mockResolvedValueOnce(source);
+    const id1 = extractTrailerId(await exportDocument());
+    mockSaveDocument.mockResolvedValueOnce(source);
+    const id2 = extractTrailerId(await exportDocument());
+
+    expect(id1).not.toBeNull();
+    expect(id2).not.toBeNull();
+    expect(id1).not.toEqual(id2);
+  });
+
+  it('leaves the source /ID untouched on the pass-through path with nothing staged to bake', async () => {
+    const sourceId: [string, string] = ['ab'.repeat(16), 'cd'.repeat(16)];
+    const source = await sourcePdfWithId(sourceId);
+    mockSaveDocument.mockResolvedValueOnce(source);
+    // Signature/edit/OCR/annotation stores are all empty (reset above), so
+    // exportDocument takes its early pass-through return, untouched.
+
+    const out = await exportDocument();
+
+    expect(out).toBe(source);
+    expect(extractTrailerId(out)).toEqual(sourceId);
   });
 });

@@ -2,19 +2,24 @@ import { create } from 'zustand';
 
 import {
   DEFAULT_FONT_SIZE_PT,
+  DEFAULT_MARK_COLOR,
   DEFAULT_TEXT_COLOR,
+  MARK_GLYPH_PATHS,
   type EditItem,
   type ImageEdit,
+  type MarkEdit,
+  type MarkGlyph,
+  type MarkStylePatch,
   type NormalizedRect,
   type TextEdit,
   type TextStylePatch,
 } from './types';
 
 /**
- * Placed edits (text boxes + images) for the current document, persisted per
- * PDF fingerprint in a local sidecar. Mirrors features/signatures/store. The
- * `selectedId` / `focusId` fields are transient UI state and are never
- * persisted.
+ * Placed edits (text boxes, images, check marks) for the current document,
+ * persisted per PDF fingerprint in a local sidecar. Mirrors
+ * features/signatures/store. The `selectedId` / `focusId` fields are
+ * transient UI state and are never persisted.
  */
 
 function uid(): string {
@@ -45,14 +50,38 @@ interface EditState {
     mime: ImageEdit['mime'],
     rect: NormalizedRect,
   ): ImageEdit;
+  addMark(pageNumber: number, rect: NormalizedRect, glyph: MarkGlyph): MarkEdit;
   move(id: string, rect: NormalizedRect): void;
   updateText(id: string, patch: TextStylePatch): void;
+  updateMark(id: string, patch: MarkStylePatch): void;
   remove(id: string): void;
 
   select(id: string | null): void;
   /** Select a text box and put the caret in it (used after a click that was not a drag). */
   focus(id: string): void;
   clearFocus(): void;
+}
+
+/**
+ * Keep only well-formed items from the sidecar. localStorage is user-writable,
+ * so its contents are untrusted input: a `mark` whose `glyph` is not one this
+ * build knows would index MARK_GLYPH_PATHS to undefined, which renders as an
+ * empty `<path d>` on screen but throws inside pdf-lib's drawSvgPath when the
+ * document is exported -- a failure a long way from its cause. Unknown `kind`s
+ * are dropped for the same reason: EditLayer's dispatch treats anything that is
+ * neither text nor mark as an image and would read a dataUrl that isn't there.
+ */
+function sanitizeEdits(raw: unknown): EditItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item): item is EditItem => {
+    if (!item || typeof item !== 'object') return false;
+    const { kind, id, rect } = item as Partial<EditItem>;
+    if (typeof id !== 'string' || !rect || typeof rect !== 'object') return false;
+    if (kind === 'text') return true;
+    if (kind === 'image') return typeof (item as Partial<ImageEdit>).dataUrl === 'string';
+    if (kind === 'mark') return (item as Partial<MarkEdit>).glyph! in MARK_GLYPH_PATHS;
+    return false;
+  });
 }
 
 export const useEditStore = create<EditState>((set, get) => {
@@ -76,7 +105,7 @@ export const useEditStore = create<EditState>((set, get) => {
       let edits: EditItem[] = [];
       try {
         const raw = localStorage.getItem(storageKey(fingerprint));
-        if (raw) edits = JSON.parse(raw) as EditItem[];
+        if (raw) edits = sanitizeEdits(JSON.parse(raw));
       } catch {
         edits = [];
       }
@@ -118,6 +147,21 @@ export const useEditStore = create<EditState>((set, get) => {
       return item;
     },
 
+    addMark: (pageNumber, rect, glyph) => {
+      const item: MarkEdit = {
+        id: uid(),
+        kind: 'mark',
+        pageNumber,
+        rect,
+        glyph,
+        colorHex: DEFAULT_MARK_COLOR,
+        createdAt: Date.now(),
+      };
+      set((s) => ({ edits: [...s.edits, item], selectedId: item.id }));
+      persist();
+      return item;
+    },
+
     move: (id, rect) => {
       set((s) => ({ edits: s.edits.map((e) => (e.id === id ? { ...e, rect } : e)) }));
       persist();
@@ -126,6 +170,13 @@ export const useEditStore = create<EditState>((set, get) => {
     updateText: (id, patch) => {
       set((s) => ({
         edits: s.edits.map((e) => (e.id === id && e.kind === 'text' ? { ...e, ...patch } : e)),
+      }));
+      persist();
+    },
+
+    updateMark: (id, patch) => {
+      set((s) => ({
+        edits: s.edits.map((e) => (e.id === id && e.kind === 'mark' ? { ...e, ...patch } : e)),
       }));
       persist();
     },

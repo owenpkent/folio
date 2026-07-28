@@ -14,3 +14,7 @@ export function getEngine(): PdfEngine {
 
 export type { PageTextItems, PdfEngine } from './PdfEngine';
 export * from './types';
+// Re-exported so callers of getPageViewport can name its return type without
+// importing pdfjs-dist themselves, which would breach the rule that PDF.js
+// stays behind this barrel (see docs/architecture.md).
+export type { PageViewport } from 'pdfjs-dist';

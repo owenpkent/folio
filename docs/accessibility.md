@@ -8,7 +8,7 @@ The accessibility utilities live in `src/a11y/` (announcer, focus trap, keyboard
 
 All shortcuts dispatch through the command registry (`useKeyboardShortcuts` matches the pressed chord against each command's declared `keybinding`). Bindings use `Mod`, which resolves to `Cmd` on macOS and `Ctrl` elsewhere, so the two platform columns differ only in that modifier.
 
-Bindings are declared on the command, wherever that command lives — mostly `src/commands/defaultCommands.ts` and `src/features/annotations/commands.ts`, but `file.save` and `file.saveAs` are declared in `src/features/export/saveDocument.ts`. `grep -rn "keybinding:" src/` is the complete list.
+Bindings are declared on the command, wherever that command lives, mostly `src/commands/defaultCommands.ts` and `src/features/annotations/commands.ts`, but `file.save` and `file.saveAs` are declared in `src/features/export/saveDocument.ts`, and `textedit.undo` in `src/features/textedit/commands.ts`. `grep -rn "keybinding:" src/` is the complete list.
 
 | Action | Command id | Windows/Linux | macOS |
 |---|---|---|---|
@@ -33,7 +33,7 @@ Bindings are declared on the command, wherever that command lives — mostly `sr
 
 `Page Up`/`Page Down` are dispatched as commands rather than left to the browser. Native scrolling only acts on the focused element's nearest scrollable ancestor, so it stops working the moment focus moves to the toolbar or the find box; binding the keys keeps them working wherever focus happens to be.
 
-`↑`/`↓`, unmodified `Home`/`End` and `Space` are unbound and scroll natively, which works because the viewer takes focus when a document opens and gets it back when the find bar closes. `←`/`→` do **not** scroll: they are bound to page navigation and the dispatcher calls `preventDefault()`, so they never reach the browser's own scrolling. That is a deliberate trade — paging is the more useful binding — but it means horizontal scrolling at high zoom needs the scrollbar, the hand tool, or shift-scroll.
+`↑`/`↓`, unmodified `Home`/`End` and `Space` are unbound and scroll natively, which works because the viewer takes focus when a document opens and gets it back when the find bar closes. `←`/`→` do **not** scroll: they are bound to page navigation and the dispatcher calls `preventDefault()`, so they never reach the browser's own scrolling. That is a deliberate trade (paging is the more useful binding) but it means horizontal scrolling at high zoom needs the scrollbar, the hand tool, or shift-scroll.
 
 These commands exist but have **no keyboard binding**; they are reachable from the menu bar or the toolbar (and via the registry) only. The menu bar implements the full ARIA menubar keyboard pattern, so every menu item is operable with arrow keys, `Home`/`End`, `Enter`, and `Escape`:
 
@@ -46,8 +46,10 @@ These commands exist but have **no keyboard binding**; they are reachable from t
 | Hand tool (pan to scroll) | `view.toggleHandMode` | Toolbar button / View menu |
 | Auto-scroll (continuous, teleprompter-style) | `view.toggleAutoScroll` | Toolbar button / View menu |
 | Edit text | `textedit.toggle` | Edit menu |
+| Edit images | `imageedit.toggle` | Edit menu |
 | Add text box | `edit.addText` | Edit menu |
 | Add image | `edit.addImage` | Edit menu |
+| Add check mark | `edit.addCheckmark` | Edit menu |
 | Recognize text (OCR) | `ocr.recognizeDocument` | Edit menu |
 | Recognize text on this page | `ocr.recognizePage` | Command |
 | Add signature | `sign.addSignature` | Sign menu / Signatures panel |
@@ -62,15 +64,21 @@ Three of them — **Add text box**, **Add image**, and **Add signature** — do 
 
 Once auto-scroll is running, it has its own keyboard controls rather than a fixed chord: `Esc` stops it, `ArrowUp`/`+` speeds it up, and `ArrowDown`/`-` slows it down. It also pauses automatically while hand-panning and stops on its own at the end of the document.
 
-The hand tool, middle-mouse-button page panning (available in any mode, not just with the hand tool on), and the right-click context menu are pointer-only affordances layered on top of the command system, not replacements for it. The context menu duplicates a subset of the command set (select/hand tool, copy, highlight, add comment/text box/image/signature, find, save, save a copy) for convenience; every one of those remains reachable from the menu bar, the toolbar, and the keyboard as usual, so nothing the context menu offers is keyboard-inaccessible.
+The hand tool, middle-mouse-button page panning (available in any mode, not just with the hand tool on), and the right-click context menu are pointer-only affordances layered on top of the command system, not replacements for it. The context menu duplicates a subset of the command set (select/hand tool, copy, highlight, add comment/text box/image/check mark/signature, find, save, save a copy) for convenience; every one of those remains reachable from the menu bar, the toolbar, and the keyboard as usual, so nothing the context menu offers is keyboard-inaccessible.
 
 Planned, **not yet implemented** (no command is registered for these today): a command palette (`Ctrl/Cmd+Shift+P`) and an in-app keyboard-shortcuts help overlay (`?`). Every toolbar button whose command has a binding names it in the button's label, which is both its `aria-label` and its tooltip (`IconButton` sets the two from one `label` prop), so bindings stay discoverable until the help overlay lands. If you give an existing command a binding, add it to that label too.
 
 Form fields and signatures: filled AcroForm fields are native HTML inputs, so they are keyboard-operable, and Folio names each one from the field's `/TU` (falling back to `/T`) — see [The text layer and screen readers](#the-text-layer-and-screen-readers) for why PDF.js does not do this on its own. A field with neither entry has no name to give, which is a defect in the source PDF rather than in the viewer. The signature dialog is a focus-trapped modal (dismiss with `Escape`); its Type tab prefills the name last signed with and offers the recent ones as buttons, so the common case is reachable without typing at all. Placing the created signature has a keyboard path (the placement banner's **Place in the middle**, see above), and placed signatures expose a keyboard-focusable delete button; keyboard *repositioning* and resizing are still planned — dragging and the corner handle are pointer-only. Signatures and placed images carry **no alternative text** in the exported file, and there is no UI to supply one — a known gap, tracked in [508-conformance.md](508-conformance.md). See [forms-and-signatures.md](forms-and-signatures.md).
 
-Editing text in place: the **Edit text** tool toggle (`textedit.toggle`) is a command reachable from its Edit-menu item, like the others above. Once it is on, clicking a run of text opens an inline editor: a focused `role="textbox"` with its own `aria-label`, committing on `Enter` and cancelling on `Escape` like a native control. Choosing *which* run to edit is pointer-only today: the hit target is sized to the page and keyed to click coordinates, with no keyboard-driven way to tab between editable runs. See [editing-and-ocr.md](editing-and-ocr.md#editing-existing-text).
+Editing text in place: the **Edit text** tool toggle (`textedit.toggle`) is a command reachable from its Edit-menu item, like the others above. Once it is on, clicking a run of text opens an inline editor: a focused `role="textbox"` with its own `aria-label`, committing on `Enter` and cancelling on `Escape` like a native control. Choosing *which* run to edit is pointer-only today: the hit target is sized to the page and keyed to click coordinates, with no keyboard-driven way to tab between editable runs. While the tool is on, **Ctrl/Cmd+Z** (`textedit.undo`) undoes the most recent commit, up to 10 edits back. See [editing-and-ocr.md](editing-and-ocr.md#editing-existing-text).
 
-Everything reachable by mouse is reachable by keyboard. If you add a feature, add its command with a `keybinding` rather than wiring a bespoke key handler.
+Editing embedded images: the **Edit images** tool toggle (`imageedit.toggle`) is a command reachable from its Edit-menu item, like the others above. The click-catcher is a real button: a pointer click selects whichever image is under it, and activating the same button from the keyboard (Enter/Space) selects the first editable image on the page instead, or announces that there is none. That keyboard path only ever reaches the first editable image, though; choosing a particular one on a page with more than one still needs a pointer. Once an image is selected, **Replace image…** and delete are ordinary buttons and fully keyboard-operable; moving and resizing the selection are pointer-only drags with no keyboard equivalent. See [editing-and-ocr.md](editing-and-ocr.md#editing-embedded-images).
+
+Check marks: **Add check mark** (`edit.addCheckmark`) is reachable from its Edit-menu item or the context menu, and goes through the shared click-to-place mode described above, so its keyboard path is the placement banner's **Place in the middle** button rather than anything of its own. It differs from the other placing tools in one respect that matters here: a click landing on a real AcroForm widget reaches the widget instead of stamping a mark, so a keyboard or pointer user filling in actual form fields is never blocked by an armed mark tool. Once placed, deleting a mark is an ordinary button; moving or resizing it needs a pointer, the same as text boxes and placed images. See [editing-and-ocr.md](editing-and-ocr.md#editing-text-boxes-images-and-check-marks).
+
+Every *command* is reachable by keyboard. Direct manipulation is the standing exception, and the three paragraphs above are instances of one gap rather than three separate ones: picking which run to edit, picking a particular image beyond the first editable one, and dragging or resizing any placed overlay (text box, image, signature, mark), all still want a pointer today. Closing it means a keyboard model for selecting and nudging overlay objects, which none of these features has yet. Treat that as a known gap rather than a per-feature oversight, and do not read the tables above as a claim that every affordance has a keyboard equivalent.
+
+If you add a feature, add its command with a `keybinding` rather than wiring a bespoke key handler.
 
 ## Focus management rules
 
@@ -103,7 +111,7 @@ There is no separate status-bar landmark today: the current page (an editable pa
 
 Additional roles in the sidebar panels: thumbnails present a selectable list, each with `aria-current="page"` for the page in view; toolbar toggles expose their state via `aria-pressed`; the dark-scheme menu exposes its current scheme in its label.
 
-The sidebar rail is a real tablist: it uses a roving tabindex, so `Tab` steps over the rail as one stop and `↑`/`↓` (and `←`/`→`, and `Home`/`End`) move between tabs, with selection following focus. That handler is load-bearing rather than a nicety — a roving tabindex without it leaves every unselected panel unreachable by keyboard.
+The sidebar rail is a real tablist: it uses a roving tabindex, so `Tab` steps over the rail as one stop and `↑`/`↓` (and `←`/`→`, and `Home`/`End`) move between tabs, with selection following focus. That handler is load-bearing rather than a nicety: a roving tabindex without it leaves every unselected panel unreachable by keyboard.
 
 The menu bar is a real APG menubar on the same principle: the whole row is one `Tab` stop (roving tabindex), `←`/`→` move across the menus (wrapping, and sliding an open menu along with focus), `↓`/`Enter`/`Space` open a menu at its first enabled row and `↑` at its last, `↑`/`↓` move within a menu skipping separators and disabled rows, `Home`/`End` jump to either end, and `Esc` closes the open menu and returns focus to its trigger. Activating an item also returns focus to the trigger. Opening a menu never disturbs the page text selection (mousedown is suppressed the same way the toolbar's Comment/Highlight buttons do it), so selection-driven commands work from the Annotate menu.
 
@@ -126,13 +134,13 @@ Each rendered page is a `<canvas>` (the visual raster) with a **positioned text 
 - **Selection matches the visual page.** Because text spans are positioned to align with the raster, a selection drag looks correct and yields the correct copied text.
 - **Reading order is content-stream order, not logical order.** Folio does not currently read the PDF's structure tree: `renderAnnotationLayer` passes `structTreeLayer: null`, `page.getStructTree()` is never called, and the text layer is positioned spans with no structure attached. So the order comes from `getTextContent()`, which follows the content stream, **even for a tagged PDF whose tags describe a different logical order**. For most documents the two coincide; for multi-column layouts, sidebars and floated figures they do not. Closing this means wiring PDF.js's `StructTreeLayerBuilder` and accessibility manager, and is the largest open item in this guide. See [508-conformance.md](508-conformance.md).
 - **The canvas is decorative to assistive tech.** The raster carries `aria-hidden="true"` (`src/components/Viewer/Page.tsx`) so screen readers do not announce it as an image; the text layer is the accessible representation.
-- **Form fields are named from the PDF.** PDF.js renders AcroForm widgets as native inputs but leaves them unnamed — it only applies ARIA from a structure tree, and the field's `/TU` goes on the wrapping `<section>` as a `title`, which does not name the input inside it. `nameFormWidgets` (`src/core/pdf/PdfJsEngine.ts`) sets `aria-label` on each control from the field's `/TU`, falling back to `/T`. An end-to-end test asserts this through the accessible-name computation rather than the attribute.
+- **Form fields are named from the PDF.** PDF.js renders AcroForm widgets as native inputs but leaves them unnamed; it only applies ARIA from a structure tree, and the field's `/TU` goes on the wrapping `<section>` as a `title`, which does not name the input inside it. `nameFormWidgets` (`src/core/pdf/PdfJsEngine.ts`) sets `aria-label` on each control from the field's `/TU`, falling back to `/T`. An end-to-end test asserts this through the accessible-name computation rather than the attribute.
 
 ## Live-region announcements
 
 State changes that are obvious visually but silent to a screen reader are announced through the live regions in `src/a11y/announcer.ts`. Each call clears the region first and writes the new text on the next animation frame, so an identical consecutive message is still re-announced and a burst of rapid updates coalesces to the latest value.
 
-There are around three dozen announcements; `grep -rn "announce(" src/` is the authoritative list, since any table here would drift. Representative examples, with their exact wording:
+There are around four dozen announcements; `grep -rn "announce(" src/` is the authoritative list, since any table here would drift. Representative examples, with their exact wording:
 
 | Event | Announcement |
 |---|---|
@@ -145,15 +153,17 @@ There are around three dozen announcements; `grep -rn "announce(" src/` is the a
 | Hand tool toggled | `Hand tool on` / `Hand tool off` |
 | Note placed | `Note added on page 3` |
 | Signature placed | `Signature placed. Drag it to reposition…` |
+| Check mark placed | `Check mark placed. Drag it to reposition, or drag the corner to resize.` |
+| No editable image to select | `No editable image on this page.` |
 | Saved in place | `Saved report.pdf` (no suffix; the original name) |
 | Saved a copy | `Saved report (filled).pdf` / `Downloaded report (filled).pdf` |
 | OCR finished | `Text recognition complete` |
 
 One inconsistency worth knowing: a document opened from a **deep link or an OS file association** announces `Opened report.pdf` without the page count (`openFromDeepLink.ts`, `openFromLaunch.ts`), where the picker path includes it.
 
-The polite region (`role="status"`, `aria-live="polite"`) never interrupts the user mid-sentence. Messages that need attention go to a separate assertive region (`role="alert"`, `aria-live="assertive"`) instead — that is what the `true` second argument to `announce()` selects. Assertive today: failures (`Could not open document: …`, `Could not save the document: …`, `Could not create the certificate`) and instructions the user must act on before anything happens (`Select some text first, then add a highlight`, `Create a signature first`, `Enter a name and a passphrase`).
+The polite region (`role="status"`, `aria-live="polite"`) never interrupts the user mid-sentence. Messages that need attention go to a separate assertive region (`role="alert"`, `aria-live="assertive"`) instead: that is what the `true` second argument to `announce()` selects. Assertive today: failures (`Could not open document: …`, `Could not save the document: …`, `Could not create the certificate`) and instructions the user must act on before anything happens (`Select some text first, then add a highlight`, `Create a signature first`, `Enter a name and a passphrase`).
 
-The find-in-page result count is a separate `aria-live="polite"` region inside the search bar (not routed through the announcer); it reads `3 of 17`, `Searching…`, or `No results`. Fit-mode changes and sidebar toggles are not currently announced.
+The find-in-page result count is a separate `aria-live="polite"` region inside the search bar (not routed through the announcer); it reads `3 of 17`, `Searching…`, or `No results`. Fit-mode changes, sidebar toggles, and image-edit actions (select, move, resize, replace, delete) are not currently announced, with one exception: activating image selection from the keyboard on a page with no editable image announces `No editable image on this page.`
 
 ## Dark mode and dark schemes
 

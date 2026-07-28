@@ -40,7 +40,7 @@ support documentation and services (Chapter 6).
 
 | Provision | Requirement | Status |
 |---|---|---|
-| **E205.4 / E207.2** | Content and UI conform to WCAG 2.0 A/AA | **Supports**, with the exceptions in [accessibility.md](accessibility.md) |
+| **E205.4 / E207.2** | Content and UI conform to WCAG 2.0 A/AA | **Partially supports**: see [accessibility.md](accessibility.md) and [the gap below](#new-editing-controls-are-not-all-keyboard-operable) |
 | **502.2.2** | Does not disrupt platform accessibility features | Supports |
 | **502.3** | Applications that are also platforms expose accessibility services | **Partially supports** — see [Canvas content](#canvas-content-5023) |
 | **502.4** | Platform accessibility features (ANSI/HFES 200.2) | Not applicable — Folio is an application, not a platform |
@@ -63,10 +63,10 @@ Almost certainly yes, and we plan on that basis.
 508 defines an authoring tool (**E103.4**) as *"any software... that can be used
 by authors, alone or collaboratively, to create or modify content for use by
 others, including other authors."* Folio creates highlights, sticky notes, ink
-signatures, text boxes and OCR text layers, edits text already on a page in
-place, and writes all of it back to the opened file or into a saved copy. That
-is content creation (and,
-for in-place text edits, content modification in the plainest possible sense)
+signatures, text boxes and OCR text layers, edits text and images already on a
+page in place, and writes all of it back to the opened file or into a saved
+copy. That is content creation (and,
+for in-place text and image edits, content modification in the plainest possible sense)
 on any plain reading, independent of whether form-filling counts.
 
 Worth knowing precisely, because it will come up: **the Access Board never
@@ -163,6 +163,35 @@ PDF/UA is explicit that ink signatures are not exempt: *"if a portion of the
 appearance of a signature is represented by a graphic, alternative text shall be
 provided for that graphic"* (ISO 14289-1 7.13).
 
+### New editing controls are not all keyboard-operable
+
+Two tools added since the last review of this page land at different points
+along WCAG 2.1.1 (Keyboard). The check-mark catcher (`edit.addCheckmark`,
+`src/features/editing/EditLayer.tsx`) is a real, labelled button whose handler
+checks `e.detail === 0` (the standard signal for a non-pointer activation) and
+places the mark at page center instead of at pointer coordinates, so a
+keyboard user can Tab to it and press Enter (nothing shifts focus into it
+automatically when the tool arms, so it must be found by tabbing rather than
+landed on directly). The image-edit tool's click-catcher (`imageedit.toggle`,
+`src/features/imageedit/ImageEditLayer.tsx`) now checks `e.detail === 0` too:
+activating it by keyboard selects the first editable image on the page, or
+announces `'No editable image on this page.'` (assertively, via
+`src/a11y/announcer.ts`) when there is none, instead of running the handler
+with `clientX = clientY = 0` as before. That reaches only the *first*
+editable image, though: a page with more than one still needs a pointer to
+choose a particular one, and once an image is selected its drag surface and
+resize handle still carry only `onPointerDown` (the resize handle is also
+`aria-hidden="true"`, removing it from the accessibility tree outright).
+Replace and delete are ordinary buttons and were already keyboard-operable.
+
+This is not a regression particular to `imageedit`: every resize handle in
+Folio (text boxes, placed images, stamps, signatures) is pointer-only once an
+item is on the page. What is left of `imageedit`'s gap (choosing a non-first
+image, moving, resizing) is the newest instance of an existing gap, not a new
+kind of one, and it is the same WCAG 2.1.1 failure
+[accessibility.md](accessibility.md) already calls out under "Direct
+manipulation is the standing exception."
+
 ### PDF/UA export (504.2.2)
 
 > **504.2.2 PDF Export.** Authoring tools capable of exporting PDF files that
@@ -220,13 +249,14 @@ to stamp edits, signatures and annotations.
   `/StructTreeRoot`) and on `form.flatten()` (which orphans struct elements).
 
 Folio uses neither of those two calls today, so tags survive in practice.
-In-place text editing (`src/features/textedit/`) is a second, independent
-consumer of this same `load()` → `save()` path: every commit re-serializes the
-document immediately, ahead of and separate from the export pipeline above. It
-avoids `copyPages()` and `form.flatten()` too, so the same reasoning holds, but
+In-place text editing (`src/features/textedit/`) and in-place image editing
+(`src/features/imageedit/`) are the second and third independent consumers of
+this same `load()` → `save()` path: every commit re-serializes the document
+immediately, ahead of and separate from the export pipeline above. Both avoid
+`copyPages()` and `form.flatten()` too, so the same reasoning holds, but
 a tagged document now goes through pdf-lib's re-serialization once per edit,
 not only once at export. The risk is that a future change adds one of those two
-calls, in either code path, and silently untags every export. Routing saves
+calls, in any of the three code paths, and silently untags every export. Routing saves
 through PDF.js's incremental writer, and keeping pdf-lib for stamping only, is
 the durable fix.
 

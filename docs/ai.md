@@ -258,7 +258,7 @@ Because the current provider prompts for JSON rather than using constrained stru
 
 ## How AI features dispatch through the command registry
 
-> **Status: PLANNED.** The command registry itself is real: [`src/commands/defaultCommands.ts`](../src/commands/defaultCommands.ts) registers the File, View, Navigate, Search, and Appearance commands. No `ai.*` commands are registered there yet. The design below is the intended integration, not shipping code.
+> **Status: PLANNED.** The command registry itself is real: [`src/commands/defaultCommands.ts`](../src/commands/defaultCommands.ts) registers the File, View, Navigate, Search, Appearance, and Help commands. No `ai.*` commands are registered there yet. The design below is the intended integration, not shipping code.
 
 AI actions are not meant to be special. The plan is to register them as commands so they inherit everything commands get: keybindings, the command palette, toolbar buttons, and invocation by plugins. A `when` predicate would keep them disabled until AI is enabled, a provider is configured, and a document is open, so the UI never offers an AI action that cannot run.
 

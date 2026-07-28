@@ -75,13 +75,21 @@ Folio rendering a two-page form PDF, in light and dark:
   resize, and bake it into a saved copy
 - **Edit text already on the page**, in place: click a run of text to replace
   it; the original is removed from the page's content, not just covered up
-  (undo with Ctrl/Cmd + Z, up to 10 edits)
+  (undo with Ctrl/Cmd + Z, up to 10 edits). Text drawn inside a Form XObject,
+  the usual shape of a template or a generated form, is editable too
+- **Edit images already on the page**, in place: click one to drag it, resize
+  it from the corner, replace it with a different PNG/JPEG, or delete it,
+  leaving the original image untouched for any other page still drawing it
+- Place a **check mark** anywhere, for forms that print an empty box with no
+  interactive field behind it; a placed mark can be switched to a cross
 - **OCR** scanned pages with a bundled, offline English engine (tesseract.js): the
   recognized text becomes selectable on screen, is searchable in-app, and is baked
   into the saved PDF as an invisible searchable layer
 - In-place text edits use a substituted standard font, one run at a time, with
-  no paragraph reflow; replacing embedded images and non-Latin text remain on
-  the [roadmap](ROADMAP.md)
+  no paragraph reflow, and text inside a form the page draws more than once is
+  still refused. Rotated and skewed images can be replaced but not moved or
+  resized, images inside a Form XObject are read-only, and non-Latin text
+  remains on the [roadmap](ROADMAP.md)
 
 **Forms and signing**
 - Fill interactive AcroForm fields (text, checkbox, radio, dropdown)
@@ -90,8 +98,8 @@ Folio rendering a two-page form PDF, in light and dark:
 - Cryptographic digital signatures (PKCS#7): import a `.p12` or create a
   self-signed identity; opened signed PDFs show the signer and tamper status
 - Save back to the opened file (atomically), or save a copy, with form values,
-  placed edits, in-place text edits, OCR text, signatures, and annotations all
-  included
+  placed edits, in-place text and image edits, OCR text, signatures, and
+  annotations all included
 
 **Extensible**
 - A plugin system: contribute commands, toolbar items, sidebar panels, and tools
@@ -191,7 +199,7 @@ folio/
 │  ├─ core/pdf/          PdfEngine interface + PDF.js implementation
 │  ├─ commands/          command registry (every user action)
 │  ├─ components/        Viewer, Toolbar, Sidebar, Search, common
-│  ├─ features/          annotations, editing, placement, textedit, ocr, signatures, forms, save/export
+│  ├─ features/          annotations, editing, placement, textedit, imageedit, ocr, signatures, forms, save/export
 │  ├─ plugins/           plugin host, SDK types, built-in Word Count plugin
 │  ├─ ai/                provider-agnostic AI layer (Claude, experimental) + MCP stubs
 │  ├─ theme/             tokens, ThemeProvider, dark schemes, breakpoints

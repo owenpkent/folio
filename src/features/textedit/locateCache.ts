@@ -11,8 +11,7 @@
 
 import { getEngine } from '@/core/pdf';
 
-import { parseContentStreams } from './contentStream';
-import { getPageContentStreams } from './mutate';
+import { locatePageRuns } from './mutate';
 import type { LocatedRun } from './types';
 
 interface CacheEntry {
@@ -29,8 +28,7 @@ export async function getLocatedRuns(docVersion: number, pageIndex: number): Pro
     return cache.runs;
   }
   const pdfBytes = await getEngine().saveDocument();
-  const streams = await getPageContentStreams(pdfBytes, pageIndex);
-  const runs = parseContentStreams(streams);
+  const runs = await locatePageRuns(pdfBytes, pageIndex);
   cache = { docVersion, pageIndex, runs };
   return runs;
 }

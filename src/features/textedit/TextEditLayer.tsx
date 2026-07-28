@@ -4,6 +4,7 @@ import { pushToast } from '@/components/common';
 import { getEngine, type PageTextItems } from '@/core/pdf';
 import { reloadEditedBytes } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
+import { formWidgetAt } from '@/state/formsLayer';
 import { useViewerStore } from '@/state/viewerStore';
 
 import { matchRunToItem } from './contentStream';
@@ -100,7 +101,7 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
     const run = matchRunToItem(runs, origin, undefined);
 
     if (!run) {
-      pushToast('This text cannot be edited (it may be part of an embedded object)', 'error');
+      pushToast('Folio could not find that text in the page content', 'error');
       return;
     }
     if (!run.editable) {
@@ -143,6 +144,22 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
     const pageEl = e.currentTarget.closest<HTMLElement>('.folio-page');
     if (!pageEl) return;
     const { clientX, clientY } = e;
+    // While edit mode is armed this hit-catcher covers the whole page at a
+    // higher z-index than the forms layer (which only takes pointer events
+    // over each field's own small rect), so it would otherwise swallow clicks
+    // meant for a field. Checking here lets those through instead: with the
+    // tool switched on, ticking a checkbox or focusing a text field still has
+    // to work -- editing existing text and filling a form are unrelated
+    // actions that just happen to share a page, so there is no reason for one
+    // tool to block the other.
+    const widget = formWidgetAt(clientX, clientY);
+    if (widget) {
+      // The catcher already consumed the original click, so replay it on the
+      // widget: one click in, one toggle out.
+      widget.focus();
+      widget.click();
+      return;
+    }
     void tryEditAt(pageEl, clientX, clientY);
   };
 

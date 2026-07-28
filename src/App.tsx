@@ -17,6 +17,7 @@ import { registerDeepLinks } from '@/features/deeplink';
 import { registerEditCommands } from '@/features/editing';
 import { registerExportCommands } from '@/features/export';
 import { registerFileOpen } from '@/features/fileopen';
+import { registerImageEditCommands } from '@/features/imageedit';
 import { OcrProgressModal, registerOcrCommands } from '@/features/ocr';
 import { PlacementHint } from '@/features/placement';
 import { AboutModal } from '@/features/about';
@@ -41,6 +42,7 @@ export function App() {
     registerDefaultCommands();
     registerAnnotationCommands();
     registerEditCommands();
+    registerImageEditCommands();
     registerOcrCommands();
     registerSignatureCommands();
     registerSigningCommands();

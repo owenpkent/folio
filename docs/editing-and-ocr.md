@@ -1,33 +1,48 @@
 # Editing and OCR
 
-Folio can add content to a page, edit text that is already on it, and recognize
-text in scans, then save a copy with everything baked in. This page explains
-how each capability works today and what is deliberately out of scope.
+Folio can add content to a page, edit text and images that are already on it,
+and recognize text in scans, then save a copy with everything baked in. This
+page explains how each capability works today and what is deliberately out of
+scope.
 
-Three capabilities:
+Four capabilities:
 
-1. **Editing.** Add **text boxes** (a typewriter tool) and place **images**
-   (PNG/JPEG). You can drag, resize, and edit them; they are additive overlays,
-   burned into the PDF only when you save a copy. The underlying page content is
-   never touched.
+1. **Editing.** Add **text boxes** (a typewriter tool), place **images**
+   (PNG/JPEG), and stamp **check marks** (for ticking a printed checkbox that has
+   no real form field behind it, Acrobat Fill & Sign-style). You can drag,
+   resize, and edit them; they are additive overlays, burned into the PDF only
+   when you save a copy. The underlying page content is never touched.
 2. **Editing existing text.** Click text already on the page and replace it in
    place: the original show-text operator is removed from the page's content
    stream, and the replacement is drawn at the same spot, rather than covered
    up. Unlike the tool above, this changes the open document as soon as you
    commit an edit, not only when you save.
-3. **OCR.** Recognize text in **scanned / image-only** pages with a bundled,
+3. **Editing embedded images.** Select an image already drawn on the page, then
+   move it, resize it, or replace it with a different PNG/JPEG. Like the tool
+   above, this changes the open document as soon as you commit an edit.
+4. **OCR.** Recognize text in **scanned / image-only** pages with a bundled,
    offline English engine. The result is selectable on screen, searchable in-app,
    and baked into the saved PDF as an invisible text layer.
 
 > Scope, up front: in-place text edits replace one run at a time with a
 > substituted standard font, not the document's own embedded font, and do not
-> reflow a paragraph. Rotated or skewed text, text inside Form XObjects, and
-> characters the standard fonts cannot encode are refused rather than risking a
-> corrupt file. Folio still does not replace or move embedded images, and page
-> operations, redaction, and non-Latin text (typed or OCR'd) remain on the
+> reflow a paragraph. Rotated or skewed text, runs that share positioning with
+> a neighbor, text in a Form XObject the page draws more than once, and
+> characters the standard fonts cannot encode are refused rather than risking
+> a corrupt file. Embedded images can be moved, resized, and replaced the same
+> way, except a rotated or skewed image can only be replaced (moving or
+> resizing it is refused), and an image inside a Form XObject is not editable
+> yet at all. Page operations, redaction, and non-Latin text remain on the
 > [roadmap](../ROADMAP.md).
 
-## Editing: text boxes and images
+## Editing: text boxes, images, and check marks
+
+> Real AcroForm checkbox and radio widgets are not part of this section: PDF.js's
+> own annotation layer already renders and toggles them (see
+> [forms-and-signatures.md](forms-and-signatures.md)). The **Add check mark**
+> tool below is only for the common case a real widget cannot cover: a printed
+> square with no form field behind it at all (a flattened or scanned form),
+> where there is otherwise nothing to click.
 
 ### Using it
 
@@ -44,6 +59,15 @@ Three capabilities:
 - **Add image:** *Edit -> Add image* opens a PNG/JPEG picker, then arms
   click-to-place the same way; the image lands centered on the click,
   preserving its aspect ratio, and can be dragged and resized.
+- **Add check mark:** *Edit -> Add check mark* arms click-to-place like the two
+  above; the mark lands centered on the click at a fixed size (about 13pt
+  square, matching a typical printed checkbox) and stays square if you resize it
+  afterward. It differs from the other placing tools in one way: a click that
+  lands on a real AcroForm field reaches the field instead of stamping a mark,
+  because a mark exists only to stand in for a printed box that has *no*
+  interactive field behind it. Filling in real form fields therefore still works
+  while the tool is armed. Once placed, select a mark to switch it between check
+  and cross in its inline inspector.
 - **Save:** *Save* (`Ctrl/Cmd + S`) writes the edits back to the opened file
   (atomically, so a failed save cannot corrupt it); *Save a copy*
   (`Ctrl/Cmd + Shift + S`) writes them to a new PDF instead, leaving the
@@ -59,17 +83,25 @@ zoom, plus its content:
 ```ts
 type EditItem =
   | { kind: 'text'; rect; text; fontFamily; bold; fontSizePt; colorHex; ... }
-  | { kind: 'image'; rect; dataUrl; mime; ... };
+  | { kind: 'image'; rect; dataUrl; mime; ... }
+  | { kind: 'mark'; rect; glyph: 'check' | 'cross'; colorHex; ... };
 ```
 
 - **On screen:** `EditLayer` (in `src/features/editing/`) renders each item over
   the page. Text font size is `fontSizePt * scale` so it tracks zoom; images fill
-  their rect.
+  their rect; marks render as an inline SVG stroke path (`MARK_GLYPH_PATHS`, a
+  shared 0-100 unit shape) that scales to the rect, so they stay crisp at any
+  zoom instead of rasterizing.
 - **On save:** `stampEdits` (`src/features/editing/bake.ts`) loads the PDF with
   pdf-lib and draws each item. Normalized rects are top-left origin, PDF space is
   bottom-left, so the y-axis is flipped: `y = pageHeight - rect.y*pageHeight - h`.
-  Text uses a `StandardFont` (`drawText` with manual word-wrap to the box width);
-  images use `embedPng` / `embedJpg` + `drawImage`.
+  Text uses the `StandardFonts` enum (`drawText` with manual word-wrap to the
+  box width); images use `embedPng` / `embedJpg` + `drawImage`; marks are
+  stroked vector paths (`drawSvgPath`) using the same `MARK_GLYPH_PATHS` shape
+  as the on-screen preview. `drawSvgPath` takes SVG-style (y-down) path
+  coordinates and flips them internally, so unlike `drawImage`'s anchor (the
+  *bottom* of the box), a mark's anchor is the box's *top* edge; see the
+  comment in `bake.ts` for how this was confirmed.
 
 ### Limitations
 
@@ -79,6 +111,10 @@ type EditItem =
   not wired up.
 - **Wrapping is best-effort.** The baked line breaks approximate the browser's
   CSS wrapping; they will not be pixel-identical.
+- **Marks are a fixed stamp, not free-form drawing.** The **Add check mark**
+  tool always places a check; switch a selected mark to a cross, or back, from
+  its inline inspector. A mark is always kept square as you resize it, in a
+  chosen color; there is no ink or free-form annotation tool.
 
 ## Editing existing text
 
@@ -93,7 +129,9 @@ open document as soon as you commit it, not only when you save a copy.
 - Toggle **Edit text** in the Edit menu (`textedit.toggle`). While it is
   on, the page becomes clickable: click a run of text to open an inline editor
   prefilled with it, sized and colored to match the original as closely as
-  PDF.js's own styles allow (font family, size, and fill color).
+  PDF.js's own styles allow (font family, size, and fill color). A click that
+  lands on a real AcroForm field reaches the field itself instead, so filling
+  in form fields still works while the tool is armed.
 - Type the replacement. **Enter**, or clicking elsewhere (blur), commits it.
   **Escape** cancels and leaves the original text in place.
 - **Ctrl/Cmd + Z** undoes the most recent commit, up to 10 edits back. Undo is
@@ -109,12 +147,15 @@ open document as soon as you commit it, not only when you save a copy.
 
 - **Locating a run.** `contentStream.ts` tokenizes and interprets the subset of
   content-stream operators needed to find every show-text operator (`Tj`, `TJ`,
-  `'`, `"`): text positioning (`Td`/`TD`/`Tm`/`T*`/`TL`), font selection (`Tf`),
-  the graphics-state stack (`q`/`Q`/`cm`), and fill color
-  (`rg`/`g`/`k`/`sc`/`scn`/`cs`). For each one it records the byte range, the
-  baseline origin in PDF user space, the effective font size, the active font
-  resource, and the fill color. Inline images are skipped rather than parsed,
-  and text inside Form XObjects is never seen (see Guardrails).
+  `'`, `"`): text-object delimiters (`BT`/`ET`), text positioning
+  (`Td`/`TD`/`Tm`/`T*`/`TL`), font selection (`Tf`), the graphics-state stack
+  (`q`/`Q`/`cm`), and fill color (`rg`/`g`/`k`/`sc`/`scn`/`cs`). For each one it
+  records the byte range, the baseline origin in PDF user space, the effective
+  font size, the active font resource, and the fill color. It also descends
+  into `Do`-invoked Form XObjects, composing each form's own `/Matrix` into the
+  position, so a run drawn by a template, a letterhead, or a form generator is
+  located exactly like one on the page itself (see Guardrails for when it is
+  still refused). Inline images are skipped rather than parsed.
 - **Matching a click.** A click is converted from screen pixels to PDF user
   space through the page's own viewport (`PdfEngine.getPageViewport`), then
   matched against PDF.js's own per-item text content for the page
@@ -130,7 +171,14 @@ open document as soon as you commit it, not only when you save a copy.
   uncompressed stream, and (unless the replacement is empty) draws the new text
   with the closest **Standard 14** font, Times, Courier, or Helvetica, with
   bold and italic picked from a hint carrying the original font's name, at the
-  run's own baseline origin, size, and color.
+  run's own baseline origin, size, and color. When the run lives inside a Form
+  XObject, the shared form is never mutated in place: every form on the chain
+  from the run up to the page is rewritten into a fresh copy (the edited form
+  gets the spliced bytes; each form above it gets a new `/Resources`
+  dictionary redirecting its `/XObject` entry to the copy below it), and only
+  the page's own `/Resources` is updated to point at the top of that chain, so
+  any other page or invocation still using the original form sees it
+  byte-for-byte unchanged.
 - **Committing.** The bytes edited are serialized fresh at commit time
   (`PdfEngine.saveDocument()`), so anything else changed while the editor was
   open, such as a form value, is not silently reverted; filled form values are
@@ -156,9 +204,11 @@ toast instead of corrupting the file:
 - **Runs that share positioning.** A show-text operator with no repositioning
   operator before the next one inherits wherever that next run left the text
   position. Removing it would shift its neighbor, so both are left alone.
-- **Text inside Form XObjects.** The content-stream parser does not descend
-  into `Do`-invoked Form XObjects, so text drawn there is never located, and
-  clicking it is reported as not editable.
+- **Text inside a Form XObject the page draws more than once.** A single
+  `Do` invocation of a form is editable like any other text; drawing the
+  *same* form twice on one page (or otherwise invoking it more than once) is
+  refused, because removing a run from the form's shared content stream would
+  clear it from every invocation while the replacement is only ever drawn once.
 - **Characters the standard fonts cannot encode.** This one is only caught when
   you commit, not when you click: if the replacement text cannot be encoded in
   the standard WinAnsi fonts, the edit is rejected and the original text is left
@@ -177,6 +227,92 @@ toast instead of corrupting the file:
 - **Undo holds full document snapshots, capped at 10.** Each entry is the whole
   document's bytes at that point, not a diff, so heavy undo use on a large
   document is more memory-hungry than a typical text editor's undo stack.
+
+## Editing embedded images
+
+Select an image already drawn on the page (not one of the additive overlay
+images from the section above), then move it, resize it, or replace it with a
+different PNG/JPEG. Like in-place text editing, the edit applies to the open
+document as soon as you commit it, not only when you save a copy; unlike
+in-place text editing, the image XObject itself is never touched, only the
+operator that draws it.
+
+### Using it
+
+- Toggle toolbar **Edit images** (the corner-brackets icon, `imageedit.toggle`).
+  While it is on, click an image on the page to select it: a bordered box
+  appears with a draggable surface, a corner resize handle, a **Replace
+  image…** button, and a delete button. A click that lands on a real AcroForm
+  field reaches the field itself instead, so filling in form fields still works
+  while the tool is armed. It is reachable without a pointer too: activating
+  the same click target with Enter/Space selects the first editable image on
+  the page instead of a specific one, or lets you know there is none to
+  select.
+- Drag the box to move the image, or its corner to resize it. Both commit once
+  the pointer is released, the same way in-place text edits commit on blur
+  rather than per keystroke: dragging only updates an on-screen preview until
+  then, not the document.
+- **Replace image…** opens the same PNG/JPEG picker **Add image** uses, and
+  draws the picked file into the same rect the original image occupied.
+- The delete button removes the image from the page outright.
+- Click elsewhere on the page, or press Escape, to deselect.
+- Clicking an image Folio cannot safely edit still selects it, so you can see
+  what you clicked, but shows a toast explaining why instead of letting you
+  move, resize, or replace it (see Guardrails, below).
+
+### How it works
+
+- **Locating an image.** `contentStream.ts`'s `parseContentStreams` takes an
+  optional `onImageOp` sink, called for every `Do` operator it does not
+  descend into (an Image XObject, most commonly): the resource name, its byte
+  range, and the CTM in effect, which for an image is its *entire* placement
+  (images paint the unit square, so there is no text matrix to combine it
+  with the way a run's baseline origin needs). `imageedit/mutate.ts` resolves
+  each name against the page's (or a form's) `/Resources`/`/XObject`
+  dictionary, keeping only `/Subtype /Image`, and turns the CTM into an
+  axis-aligned rect in PDF user space, normalized to positive width/height (a
+  negative scale component means the image is mirrored on that axis; a
+  rewrite preserves it rather than silently un-flipping the image).
+- **Matching a click.** A click converts from screen pixels to PDF user space
+  through the page's own viewport (`PdfEngine.getPageViewport`), the same way
+  in-place text editing does, then picks the topmost located image whose
+  rect contains the point.
+- **Moving or resizing.** The `/Name Do` operator is rewritten in place as
+  `q <A> cm /Name Do Q`, where `A` maps the image's current placement to the
+  requested rect. Rewriting the same byte range, wrapped in `q`/`Q`, rather
+  than appending to the stream, keeps the graphics state and the z-order
+  exactly as they were.
+- **Replacing.** The new PNG/JPEG is embedded (`pdf.embedPng`/`embedJpg`) and
+  registered as a *new* resource in the page's `/XObject` dictionary; only the
+  operator's name operand changes, reusing whatever matrix was already there
+  untouched. The original image XObject is never mutated or repointed, since
+  it can be `Do`-invoked from other pages, or more than once from this one.
+- **Deleting** removes the operator's bytes outright, the same way an
+  in-place text delete removes a show-text operator's.
+- **Committing** follows the identical live-reload path in-place text edits
+  use: the bytes are serialized fresh (`PdfEngine.saveDocument()`), mutated,
+  and swapped in via `reloadEditedBytes`, which bumps `docVersion` so every
+  page repaints without losing scroll position.
+
+### Guardrails
+
+- **Rotated or skewed images** (the CTM's `b` or `c` non-zero), or one with no
+  visible size (its `a` or `d` scale is effectively zero), can still be
+  replaced, since that reuses the matrix untouched, but moving or resizing one
+  is refused: this feature does not recompute the matrix in either case.
+- **Images inside a Form XObject** are not editable at all yet: moving,
+  resizing, replacing, and deleting are all refused. Safely rewriting one
+  would need the same clone-and-redirect discipline in-place text editing
+  uses for a form (a fresh copy of the form for this page, with only its own
+  resources redirected at the copy), which is not implemented for images yet.
+
+### Limitations
+
+- **One image at a time.** There is no multi-select or batch replace.
+- **No dedicated undo.** Unlike in-place text edits (`Ctrl/Cmd + Z`, up to 10
+  edits), an image edit cannot be undone from the keyboard; closing the
+  document without saving is the only way back.
+- **Images inside a Form XObject are read-only for now** (see Guardrails).
 
 ## OCR: making scans searchable
 
@@ -220,7 +356,8 @@ the desktop app must work offline, so the entire OCR runtime is self-hosted:
 - The worker script, the SIMD-LSTM wasm core, and the English model
   (`eng.traineddata.gz`) live under `public/tesseract/` and are served from the
   app's own origin (`/tesseract/...`). The CSP already permits this:
-  `script-src 'wasm-unsafe-eval'`, `worker-src 'self'`, `connect-src 'self'`.
+  `script-src` includes `'wasm-unsafe-eval'`, and `worker-src` and
+  `connect-src` both include `'self'`.
 - Those files are large and derived, so they are **git-ignored** and populated by
   [`scripts/setup-ocr-assets.mjs`](../scripts/setup-ocr-assets.mjs), which copies
   the worker/core from the pinned `tesseract.js` / `tesseract.js-core` packages
@@ -244,11 +381,14 @@ WebView2 and modern browsers, Folio's only targets.
 
 | Piece | Path |
 | --- | --- |
-| Editing store, overlay, commands | `src/features/editing/` |
-| Editing bake (pdf-lib) | `src/features/editing/bake.ts` |
+| Editing store, overlay, commands (text boxes, images, check marks) | `src/features/editing/` |
+| Editing bake (pdf-lib): text/image draw, mark stroke (`drawSvgPath`) | `src/features/editing/bake.ts` |
 | In-place text edit: content-stream parser + splice | `src/features/textedit/contentStream.ts` |
 | In-place text edit: pdf-lib splice + redraw | `src/features/textedit/mutate.ts` |
 | In-place text edit: overlay, store, commands | `src/features/textedit/` |
+| Image `Do` geometry (shared by in-place text edit's parser) | `src/features/textedit/contentStream.ts` (`LocatedImageOp`, `onImageOp`) |
+| Image editing: object-model resolution + move/resize/replace/delete | `src/features/imageedit/mutate.ts` |
+| Image editing: overlay, store, commands | `src/features/imageedit/` |
 | Live reload after a commit (swaps engine doc, bumps `docVersion`) | `src/state/actions.ts` (`reloadEditedBytes`) |
 | Page viewport + raw text items (for hit-testing) | `src/core/pdf/PdfJsEngine.ts` (`getPageViewport`, `getTextItems`) |
 | OCR recognition + worker | `src/features/ocr/recognize.ts` |
@@ -260,5 +400,7 @@ WebView2 and modern browsers, Folio's only targets.
 | Self-hosted OCR assets | `scripts/setup-ocr-assets.mjs`, `public/tesseract/` |
 
 Manual test steps for text boxes and images are in
-[testing.md](testing.md#editing-text-boxes--images); steps for in-place text
-editing are in [testing.md](testing.md#editing-text-in-place).
+[testing.md](testing.md#editing-text-boxes-images-and-check-marks); steps for in-place text
+editing are in [testing.md](testing.md#editing-text-in-place); steps for
+editing embedded images are in
+[testing.md](testing.md#editing-embedded-images).

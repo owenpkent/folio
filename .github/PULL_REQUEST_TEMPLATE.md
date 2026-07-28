@@ -61,4 +61,4 @@ Mark N/A if this PR has no user-facing UI. -->
 - [ ] I have added or updated tests that prove my change works.
 - [ ] I have updated documentation as needed (README, `docs/`, code comments).
 - [ ] I have read the [Contributing guide](../CONTRIBUTING.md).
-- [ ] CI is green (lint, typecheck, tests, build matrix, DCO).
+- [ ] CI is green (lint, typecheck, tests, build matrix).

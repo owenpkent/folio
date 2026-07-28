@@ -152,6 +152,13 @@ export function ContextMenu() {
     },
     {
       kind: 'item',
+      label: 'Add check mark',
+      icon: 'check',
+      disabled: !hasDoc,
+      onSelect: () => run('edit.addCheckmark'),
+    },
+    {
+      kind: 'item',
       label: 'Add signature',
       icon: 'signature',
       disabled: !hasDoc,

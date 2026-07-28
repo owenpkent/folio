@@ -5,7 +5,7 @@ import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 
 import { hexToRgb01, standardFontFor, stampEdits, wrapText } from './bake';
-import type { EditItem } from './types';
+import { MARK_GLYPH_PATHS, MARK_GLYPH_STROKE_WIDTH, type EditItem } from './types';
 
 /**
  * Inflate every FlateDecode stream in a PDF and return the concatenated decoded
@@ -47,6 +47,18 @@ const PNG_1x1 =
 async function onePagePdf(): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.addPage([595, 842]); // A4 in points
+  return doc.save();
+}
+
+/**
+ * A 600x800pt page: round dimensions so the mark tests below (which check
+ * exact substrings in the content stream) get exact floats out of stampEdits'
+ * `rect fraction -> PDF points` math, not long repeating decimals to fight in
+ * the assertions.
+ */
+async function squarePagePdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  doc.addPage([600, 800]);
   return doc.save();
 }
 
@@ -115,6 +127,18 @@ describe('stampEdits', () => {
     mime: 'image/png',
     createdAt: 0,
   };
+  const markEdit: EditItem = {
+    id: 'm1',
+    kind: 'mark',
+    pageNumber: 1,
+    // A 60x60pt square on the 600x800 page from squarePagePdf(): stampEdits
+    // turns this into x=100, yTop=700, scale=0.6 exactly (see squarePagePdf's
+    // comment), which the assertions below match as literal substrings.
+    rect: { x: 100 / 600, y: 100 / 800, width: 60 / 600, height: 60 / 800 },
+    glyph: 'check',
+    colorHex: '#111111',
+    createdAt: 0,
+  };
 
   it('draws text into the page content stream and keeps the PDF valid', async () => {
     const pdf = await PDFDocument.load(await onePagePdf());
@@ -151,7 +175,50 @@ describe('stampEdits', () => {
     await stampEdits(pdf, [
       { ...textEdit, id: 'blank', text: '   ' },
       { ...textEdit, id: 'offpage', pageNumber: 99 },
+      { ...markEdit, id: 'mark-offpage', pageNumber: 99 },
     ]);
     expect((await pdf.save()).length).toBeGreaterThan(0);
+  });
+
+  it("draws a check mark as a stroked SVG path anchored at the box's top edge", async () => {
+    // Pins down the shape this test's operator assertions below assume, so a
+    // change to the shared path constant fails here first with a clear signal.
+    expect(MARK_GLYPH_PATHS.check).toBe('M 20 55 L 42 76 L 82 24');
+
+    const pdf = await PDFDocument.load(await squarePagePdf());
+    await stampEdits(pdf, [markEdit]);
+    const stream = decodedStreams(await pdf.save());
+
+    // The raw MARK_GLYPH_PATHS coordinates land in the stream unmodified: no
+    // manual y-flip, since drawSvgPath already applies its own (see bake.ts).
+    expect(stream).toContain('20 55 m');
+    expect(stream).toContain('42 76 l');
+    expect(stream).toContain('82 24 l');
+    // Scaled by w/100 = 60/100 = 0.6 (y negated: drawSvgPath's own flip).
+    expect(stream).toContain('0.6 0 0 -0.6 0 0 cm');
+    // Anchored at the box's *top* edge (yTop = 800 - 100 = 700), unlike
+    // drawImage above which anchors at the bottom (yTop - h = 640): see the
+    // comment in bake.ts for the empirical confirmation of this y-axis.
+    expect(stream).toContain('1 0 0 1 100 700 cm');
+    expect(stream).not.toContain('100 640 cm');
+    // Stroked (not filled) in the item's color, at the shared stroke width.
+    const { r } = hexToRgb01(markEdit.colorHex);
+    expect(stream).toContain(`${r} ${r} ${r} RG`);
+    expect(stream).toContain(`${MARK_GLYPH_STROKE_WIDTH} w`);
+  });
+
+  it('draws a cross mark as two crossing stroke segments', async () => {
+    expect(MARK_GLYPH_PATHS.cross).toBe('M 22 22 L 78 78 M 78 22 L 22 78');
+
+    const pdf = await PDFDocument.load(await squarePagePdf());
+    await stampEdits(pdf, [{ ...markEdit, id: 'm2', glyph: 'cross' }]);
+    const stream = decodedStreams(await pdf.save());
+
+    // A cross is two independent moveTo/lineTo segments, both stroked by the
+    // same closing `S` (see MARK_GLYPH_PATHS.cross).
+    expect(stream).toContain('22 22 m');
+    expect(stream).toContain('78 78 l');
+    expect(stream).toContain('78 22 m');
+    expect(stream).toContain('22 78 l');
   });
 });

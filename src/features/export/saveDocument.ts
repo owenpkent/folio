@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
-import { PDFDocument, type PDFPage } from 'pdf-lib';
+import { PDFDocument, PDFHexString, type PDFPage } from 'pdf-lib';
 
 import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
@@ -43,7 +43,43 @@ export async function exportDocument(): Promise<Uint8Array> {
   // Highlights and notes are real PDF annotations rather than stamped graphics,
   // so drawing order does not apply to them.
   if (annotations.length > 0) stampAnnotations(pdf, annotations);
+  // Everything staged above is now flattened into the page bytes, so this is a
+  // new document, not just an edited copy of the source. Left alone, pdf-lib
+  // carries the source trailer's /ID through save() unchanged, which means the
+  // export would keep the exact fingerprint PDF.js used to key the SOURCE
+  // document's sidecar (signatures, edits, OCR text, annotations, all kept in
+  // localStorage by fingerprint). Reopening the export would then load that
+  // pre-bake sidecar again and paint it on top of content that is already in
+  // the page, doubling everything. A fresh /ID breaks that inheritance so a
+  // reopened export starts with no sidecar of its own.
+  assignFreshDocumentId(pdf);
   return pdf.save();
+}
+
+/**
+ * Mint a brand new trailer /ID so a baked export gets its own PDF.js
+ * fingerprint instead of inheriting the source document's. Both halves are
+ * replaced: ISO 32000-1 14.4 makes the first half a permanent identifier tied
+ * to the file's original creation and the second one a per-update value, and
+ * flattening overlay content produces what is effectively a new document
+ * rather than another revision of the source, so preserving the first half
+ * would carry over an identity that no longer describes these bytes. Only
+ * call this once something has
+ * actually been baked in; see the pass-through guard at the top of
+ * exportDocument, which returns before pdf-lib is even loaded when there is
+ * nothing to stamp.
+ */
+function assignFreshDocumentId(pdf: PDFDocument): void {
+  pdf.context.trailerInfo.ID = pdf.context.obj([
+    PDFHexString.of(randomIdHalf()),
+    PDFHexString.of(randomIdHalf()),
+  ]);
+}
+
+/** A random 16-byte value, hex-encoded, for one half of a trailer /ID pair. */
+function randomIdHalf(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 async function stampSignatures(pdf: PDFDocument, signatures: Signature[]): Promise<void> {

@@ -149,6 +149,15 @@ const ICONS = {
     </>
   ),
   check: <path d="M20 6L9 17l-5-5" />,
+  // The cross-mark glyph (features/editing's MarkGlyph): visually an X, like
+  // `x` above, but named separately so a call site reads as "cross mark"
+  // rather than "close/delete".
+  cross: (
+    <>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </>
+  ),
   info: (
     <>
       <circle cx="12" cy="12" r="9" />
@@ -216,6 +225,17 @@ const ICONS = {
       <line x1="4" y1="6" x2="20" y2="6" />
       <line x1="4" y1="12" x2="20" y2="12" />
       <line x1="4" y1="18" x2="20" y2="18" />
+    </>
+  ),
+  // Corner brackets around empty space: a frame ready to be moved or
+  // resized, distinct from `image` (a filled picture frame) so the "Edit
+  // images" toolbar button reads as a different action from "Add image".
+  crop: (
+    <>
+      <path d="M4 8V5a1 1 0 0 1 1-1h3" />
+      <path d="M20 8V5a1 1 0 0 0-1-1h-3" />
+      <path d="M4 16v3a1 1 0 0 0 1 1h3" />
+      <path d="M20 16v3a1 1 0 0 1-1 1h-3" />
     </>
   ),
 } satisfies Record<string, ReactNode>;

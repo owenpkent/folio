@@ -1,6 +1,6 @@
-import { rgb, StandardFonts, type PDFDocument, type PDFFont } from 'pdf-lib';
+import { LineCapStyle, rgb, StandardFonts, type PDFDocument, type PDFFont } from 'pdf-lib';
 
-import type { EditItem, FontFamily } from './types';
+import { MARK_GLYPH_PATHS, MARK_GLYPH_STROKE_WIDTH, type EditItem, type FontFamily } from './types';
 
 /** Map a family + bold to the matching pdf-lib StandardFont (WinAnsi/Latin). */
 export function standardFontFor(family: FontFamily, bold: boolean): StandardFonts {
@@ -18,7 +18,11 @@ export function standardFontFor(family: FontFamily, bold: boolean): StandardFont
 /** Parse `#rrggbb` (or `#rgb`) into 0..1 components; falls back to black. */
 export function hexToRgb01(hex: string): { r: number; g: number; b: number } {
   let h = hex.trim().replace(/^#/, '');
-  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+  if (h.length === 3)
+    h = h
+      .split('')
+      .map((c) => c + c)
+      .join('');
   if (h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return { r: 0, g: 0, b: 0 };
   return {
     r: parseInt(h.slice(0, 2), 16) / 255,
@@ -57,8 +61,9 @@ export function wrapText(text: string, font: PDFFont, size: number, maxWidth: nu
 }
 
 /**
- * Bake placed text boxes and images into an already-loaded pdf-lib document.
- * Normalized rects are top-left origin; PDF space is bottom-left, hence the flip.
+ * Bake placed text boxes, images, and check marks into an already-loaded
+ * pdf-lib document. Normalized rects are top-left origin; PDF space is
+ * bottom-left, hence the flip.
  */
 export async function stampEdits(pdf: PDFDocument, edits: EditItem[]): Promise<void> {
   const pages = pdf.getPages();
@@ -75,8 +80,35 @@ export async function stampEdits(pdf: PDFDocument, edits: EditItem[]): Promise<v
 
     if (item.kind === 'image') {
       const img =
-        item.mime === 'image/png' ? await pdf.embedPng(item.dataUrl) : await pdf.embedJpg(item.dataUrl);
+        item.mime === 'image/png'
+          ? await pdf.embedPng(item.dataUrl)
+          : await pdf.embedJpg(item.dataUrl);
       page.drawImage(img, { x, y: yTop - h, width: w, height: h });
+      continue;
+    }
+
+    if (item.kind === 'mark') {
+      // drawSvgPath's path coordinates use an SVG-style y-axis (down is
+      // positive) -- pdf-lib's own source calls this out ("SVG path Y axis is
+      // opposite pdf-lib's") and compensates with an internal scale(1, -1).
+      // Empirically confirmed (a probe script drawing this exact shape and
+      // decoding the emitted content stream): for a local path point (px,
+      // py), the point lands at PDF page coordinates (x + px, y - py). So,
+      // unlike drawImage above (whose `y` is the *bottom* of the image, hence
+      // `yTop - h`), the (x, y) anchor here behaves like the *top* of the
+      // path's local box: passing `yTop` directly, with MARK_GLYPH_PATHS'
+      // top-left-origin 0-100 box, renders right-side up with no manual flip.
+      // Marks are always kept square (EditLayer locks the aspect ratio on
+      // resize), so one scale factor for both axes is safe.
+      const { r, g, b } = hexToRgb01(item.colorHex);
+      page.drawSvgPath(MARK_GLYPH_PATHS[item.glyph], {
+        x,
+        y: yTop,
+        scale: w / 100,
+        borderColor: rgb(r, g, b),
+        borderWidth: MARK_GLYPH_STROKE_WIDTH,
+        borderLineCap: LineCapStyle.Round,
+      });
       continue;
     }
 

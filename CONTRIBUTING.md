@@ -56,7 +56,7 @@ You do not have to write code to make a difference:
 ## Development setup
 
 Folio is a [Tauri 2](https://tauri.app) desktop app: a Rust backend with a
-React 18 + TypeScript 5 frontend built by Vite 5, rendering PDFs with
+React 18 + TypeScript 5 frontend built by Vite 7, rendering PDFs with
 [PDF.js](https://mozilla.github.io/pdf.js/) and managing state with
 [Zustand](https://github.com/pmndrs/zustand).
 
