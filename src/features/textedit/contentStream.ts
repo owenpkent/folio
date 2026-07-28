@@ -663,6 +663,20 @@ export function parseContentStreams(
             break;
           }
 
+          // Counted before the guards below, not after: an invocation this
+          // parse declines to descend into is still an invocation, and the
+          // sweep at the end of this function only knows a form is drawn more
+          // than once if every Do naming it was counted. Counting after the
+          // guards would leave a form drawn twice -- once shallow, once past
+          // MAX_FORM_DEPTH or the descent budget -- recorded as drawn once, so
+          // its runs would stay editable and splicing one would silently
+          // change both draws while the replacement is only drawn at one.
+          // Over-counting can only block an edit; under-counting corrupts one.
+          invocationCounts.set(
+            resolved.streamId,
+            (invocationCounts.get(resolved.streamId) ?? 0) + 1,
+          );
+
           // Depth, cycle, and total-work guards. None throws: they simply
           // decline to descend, so any text inside is never located at all (a
           // click on it falls back to the generic "could not find that text"
@@ -670,11 +684,6 @@ export function parseContentStreams(
           if (path.length >= MAX_FORM_DEPTH || path.includes(resolved.streamId)) break;
           if (descents >= MAX_FORM_DESCENTS) break;
           descents++;
-
-          invocationCounts.set(
-            resolved.streamId,
-            (invocationCounts.get(resolved.streamId) ?? 0) + 1,
-          );
 
           // Do does not itself depend on text position, but entering a form
           // resets tm/tlm to identity (below) and leaving it restores
@@ -778,10 +787,8 @@ const textEncoder = new TextEncoder();
 
 /**
  * Replace stream[start:end] with `replacement`, otherwise byte-identical.
- * Exported for features/imageedit, which builds its own well-formed
- * replacement operator text (a `/Name Do`, or a `q ... cm /Name Do Q`) rather
- * than needing the token-boundary glue logic below spliceRun uses when it
- * closes a gap instead of filling it.
+ * Callers replacing a whole operator should prefer spliceOperatorBytes below,
+ * which adds the token-boundary glue this one deliberately leaves out.
  */
 export function spliceBytes(
   stream: Uint8Array,
@@ -810,6 +817,43 @@ export function removeOperatorBytes(stream: Uint8Array, start: number, end: numb
   const after = end < stream.length ? stream[end] : 0x20;
   const glue = isBoundaryByte(before) && isBoundaryByte(after) ? EMPTY_BYTES : SPACE_BYTE;
   return spliceBytes(stream, start, end, glue);
+}
+
+/**
+ * Replace an operator's bytes with a different, already well-formed operator,
+ * keeping the result tokenizing the same way.
+ *
+ * spliceBytes alone is not enough. A located operator's `start` is the offset
+ * of its first operand, with no guarantee of preceding whitespace: `/` is
+ * self-delimiting, so `Q/Im1 Do` is legal and a writer can emit it. Splicing
+ * `q 2 0 0 2 0 0 cm /Im1 Do Q` in at that offset would produce `Qq 2 ...`,
+ * gluing the previous operator to the replacement's first token. The same
+ * applies at the trailing edge. Two adjacent bytes only tokenize apart when at
+ * least one of them is a boundary byte, so a single space goes in on whichever
+ * side does not already have one.
+ *
+ * Used by features/imageedit for the `q <matrix> cm /Name Do Q` a move emits
+ * and the `/Name Do` a replace emits.
+ */
+export function spliceOperatorBytes(
+  stream: Uint8Array,
+  start: number,
+  end: number,
+  replacement: Uint8Array,
+): Uint8Array {
+  if (replacement.length === 0) return removeOperatorBytes(stream, start, end);
+
+  const before = start > 0 ? stream[start - 1] : 0x20;
+  const after = end < stream.length ? stream[end] : 0x20;
+  const needsLeading = !isBoundaryByte(before) && !isBoundaryByte(replacement[0]);
+  const needsTrailing = !isBoundaryByte(after) && !isBoundaryByte(replacement[replacement.length - 1]);
+  if (!needsLeading && !needsTrailing) return spliceBytes(stream, start, end, replacement);
+
+  const padded = new Uint8Array(replacement.length + (needsLeading ? 1 : 0) + (needsTrailing ? 1 : 0));
+  if (needsLeading) padded[0] = 0x20;
+  padded.set(replacement, needsLeading ? 1 : 0);
+  if (needsTrailing) padded[padded.length - 1] = 0x20;
+  return spliceBytes(stream, start, end, padded);
 }
 
 export function spliceRun(stream: Uint8Array, run: LocatedRun): Uint8Array {

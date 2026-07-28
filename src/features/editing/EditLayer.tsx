@@ -28,6 +28,38 @@ const FONT_FAMILIES: FontFamily[] = ['Helvetica', 'Times', 'Courier'];
  */
 const DRAG_THRESHOLD_PX = 4;
 
+/**
+ * Track a pointer drag on `window` until it ends, detaching either way.
+ *
+ * pointercancel matters as much as pointerup: an interrupted touch (a system
+ * gesture taking over, the pointer leaving the window during a capture) fires
+ * only the former, so listening for pointerup alone leaves the move listener
+ * attached and the item still following the pointer until the next press.
+ *
+ * `onRelease` runs only on a genuine pointerup, never on a cancel: every drag
+ * below moves the item through the store on each pointermove, so there is
+ * nothing to commit at the end, and the one caller that passes it is deciding
+ * whether the press was a click rather than a drag -- which an interrupted
+ * gesture has not earned.
+ */
+function trackPointerDrag(
+  onMove: (ev: globalThis.PointerEvent) => void,
+  onRelease?: () => void,
+): void {
+  const detach = () => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', release);
+    window.removeEventListener('pointercancel', detach);
+  };
+  const release = () => {
+    detach();
+    onRelease?.();
+  };
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', release);
+  window.addEventListener('pointercancel', detach);
+}
+
 const MARK_GLYPH_LABEL: Record<MarkEdit['glyph'], string> = {
   check: 'Check mark',
   cross: 'Cross mark',
@@ -164,15 +196,11 @@ function TextItem({ item }: { item: TextEdit }) {
         y: clamp(start.y + dyPx / pageRect.height, 0, 1 - start.height),
       });
     };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
+    trackPointerDrag(onMove, () => {
       // A click, not a drag: start typing. A box that was already selected
       // keeps the caret the browser just placed.
       if (!dragging && !wasSelected) focus(item.id);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+    });
   };
 
   const startResize = (e: PointerEvent<HTMLSpanElement>) => {
@@ -194,12 +222,7 @@ function TextItem({ item }: { item: TextEdit }) {
         height: clamp(start.height + dy, 0.02, 1 - start.y),
       });
     };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+    trackPointerDrag(onMove);
   };
 
   return (
@@ -332,12 +355,7 @@ function ImageItem({ item }: { item: ImageEdit }) {
         y: clamp(start.y + dy, 0, 1 - start.height),
       });
     };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+    trackPointerDrag(onMove);
   };
 
   const startResize = (e: PointerEvent<HTMLSpanElement>) => {
@@ -361,12 +379,7 @@ function ImageItem({ item }: { item: ImageEdit }) {
       }
       move(item.id, { ...start, width, height });
     };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+    trackPointerDrag(onMove);
   };
 
   return (
@@ -438,12 +451,7 @@ function MarkItem({ item }: { item: MarkEdit }) {
         y: clamp(start.y + dy, 0, 1 - start.height),
       });
     };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+    trackPointerDrag(onMove);
   };
 
   const startResize = (e: PointerEvent<HTMLSpanElement>) => {
@@ -467,12 +475,7 @@ function MarkItem({ item }: { item: MarkEdit }) {
       }
       move(item.id, { ...start, width, height });
     };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+    trackPointerDrag(onMove);
   };
 
   return (

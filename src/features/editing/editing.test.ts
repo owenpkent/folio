@@ -138,6 +138,35 @@ describe('edit store', () => {
       colorHex: expect.stringMatching(/^#[0-9a-f]{6}$/i),
     });
   });
+
+  it('drops malformed sidecar entries instead of loading them', () => {
+    // localStorage is user-writable, so its contents are untrusted. An unknown
+    // glyph would index MARK_GLYPH_PATHS to undefined: harmless on screen (an
+    // empty `<path d>`) but a throw inside pdf-lib's drawSvgPath at export
+    // time, a long way from the cause.
+    useEditStore.getState().loadForDocument('fp-junk');
+    localStorage.setItem(
+      'folio.edits.fp-junk',
+      JSON.stringify([
+        { id: 'a', kind: 'mark', pageNumber: 1, rect, glyph: 'skull' },
+        { id: 'b', kind: 'mark', pageNumber: 1, rect, glyph: 'check' },
+        { id: 'c', kind: 'sabotage', pageNumber: 1, rect },
+        { id: 'd', kind: 'image', pageNumber: 1, rect },
+        { id: 'e', kind: 'text', pageNumber: 1, rect },
+        'not an entry',
+        null,
+      ]),
+    );
+
+    useEditStore.getState().loadForDocument('fp-junk');
+    expect(useEditStore.getState().edits.map((e) => e.id)).toEqual(['b', 'e']);
+  });
+
+  it('survives an unparseable sidecar', () => {
+    localStorage.setItem('folio.edits.fp-bad', '{not json');
+    useEditStore.getState().loadForDocument('fp-bad');
+    expect(useEditStore.getState().edits).toEqual([]);
+  });
 });
 
 describe('edit commands', () => {

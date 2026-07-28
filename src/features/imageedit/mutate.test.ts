@@ -316,6 +316,30 @@ describe('commitImageEdit (move)', () => {
     expect(doIndex).toBeLessThan(markerIndex);
   });
 
+  it('moves an image whose operand sits flush against the previous operator', async () => {
+    // `/` is self-delimiting, so a writer may emit `Q/Im1 Do` with no
+    // whitespace. Splicing the move's `q ... cm /Im1 Do Q` in without a
+    // boundary check would produce `Qq`, one bogus token, and the image would
+    // stop being locatable at all.
+    const { bytes } = await onePagePdfWithRawImageOp('q 1 0 0 1 0 0 cm Q/Im1 Do');
+    const [image] = await locatePageImages(bytes, 0);
+
+    const result = await commitImageEdit({
+      pdfBytes: bytes,
+      pageIndex: 0,
+      target: targetFor(image),
+      action: { kind: 'move', rect: { x: 60, y: 70, width: 1, height: 1 } },
+    });
+
+    const decoded = (await getPageContentStreams(result, 0)).map(latin1).join('\n');
+    expect(decoded).not.toContain('Qq');
+    // Still one locatable image, now at the requested rect.
+    const after = await locatePageImages(result, 0);
+    expect(after).toHaveLength(1);
+    expect(after[0].rect.x).toBeCloseTo(60, 3);
+    expect(after[0].rect.y).toBeCloseTo(70, 3);
+  });
+
   it('refuses to move a rotated or skewed image', async () => {
     const { bytes } = await onePagePdfWithRawImageOp('0.866 0.5 -0.5 0.866 100 100 cm /Im1 Do');
     const [image] = await locatePageImages(bytes, 0);
@@ -371,7 +395,11 @@ describe('commitImageEdit (replace)', () => {
     const [afterPage0] = await locatePageImages(result, 0);
     // Page 0 now draws a freshly embedded image under a new resource name...
     expect(afterPage0.name).not.toBe(image0.name);
-    expect(afterPage0.rect).toEqual(image0.rect);
+    // ...fitted into the box the old one occupied (see the aspect test below;
+    // the 1x1 replacement is letterboxed into the 50x80 slot, not stretched).
+    expect(afterPage0.rect.x).toBeCloseTo(100, 3);
+    expect(afterPage0.rect.width).toBeCloseTo(50, 3);
+    expect(afterPage0.rect.height).toBeCloseTo(50, 3);
     // ...but the OLD name is left alone on page 0, still resolving to the
     // exact original ref, not repointed or removed.
     expect(await xobjectRef(result, 0, image0.name)).toBe(originalRefOnPage0);
@@ -380,6 +408,51 @@ describe('commitImageEdit (replace)', () => {
     expect(await xobjectRef(result, 1, image1.name)).toBe(originalRefOnPage1);
     const [afterPage1] = await locatePageImages(result, 1);
     expect(afterPage1.name).toBe(image1.name);
+  });
+
+  it("letterboxes a differently shaped replacement into the old box instead of stretching it", async () => {
+    // The slot is 3:1 (tall and wide); the replacement is 1:1. Stretching it to
+    // fill the slot is never what "replace this image" means.
+    const { bytes } = await onePagePdfWithImage({ x: 100, y: 200, width: 300, height: 100 });
+    const [image] = await locatePageImages(bytes, 0);
+
+    const result = await commitImageEdit({
+      pdfBytes: bytes,
+      pageIndex: 0,
+      target: targetFor(image),
+      action: { kind: 'replace', dataUrl: PNG_1x1, mime: 'image/png' },
+    });
+
+    const [after] = await locatePageImages(result, 0);
+    // Square, sized to the slot's short axis, and centered in it: the height
+    // is unchanged at 100, the width shrinks from 300 to 100, and the leftover
+    // 200 units are split evenly so x moves from 100 to 200.
+    expect(after.rect.width).toBeCloseTo(100, 3);
+    expect(after.rect.height).toBeCloseTo(100, 3);
+    expect(after.rect.x).toBeCloseTo(200, 3);
+    expect(after.rect.y).toBeCloseTo(200, 3);
+  });
+
+  it('emits a bare operand swap, with no redundant matrix, when the aspect already matches', async () => {
+    // A 1:1 slot for a 1:1 replacement needs no correction, so the operator
+    // should stay a plain `/Name Do` rather than gaining a no-op q/cm/Q.
+    const { bytes } = await onePagePdfWithImage({ x: 40, y: 40, width: 120, height: 120 });
+    const [image] = await locatePageImages(bytes, 0);
+
+    const result = await commitImageEdit({
+      pdfBytes: bytes,
+      pageIndex: 0,
+      target: targetFor(image),
+      action: { kind: 'replace', dataUrl: PNG_1x1, mime: 'image/png' },
+    });
+
+    const [after] = await locatePageImages(result, 0);
+    expect(after.rect.x).toBeCloseTo(40, 3);
+    expect(after.rect.width).toBeCloseTo(120, 3);
+    expect(after.rect.height).toBeCloseTo(120, 3);
+    const decoded = (await getPageContentStreams(result, 0)).map(latin1).join('\n');
+    expect(decoded).toContain(`/${after.name} Do`);
+    expect(decoded).not.toContain(`cm /${after.name} Do`);
   });
 
   it('still allows replacing a rotated image in place, reusing its matrix untouched', async () => {

@@ -107,9 +107,17 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
   const selected = useImageEditStore((s) => s.selected);
   const select = useImageEditStore((s) => s.select);
   const scale = useViewerStore((s) => s.scale);
+  const currentPage = useViewerStore((s) => s.currentPage);
   const docVersion = useDocumentStore((s) => s.docVersion);
   const pageIndex = pageNumber - 1;
   const isThisPage = selected != null && selected.pageIndex === pageIndex;
+  // The catcher is a real focusable button covering the whole page, so mounting
+  // one per page would add a tab stop per page (all with the same label) to a
+  // long document. Only the page in view gets one, which also makes the
+  // keyboard fallback below unambiguous about which page's "first editable
+  // image" it means. Same gating MarkPlaceCatcher uses in
+  // features/editing/EditLayer.tsx.
+  const showCatcher = active && pageNumber === currentPage;
 
   const [viewport, setViewport] = useState<PageViewport | null>(null);
   // The full LocatedImage the current selection resolves to, refreshed
@@ -260,18 +268,20 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
     let latest = startCss;
 
     const onMove = (ev: globalThis.PointerEvent) => {
-      const dxFrac = (ev.clientX - startX) / pageRect.width;
-      const dyFrac = (ev.clientY - startY) / pageRect.height;
+      // Clamped to the page, the same way EditLayer.tsx clamps a placed
+      // overlay's drag: dragging an embedded image off the page edge would
+      // commit a placement with no way back to it except undo.
       latest = {
         ...startCss,
-        x: startCss.x + dxFrac * pageRect.width,
-        y: startCss.y + dyFrac * pageRect.height,
+        x: clamp(startCss.x + (ev.clientX - startX), 0, pageRect.width - startCss.width),
+        y: clamp(startCss.y + (ev.clientY - startY), 0, pageRect.height - startCss.height),
       };
       setPreviewCssRect(latest);
     };
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
       // A click with no real movement should not round-trip a save/reload
       // (and would otherwise wrap the operator in a no-op q/cm/Q for nothing).
       if (viewport && selected && rectsDiffer(latest, startCss)) {
@@ -280,8 +290,18 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
         setPreviewCssRect(null);
       }
     };
+    // An interrupted touch (a system gesture taking over, say) fires
+    // pointercancel and never pointerup, which would leave these listeners
+    // attached and the preview rect stuck until the next press.
+    const onCancel = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      setPreviewCssRect(null);
+    };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
   };
 
   const startResize = (e: PointerEvent<HTMLSpanElement>) => {
@@ -318,14 +338,23 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
       if (viewport && selected && rectsDiffer(latest, startCss)) {
         void commitMove(cssRectToPdfRect(viewport, latest), selected);
       } else {
         setPreviewCssRect(null);
       }
     };
+    // See startDrag's own pointercancel handler above.
+    const onCancel = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      setPreviewCssRect(null);
+    };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
   };
 
   const handleReplace = async () => {
@@ -389,7 +418,7 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
 
   return (
     <div className="folio-imageedit-layer" data-pan-exclude>
-      {active && (
+      {showCatcher && (
         <button
           type="button"
           className="folio-imageedit-hit"

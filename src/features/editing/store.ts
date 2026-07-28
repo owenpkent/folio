@@ -4,6 +4,7 @@ import {
   DEFAULT_FONT_SIZE_PT,
   DEFAULT_MARK_COLOR,
   DEFAULT_TEXT_COLOR,
+  MARK_GLYPH_PATHS,
   type EditItem,
   type ImageEdit,
   type MarkEdit,
@@ -61,6 +62,28 @@ interface EditState {
   clearFocus(): void;
 }
 
+/**
+ * Keep only well-formed items from the sidecar. localStorage is user-writable,
+ * so its contents are untrusted input: a `mark` whose `glyph` is not one this
+ * build knows would index MARK_GLYPH_PATHS to undefined, which renders as an
+ * empty `<path d>` on screen but throws inside pdf-lib's drawSvgPath when the
+ * document is exported -- a failure a long way from its cause. Unknown `kind`s
+ * are dropped for the same reason: EditLayer's dispatch treats anything that is
+ * neither text nor mark as an image and would read a dataUrl that isn't there.
+ */
+function sanitizeEdits(raw: unknown): EditItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item): item is EditItem => {
+    if (!item || typeof item !== 'object') return false;
+    const { kind, id, rect } = item as Partial<EditItem>;
+    if (typeof id !== 'string' || !rect || typeof rect !== 'object') return false;
+    if (kind === 'text') return true;
+    if (kind === 'image') return typeof (item as Partial<ImageEdit>).dataUrl === 'string';
+    if (kind === 'mark') return (item as Partial<MarkEdit>).glyph! in MARK_GLYPH_PATHS;
+    return false;
+  });
+}
+
 export const useEditStore = create<EditState>((set, get) => {
   const persist = () => {
     const { fingerprint, edits } = get();
@@ -82,7 +105,7 @@ export const useEditStore = create<EditState>((set, get) => {
       let edits: EditItem[] = [];
       try {
         const raw = localStorage.getItem(storageKey(fingerprint));
-        if (raw) edits = JSON.parse(raw) as EditItem[];
+        if (raw) edits = sanitizeEdits(JSON.parse(raw));
       } catch {
         edits = [];
       }

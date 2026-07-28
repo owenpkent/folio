@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   matchRunToItem,
   parseContentStreams,
+  spliceOperatorBytes,
   spliceRun,
   type FormResolver,
   type LocatedImageOp,
@@ -241,20 +242,49 @@ describe('parseContentStreams', () => {
       expect(runs[0].blockedReason).toBe('Rotated or skewed text is not supported yet');
     });
 
-    it('does not descend into a form that would create a cycle', () => {
+    it('does not descend into a form that would create a cycle, and blocks editing it', () => {
       const formSrc = 'BT /F1 10 Tf 0 0 Td (A) Tj ET /Fm1 Do BT /F1 10 Tf 0 -20 Td (B) Tj ET';
       const resolver = formResolver({ Fm1: { streamId: 1, bytes: encode(formSrc) } });
       const runs = parseContentStreams([encode('/Fm1 Do')], resolver);
 
-      // The nested, self-referential Do is simply skipped: both of the
-      // form's own runs are still located once each, and nothing loops.
+      // The nested, self-referential Do is not descended into: both of the
+      // form's own runs are located exactly once each, and nothing loops.
       expect(runs).toHaveLength(2);
       expect(runs[0].x).toBeCloseTo(0);
       expect(runs[0].y).toBeCloseTo(0);
       expect(runs[1].x).toBeCloseTo(0);
       expect(runs[1].y).toBeCloseTo(-20);
-      expect(runs[0].editable).toBe(true);
-      expect(runs[1].editable).toBe(true);
+      // Declining the descent does not make the form single-use: a conforming
+      // viewer draws its content once per recursion level, so splicing a run
+      // out of its bytes would change every level while the replacement is
+      // drawn at one. The invocation is counted before the cycle guard runs
+      // precisely so the multiply-invoked sweep still sees it.
+      for (const run of runs) {
+        expect(run.editable).toBe(false);
+        expect(run.blockedCode).toBe('run-in-shared-xobject');
+      }
+    });
+
+    it('counts an invocation the depth cap declines, so a doubly-drawn deep form is still blocked', () => {
+      // Fm1 is drawn twice: once directly by the page, and once from the
+      // bottom of a chain deeper than MAX_FORM_DEPTH, where the descent is
+      // declined. Counting only successful descents would record one
+      // invocation and leave its text editable, and splicing it would then
+      // change both draws.
+      const DEPTH = 8; // must match MAX_FORM_DEPTH in contentStream.ts
+      const forms: Record<string, ResolvedForm> = {
+        Fm1: { streamId: 1, bytes: encode('BT /F1 10 Tf 0 0 Td (Shared) Tj ET') },
+      };
+      for (let level = 2; level <= DEPTH + 1; level++) {
+        // The chain's last link names Fm1, at a depth the guard refuses.
+        const nextDo = level <= DEPTH ? ` /Fm${level + 1} Do` : ' /Fm1 Do';
+        forms[`Fm${level}`] = { streamId: level, bytes: encode(`${nextDo}`) };
+      }
+      const runs = parseContentStreams([encode('/Fm1 Do /Fm2 Do')], formResolver(forms));
+
+      expect(runs).toHaveLength(1);
+      expect(runs[0].editable).toBe(false);
+      expect(runs[0].blockedCode).toBe('run-in-shared-xobject');
     });
 
     it('does not descend past MAX_FORM_DEPTH nested forms', () => {
@@ -390,6 +420,48 @@ describe('parseContentStreams', () => {
 
       expect(ops).toHaveLength(0);
     });
+  });
+});
+
+describe('spliceOperatorBytes', () => {
+  /** Offsets of `/Im1 Do` within `src`, as the parser reports them for a Do. */
+  const doRange = (src: string): [number, number] => {
+    const start = src.indexOf('/Im1');
+    return [start, src.indexOf('Do', start) + 2];
+  };
+
+  const spliceDo = (src: string, replacement: string) => {
+    const [start, end] = doRange(src);
+    return decode(spliceOperatorBytes(encode(src), start, end, encode(replacement)));
+  };
+
+  it('leaves a well-separated operator alone, adding no padding', () => {
+    expect(spliceDo('q 1 0 0 1 0 0 cm /Im1 Do Q', '/Im2 Do')).toBe('q 1 0 0 1 0 0 cm /Im2 Do Q');
+  });
+
+  it('does not glue the replacement to a preceding operator with no whitespace', () => {
+    // `/` is self-delimiting, so `Q/Im1 Do` is legal PDF a writer can emit.
+    // A raw splice of a replacement starting with `q` would produce `Qq`.
+    const out = spliceDo('Q/Im1 Do', 'q 2 0 0 2 0 0 cm /Im1 Do Q');
+    expect(out).toBe('Q q 2 0 0 2 0 0 cm /Im1 Do Q');
+    expect(out).not.toContain('Qq');
+  });
+
+  it('does not glue the replacement to a following token with no whitespace', () => {
+    const src = '/Im1 Do0 0 1 RG';
+    const [start, end] = [src.indexOf('/Im1'), src.indexOf('Do') + 2];
+    const out = decode(spliceOperatorBytes(encode(src), start, end, encode('q 1 0 0 1 0 0 cm /Im1 Do Q')));
+    expect(out).toBe('q 1 0 0 1 0 0 cm /Im1 Do Q 0 0 1 RG');
+    expect(out).not.toContain('Q0');
+  });
+
+  it('needs no padding when the replacement itself starts with a delimiter', () => {
+    // `/` is a delimiter, so it separates from the preceding `Q` on its own.
+    expect(spliceDo('Q/Im1 Do', '/Im2 Do')).toBe('Q/Im2 Do');
+  });
+
+  it('falls back to gap-closing removal for an empty replacement', () => {
+    expect(spliceDo('q /Im1 Do Q', '')).toBe('q  Q');
   });
 });
 

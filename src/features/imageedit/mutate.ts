@@ -27,7 +27,7 @@ import {
 import {
   parseContentStreams,
   removeOperatorBytes,
-  spliceBytes,
+  spliceOperatorBytes,
   type FormResolver,
   type LocatedImageOp,
 } from '@/features/textedit/contentStream';
@@ -273,6 +273,52 @@ function moveMatrix(
   return [a2 / a1, 0, 0, d2 / d1, (e2 - e1) / a1, (f2 - f1) / d1];
 }
 
+/** PDF user-space slack below which two rects count as the same placement. */
+const RECT_EPSILON = 1e-3;
+
+function sameRect(a: ImageEditRect, b: ImageEditRect): boolean {
+  return (
+    Math.abs(a.x - b.x) < RECT_EPSILON &&
+    Math.abs(a.y - b.y) < RECT_EPSILON &&
+    Math.abs(a.width - b.width) < RECT_EPSILON &&
+    Math.abs(a.height - b.height) < RECT_EPSILON
+  );
+}
+
+/**
+ * The largest rect of the given aspect ratio (width / height) that fits inside
+ * `rect`, centered on it.
+ *
+ * A replace reuses the placement the original image was drawn at, and that
+ * placement was sized for the original's own proportions. Handing a 1:1 logo
+ * the box a 4:3 photo occupied would stretch it, which is never what the user
+ * meant by "replace this image" -- so the box is kept and the new image is
+ * fitted into it (letterboxed, not cropped), which preserves both the user's
+ * chosen position and the new image's shape. Centering rather than anchoring a
+ * corner keeps the visual weight where the old image was.
+ */
+function containRect(rect: ImageEditRect, aspect: number): ImageEditRect {
+  if (!Number.isFinite(aspect) || aspect <= 0 || !rect.width || !rect.height) return rect;
+  let { width, height } = rect;
+  if (aspect > width / height) height = width / aspect;
+  else width = height * aspect;
+  return {
+    x: rect.x + (rect.width - width) / 2,
+    y: rect.y + (rect.height - height) / 2,
+    width,
+    height,
+  };
+}
+
+/** The `q <matrix> cm /<name> Do Q` text that draws `name` at `rect`. */
+function placementOperator(image: LocatedImage, rect: ImageEditRect, name: string): string {
+  const [a, , , d, e, f] = moveMatrix(image, rect);
+  return (
+    `q ${formatPdfNumber(a)} 0 0 ${formatPdfNumber(d)} ` +
+    `${formatPdfNumber(e)} ${formatPdfNumber(f)} cm /${name} Do Q`
+  );
+}
+
 /** A fresh `/XObject` resource name not already used in `xobjectDict`. */
 function uniqueXObjectName(xobjectDict: PDFDict): string {
   for (let n = 1; ; n++) {
@@ -337,21 +383,26 @@ export async function commitImageEdit(params: CommitImageEditParams): Promise<Ui
         image.blockedReason ?? 'This image cannot be moved or resized',
       );
     }
-    const [a, , , d, e, f] = moveMatrix(image, action.rect);
-    const operator =
-      `q ${formatPdfNumber(a)} 0 0 ${formatPdfNumber(d)} ` +
-      `${formatPdfNumber(e)} ${formatPdfNumber(f)} cm /${image.name} Do Q`;
-    const spliced = spliceBytes(stream, image.start, image.end, new TextEncoder().encode(operator));
+    const operator = placementOperator(image, action.rect, image.name);
+    const spliced = spliceOperatorBytes(
+      stream,
+      image.start,
+      image.end,
+      new TextEncoder().encode(operator),
+    );
     return saveWithEditedStream(doc, page, streams, image.streamIndex, spliced);
   }
 
   // action.kind === 'replace': the new image is embedded fresh under a
-  // brand-new resource name, and only the Do's operand changes -- the matrix
-  // already in effect there is reused untouched, so this needs none of
-  // move's axis-aligned/degenerate requirements. A rotated or skewed image
-  // can still be replaced in place. The ORIGINAL image XObject, which this
-  // page (or any other) may still name elsewhere, is never touched or
-  // repointed.
+  // brand-new resource name and the Do's operand is repointed at it. The
+  // ORIGINAL image XObject, which this page (or any other) may still name
+  // elsewhere, is never touched or repointed.
+  //
+  // The placement is reused rather than recomputed from scratch, but it is
+  // corrected for the new image's own proportions when that is possible: see
+  // containRect, and the transformable branch below for the rotated/skewed
+  // case, where the matrix cannot be rewritten and the operand swap alone is
+  // all that happens.
   const embedded =
     action.mime === 'image/png'
       ? await doc.embedPng(action.dataUrl)
@@ -378,11 +429,23 @@ export async function commitImageEdit(params: CommitImageEditParams): Promise<Ui
   clonedResources.set(PDFName.of('XObject'), clonedXObject);
   page.node.set(PDFName.of('Resources'), clonedResources);
 
-  const spliced = spliceBytes(
+  // Fit the new image into the box the old one occupied, so a differently
+  // shaped replacement is letterboxed rather than stretched. Only possible for
+  // a transformable (axis-aligned, non-degenerate) placement: moveMatrix has
+  // nothing sound to divide by otherwise, so a rotated or skewed image keeps
+  // the matrix it already had and the operand swap is the whole edit.
+  const fitted = image.transformable
+    ? containRect(image.rect, embedded.width / (embedded.height || 1))
+    : image.rect;
+  const operator = sameRect(fitted, image.rect)
+    ? `/${newName} Do`
+    : placementOperator(image, fitted, newName);
+
+  const spliced = spliceOperatorBytes(
     stream,
     image.start,
     image.end,
-    new TextEncoder().encode(`/${newName} Do`),
+    new TextEncoder().encode(operator),
   );
   return saveWithEditedStream(doc, page, streams, image.streamIndex, spliced);
 }

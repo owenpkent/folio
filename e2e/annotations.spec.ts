@@ -99,7 +99,12 @@ test('the original form field survives alongside the new annotation', async ({ p
   const doc = await saveAndParse(page);
 
   // Regression guard: addAnnot must append, not replace. The page's existing
-  // widget has to still be there next to the highlight.
-  const subtypes = annotsOf(doc, 0).map(subtypeOf).sort();
-  expect(subtypes).toEqual(['/Highlight', '/Widget']);
+  // widgets have to still be there next to the highlight. Counted rather than
+  // matched against an exact list: the fixture's field set is a detail of
+  // global-setup.ts (it grew a checkbox and a radio group for the form tests in
+  // smoke.spec.ts), and pinning it here only couples two unrelated specs.
+  const subtypes = annotsOf(doc, 0).map(subtypeOf);
+  expect(subtypes.filter((s) => s === '/Highlight')).toHaveLength(1);
+  expect(subtypes.filter((s) => s === '/Widget').length).toBeGreaterThan(0);
+  expect(new Set(subtypes)).toEqual(new Set(['/Highlight', '/Widget']));
 });
