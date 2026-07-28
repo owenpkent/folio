@@ -169,7 +169,9 @@ load-bearing and is set by `z-index` in `styles/global.css`, not by DOM order:
 | 3 | `.folio-ocr-layer` | Selectable OCR text, when a page has been recognised |
 | 4 | `.folio-signature-layer`, `.folio-notes-layer` | Placed signatures, sticky-note pins |
 | 5 | `.folio-edit-layer` | Placed text boxes, images, and check marks |
-| 8 | `.folio-placement-hit`, `.folio-imageedit-layer` | Armed click-catchers |
+| 6 | `.folio-textedit-layer` | In-place editing of existing PDF text; holds its own `.folio-textedit-hit` catcher |
+| 7 | `.folio-textedit-editor` | An open in-place editor, above that tool's catcher |
+| 8 | `.folio-placement-hit`, `.folio-imageedit-layer` | The other two armed click-catchers |
 
 **The rule that is easy to break: a full-page click-catcher sits above the forms
 layer.** `.folio-forms-layer` only takes pointer events over each field's own
@@ -188,7 +190,11 @@ rather than stamping over it, because a mark exists only to stand in for a
 printed box that has no field behind it. That is why `PendingPlacement` carries
 an opt-in `deferToFormWidget` rather than the behaviour being unconditional.
 
-If you add a tool that covers the page, call `formWidgetAt` first.
+If you add a tool that covers the page, call `formWidgetAt` first. Note that the
+three catchers do not share one z-index: text editing sits at 6 so that its own
+open editor (7) stays above it, while placement and image selection sit at 8.
+Pick a new tool's z deliberately against the table above rather than copying 8,
+which would put a fresh catcher over an open in-place editor.
 
 ### Rendering resolution, virtualization, and DPI changes
 

@@ -310,7 +310,7 @@ organized and what is covered. All tests must pass in CI before a PR can merge.
   and reports findings that cannot be fixed from here at all. Two are open and
   documented, with the evidence for why each is unfixable and what would unblock
   it: [#57](https://github.com/owenpkent/folio/issues/57)
-  (`brace-expansion`, six of the current high findings, all one advisory) and
+  (`brace-expansion`, several of the current high findings, all one advisory) and
   [#58](https://github.com/owenpkent/folio/issues/58) (`glib`, Linux-only, pinned
   by Tauri). Add to that list rather than silently carrying a finding.
 - **Dependabot** opens monthly update PRs (npm, cargo, GitHub Actions), grouped

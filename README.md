@@ -47,9 +47,10 @@ Folio rendering a two-page form PDF, in light and dark:
 **Accessibility (first-class, not bolted on)**
 - Real text layer over every page: selectable, screen-reader readable
 - Full keyboard control with a command-driven shortcut system
-- Everything you place on a page — text boxes, images, check marks, signatures,
-  and images already embedded in the PDF — can be moved, resized, and deleted
-  from the keyboard, not only by dragging
+- Everything you place on a page (text boxes, images, check marks, signatures)
+  can be moved, resized, and deleted from the keyboard, not only by dragging.
+  Images already embedded in the PDF can be deleted the same way, and moved and
+  resized too where the file's own structure allows it
 - ARIA landmarks and roles, a skip link, and live-region announcements
 - Respects `prefers-reduced-motion`; targets WCAG 2.2 AA
 

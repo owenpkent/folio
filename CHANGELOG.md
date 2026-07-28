@@ -34,7 +34,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reinstalled after any `@playwright/test` upgrade, or every spec fails at 0ms on
   a missing executable, which reads as a catastrophic regression and is not one.
 
-
 ### Security
 
 - **Updated `postcss` to 8.5.24 and the VS Code extension's `esbuild` to 0.25**,
