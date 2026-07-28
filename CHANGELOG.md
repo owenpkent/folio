@@ -6,6 +6,30 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The densest displays no longer render below their own pixel density**
+  ([#29](https://github.com/owenpkent/folio/issues/29)). The backing-store scale
+  aimed for "at least 2x, at most 3x", so a panel reporting a `devicePixelRatio`
+  above 3 was handed a 3x render that it then had to stretch. The 3x ceiling is
+  gone: the target is now the greater of 2x and the display's own ratio, bounded
+  by the canvas pixel budget, which was always the real limit. The earlier half
+  of this issue — a `Math.min(1, dpr)` floor that could both under-render *and*
+  bust the budget — was already fixed; the docs and an old release note that
+  still claimed the render was never below the display ratio are corrected here.
+- **Re-render on DPI change now works on fractional-scaling displays**
+  ([#30](https://github.com/owenpkent/folio/issues/30)). Detection built a
+  `matchMedia('(resolution: Xdppx)')` query by interpolating
+  `window.devicePixelRatio`, relying on it evaluating true so that any change
+  would flip it false and fire. Windows at 133% reports 1.3333333333333333, and
+  an equality query built from a float like that may never evaluate true — and a
+  query that starts false never flips, so dragging a window between monitors left
+  pages baked at the old ratio and visibly blurry. Exactly the displays the
+  feature exists for. It now brackets the ratio with a range query, true by
+  construction whatever the float, and falls back to a low-frequency poll if even
+  that fails to match rather than silently doing nothing a second time.
+
+
 ### Added
 
 - **Move, resize, and delete any placed item from the keyboard.** Dragging and
@@ -415,8 +439,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (targeting roughly 2x, minimum 2, maximum 3) and are downsampled into the
   page's layout size, capped by a pixel budget (`MAX_CANVAS_AREA`,
   16,777,216px, matching PDF.js's own `maxCanvasPixels` default) and a
-  4096px-per-side maximum (`MAX_CANVAS_DIM`), and never rendered below the
-  display's actual `devicePixelRatio`. Previously the backing store was sized
+  4096px-per-side maximum (`MAX_CANVAS_DIM`), which win unconditionally: at high
+  zoom on a large page the effective scale can fall below the display's
+  `devicePixelRatio`. (This entry originally claimed the render was *never* below
+  the display ratio, which was not accurate even at the time; the wording was
+  corrected later, see #29.) Previously the backing store was sized
   close to CSS pixels, which read soft on fractional-scale displays (Windows
   125%/150%) and on platforms that under-report DPI. The viewer also now
   re-renders visible pages when `devicePixelRatio` changes mid-session, such as
