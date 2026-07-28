@@ -1,6 +1,7 @@
-import { useEffect, useState, type MouseEvent, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 
 import { announce } from '@/a11y/announcer';
+import { useNudgeKeys, type NudgeRect } from '@/a11y/useNudgeKeys';
 import { Icon, pushToast } from '@/components/common';
 import { getEngine, type PageViewport } from '@/core/pdf';
 import { pickImageFile } from '@/features/editing/commands';
@@ -15,6 +16,17 @@ import { useImageEditStore } from './store';
 import type { ImageEditRect, LocatedImage, SelectedImage } from './types';
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+
+/**
+ * How long after the last nudge key before the edit is written to the document.
+ *
+ * Unlike every other overlay, an embedded image lives in the page's content
+ * stream: each change means serialize, mutate with pdf-lib, and reload. Doing
+ * that per keystroke would make a held arrow key unusable, so keyboard moves
+ * accumulate in previewCssRect (exactly as a drag does) and commit once the user
+ * stops, which is also what pointerup does for a drag.
+ */
+const NUDGE_COMMIT_DELAY_MS = 600;
 
 /** The .folio-page ancestor's CSS rect, the same lookup EditLayer.tsx uses for drag/resize deltas. */
 const pageRectFrom = (el: Element | null) =>
@@ -251,6 +263,87 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
     }
   };
 
+  // The selection's box in CSS pixels: the live preview while a drag or a run of
+  // nudge keys is in flight, otherwise the committed rect. Declared here rather
+  // than just above the return because the keyboard handling below converts it
+  // into page fractions.
+  const cssRect =
+    viewport && isThisPage && selected
+      ? (previewCssRect ?? pdfRectToCssRect(viewport, selected.rect))
+      : null;
+
+  /* -------------------------------------------------------------------------
+   * Keyboard move and resize
+   *
+   * Shares src/a11y/useNudgeKeys with the overlay layers, so the bindings are
+   * identical everywhere. Two adaptations for this feature: the hook works in
+   * page fractions while this layer works in CSS pixels (converted below), and
+   * the commit is debounced rather than immediate (see NUDGE_COMMIT_DELAY_MS).
+   * ---------------------------------------------------------------------- */
+
+  // Focus moves to the selection chrome whenever a different image is selected,
+  // so the keys below apply to what the user just picked. Keyed on the target
+  // rather than the object identity, since commitMove replaces `selected` with
+  // an equal-but-new object after every move and refocusing on that would fight
+  // a screen reader mid-run.
+  const selectionRef = useRef<HTMLDivElement>(null);
+  const selectionKey = isThisPage && selected ? `${selected.streamIndex}:${selected.name}` : null;
+  useEffect(() => {
+    if (selectionKey) selectionRef.current?.focus();
+  }, [selectionKey]);
+
+  const nudgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelPendingNudge = () => {
+    if (nudgeTimer.current) clearTimeout(nudgeTimer.current);
+    nudgeTimer.current = null;
+  };
+  useEffect(() => cancelPendingNudge, []);
+
+  const pageBox = () =>
+    document
+      .querySelector(`.folio-page[data-page-number="${pageNumber}"]`)
+      ?.getBoundingClientRect() ?? null;
+
+  // The selection as page fractions, which is what the shared hook speaks.
+  const nudgeRect = ((): NudgeRect | null => {
+    const page = pageBox();
+    if (!page || !page.width || !page.height || !cssRect) return null;
+    return {
+      x: cssRect.x / page.width,
+      y: cssRect.y / page.height,
+      width: cssRect.width / page.width,
+      height: cssRect.height / page.height,
+    };
+  })();
+
+  const onNudge = (next: NudgeRect) => {
+    const page = pageBox();
+    if (!page || !viewport || !selected) return;
+    const nextCss = {
+      x: next.x * page.width,
+      y: next.y * page.height,
+      width: next.width * page.width,
+      height: next.height * page.height,
+    };
+    // Local preview now, document write once the run of keys settles.
+    setPreviewCssRect(nextCss);
+    cancelPendingNudge();
+    nudgeTimer.current = setTimeout(() => {
+      nudgeTimer.current = null;
+      void commitMove(cssRectToPdfRect(viewport, nextCss), selected);
+    }, NUDGE_COMMIT_DELAY_MS);
+  };
+
+  const onKeyDown = useNudgeKeys({
+    rect: nudgeRect ?? { x: 0, y: 0, width: 0, height: 0 },
+    label: 'Image',
+    // Aspect-locked to the image's own pixel dimensions, matching startResize.
+    aspectLocked: true,
+    minWidth: 0.02,
+    onChange: onNudge,
+    onDelete: () => void handleDelete(),
+  });
+
   const startDrag = (e: PointerEvent<HTMLDivElement>) => {
     // selectedInfo?.editable: selecting a non-editable image (see tryClickAt
     // above) now reaches here too, and without this the drag would run to
@@ -262,6 +355,9 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
     const pageRect = pageRectFrom(e.currentTarget);
     if (!pageRect) return;
     e.preventDefault();
+    // A drag supersedes a keyboard nudge that has not been written yet, so the
+    // debounced commit does not land on top of the gesture in progress.
+    cancelPendingNudge();
     const startX = e.clientX;
     const startY = e.clientY;
     const startCss = previewCssRect ?? pdfRectToCssRect(viewport, selected.rect);
@@ -411,11 +507,6 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
     }
   };
 
-  const cssRect =
-    viewport && isThisPage && selected
-      ? (previewCssRect ?? pdfRectToCssRect(viewport, selected.rect))
-      : null;
-
   return (
     <div className="folio-imageedit-layer" data-pan-exclude>
       {showCatcher && (
@@ -430,6 +521,19 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
         <div
           className="folio-edit folio-edit--image is-selected folio-imageedit-selected"
           style={{ left: cssRect.x, top: cssRect.y, width: cssRect.width, height: cssRect.height }}
+          // Focused on selection (see the effect below) so the nudge keys work
+          // straight after the click or Enter that selected the image, without a
+          // second Tab to find it. Only one image is ever selected, so this adds
+          // a single tab stop rather than one per image on the page.
+          ref={selectionRef}
+          tabIndex={0}
+          role="group"
+          aria-label={
+            selectedInfo?.transformable && selectedInfo?.editable
+              ? 'Selected image. Arrow keys move it, plus and minus resize it, Delete removes it.'
+              : 'Selected image. Delete removes it; this one cannot be moved or resized.'
+          }
+          onKeyDown={onKeyDown}
         >
           <div
             className="folio-imageedit__surface"

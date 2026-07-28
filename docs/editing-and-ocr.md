@@ -73,6 +73,14 @@ Four capabilities:
   (`Ctrl/Cmd + Shift + S`) writes them to a new PDF instead, leaving the
   original untouched.
 
+Everything placed on a page can also be **moved and resized from the keyboard**,
+so none of these tools needs a pointer once the item exists. `Tab` reaches a
+placed text box, image, or check mark; the arrow keys move it, `Shift` + arrow
+moves ten times as far, `+`/`-` resize it, and `Delete` removes it. The same
+keys work on a placed signature and on an embedded image's selection. See
+[accessibility.md](accessibility.md#nudging-a-placed-overlay) for the full table
+and the reasoning behind the bindings.
+
 ### How it works
 
 Edits are stored as a per-document sidecar (keyed by PDF fingerprint) in

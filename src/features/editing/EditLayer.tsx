@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, type PointerEvent } from 'react';
 
+import { useNudgeKeys } from '@/a11y/useNudgeKeys';
 import { Icon } from '@/components/common';
 import { useViewerStore } from '@/state/viewerStore';
 
@@ -156,6 +157,17 @@ function TextItem({ item }: { item: TextEdit }) {
     if (el) updateText(item.id, { text: el.textContent ?? '' });
   };
 
+  // Not aspect-locked: a text box's width and height are independent, and its
+  // floors mirror startResize's own clamps below.
+  const onKeyDown = useNudgeKeys({
+    rect: item.rect,
+    label: 'Text box',
+    minWidth: 0.05,
+    minHeight: 0.02,
+    onChange: (rect) => move(item.id, rect),
+    onDelete: () => remove(item.id),
+  });
+
   /**
    * Press anywhere on the box to move it: a press that travels turns into a
    * drag, one that does not is a plain click (select the box, or place the
@@ -230,6 +242,15 @@ function TextItem({ item }: { item: TextEdit }) {
       className={`folio-edit folio-edit--text${isSelected ? ' is-selected' : ''}`}
       style={positionStyle(item.rect)}
       onPointerDown={startDrag}
+      // Tab reaches the box, and focusing it selects it so the inspector opens
+      // and the keys below have something to act on. The nudge handler ignores
+      // events from descendants, so arrows inside the contentEditable still
+      // move the caret rather than the box.
+      tabIndex={0}
+      role="group"
+      aria-label="Text box. Arrow keys move it, plus and minus resize it, Delete removes it."
+      onFocus={() => select(item.id)}
+      onKeyDown={onKeyDown}
     >
       {isSelected && <TextInspector item={item} onChange={(patch) => updateText(item.id, patch)} />}
       <div
@@ -336,6 +357,17 @@ function ImageItem({ item }: { item: ImageEdit }) {
   const isSelected = selectedId === item.id;
   useDeselectOnOutside(isSelected);
 
+  // Aspect-locked, matching startResize below: a placed graphic squashed on one
+  // axis is a defect, not a resize.
+  const onKeyDown = useNudgeKeys({
+    rect: item.rect,
+    label: 'Placed image',
+    aspectLocked: true,
+    minWidth: 0.05,
+    onChange: (rect) => move(item.id, rect),
+    onDelete: () => remove(item.id),
+  });
+
   const startDrag = (e: PointerEvent<HTMLImageElement>) => {
     if (e.button !== 0) return;
     const pageRect = pageRectFrom(e.currentTarget);
@@ -386,6 +418,11 @@ function ImageItem({ item }: { item: ImageEdit }) {
     <div
       className={`folio-edit folio-edit--image${isSelected ? ' is-selected' : ''}`}
       style={positionStyle(item.rect)}
+      tabIndex={0}
+      role="group"
+      aria-label="Placed image. Arrow keys move it, plus and minus resize it, Delete removes it."
+      onFocus={() => select(item.id)}
+      onKeyDown={onKeyDown}
     >
       <img
         className="folio-edit__img"
@@ -431,6 +468,17 @@ function MarkItem({ item }: { item: MarkEdit }) {
   const updateMark = useEditStore((s) => s.updateMark);
   const isSelected = selectedId === item.id;
   useDeselectOnOutside(isSelected);
+
+  // Aspect-locked: a mark is placed square and stays square, so the glyph never
+  // renders stretched (see startResize below and MARK_GLYPH_PATHS' unit box).
+  const onKeyDown = useNudgeKeys({
+    rect: item.rect,
+    label: MARK_GLYPH_LABEL[item.glyph],
+    aspectLocked: true,
+    minWidth: 0.02,
+    onChange: (rect) => move(item.id, rect),
+    onDelete: () => remove(item.id),
+  });
 
   const startDrag = (e: PointerEvent<SVGSVGElement>) => {
     if (e.button !== 0) return;
@@ -482,6 +530,11 @@ function MarkItem({ item }: { item: MarkEdit }) {
     <div
       className={`folio-edit folio-edit--mark${isSelected ? ' is-selected' : ''}`}
       style={positionStyle(item.rect)}
+      tabIndex={0}
+      role="group"
+      aria-label={`${MARK_GLYPH_LABEL[item.glyph]}. Arrow keys move it, plus and minus resize it, Delete removes it.`}
+      onFocus={() => select(item.id)}
+      onKeyDown={onKeyDown}
     >
       {isSelected && (
         <MarkInspector item={item} onChange={(patch) => updateMark(item.id, patch)} />

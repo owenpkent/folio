@@ -8,6 +8,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Move, resize, and delete any placed item from the keyboard.** Dragging and
+  the corner handle were the only way to position a text box, a placed image, a
+  check mark, a signature, or an embedded image, which is a WCAG 2.1.1 failure
+  repeated across five features. Every one of them is now focusable and responds
+  to the arrow keys (one screen pixel, ten with **Shift**), `+`/`-` to resize,
+  and **Delete** to remove. One implementation serves all five, so the bindings
+  cannot drift apart. Steps are screen pixels of the rendered page rather than
+  PDF points, matching how the drag handlers already worked: zoom in for finer
+  control. Arrows typed inside a text box still move the caret, and a nudge does
+  not also scroll the document. Announcements are debounced, so a run of presses
+  reports where the item ended up instead of flooding a screen reader per key.
+  Aspect ratio stays locked wherever the pointer locks it, and a resize that
+  would push one axis past its limit is refused whole rather than silently
+  reshaping the item.
+
+
+### Added
+
 - **Application menu bar.** A classic File / Edit / View / Annotate / Sign /
   Tools / Help menu row above the toolbar, built in-app (pure DOM, so it is
   identical in the desktop app, the browser build, and the VS Code extension)

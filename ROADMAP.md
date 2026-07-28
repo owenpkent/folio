@@ -88,7 +88,7 @@ Change document content, reorganize pages, make scans searchable, and redact.
 | OCR | Recognize text in scanned pages and add a searchable text layer | Done (English via tesseract.js; invisible baked layer + on-screen selection) |
 | Page operations | Insert, delete, reorder, rotate, split, and merge pages | Planned |
 | Redaction | True redaction that removes underlying content, not just a black box | Planned |
-| Accessibility | Editing operations keyboard-driven; OCR output feeds search and screen readers | In progress (OCR text feeds search; more languages planned; the new image-edit tool's select, move, and resize are pointer-only, with no keyboard path yet) |
+| Accessibility | Editing operations keyboard-driven; OCR output feeds search and screen readers | In progress (OCR text feeds search; more languages planned; moving, resizing, and deleting any placed overlay is keyboard-driven, but choosing *which* text run or embedded image to edit still needs a pointer) |
 
 **Milestone: edit, reorganize, and redact.** A user can edit content, restructure pages, run OCR to make a scan searchable, and redact sensitive content so it is actually gone.
 

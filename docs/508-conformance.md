@@ -179,18 +179,21 @@ announces `'No editable image on this page.'` (assertively, via
 `src/a11y/announcer.ts`) when there is none, instead of running the handler
 with `clientX = clientY = 0` as before. That reaches only the *first*
 editable image, though: a page with more than one still needs a pointer to
-choose a particular one, and once an image is selected its drag surface and
-resize handle still carry only `onPointerDown` (the resize handle is also
-`aria-hidden="true"`, removing it from the accessibility tree outright).
-Replace and delete are ordinary buttons and were already keyboard-operable.
+choose a particular one.
 
-This is not a regression particular to `imageedit`: every resize handle in
-Folio (text boxes, placed images, stamps, signatures) is pointer-only once an
-item is on the page. What is left of `imageedit`'s gap (choosing a non-first
-image, moving, resizing) is the newest instance of an existing gap, not a new
-kind of one, and it is the same WCAG 2.1.1 failure
-[accessibility.md](accessibility.md) already calls out under "Direct
-manipulation is the standing exception."
+**Moving and resizing are no longer part of this gap.** Every overlay Folio
+places on a page -- text boxes, placed images, check marks, signatures, and an
+embedded image's selection -- is focusable and responds to the arrow keys,
+`+`/`-`, and `Delete`; see [Nudging a placed
+overlay](accessibility.md#nudging-a-placed-overlay) for the bindings and
+`src/a11y/useNudgeKeys.ts` for the one implementation all five share. The
+resize *handle* stays `aria-hidden="true"` on purpose: it is now a pointer
+shortcut for something the keyboard reaches directly, so exposing it would
+announce a control that only duplicates the keys.
+
+What is left is a **selection** gap rather than a manipulation one: choosing
+which text run to edit, and choosing a non-first image on a page, both still
+want a pointer. Replace and delete were already keyboard-operable.
 
 ### PDF/UA export (504.2.2)
 
