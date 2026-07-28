@@ -141,8 +141,10 @@ test('fills a form field and digitally signs the document', async ({ page }) => 
   await field.fill('Ada Lovelace');
   await expect(field).toHaveValue('Ada Lovelace');
 
-  // Open the signing dialog and create a self-signed identity.
-  await page.getByRole('button', { name: 'Digitally sign' }).click();
+  // Open the signing dialog and create a self-signed identity. Digitally sign
+  // no longer lives on the toolbar; it is reached through the Sign menu.
+  await page.getByRole('menuitem', { name: 'Sign' }).click();
+  await page.getByRole('menuitem', { name: 'Digitally sign' }).click();
   const dialog = page.getByRole('dialog', { name: /digitally sign/i });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel('Name (Common Name)').fill('Ada Lovelace');

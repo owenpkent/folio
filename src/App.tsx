@@ -5,6 +5,7 @@ import { SkipLink } from '@/a11y/SkipLink';
 import { useKeyboardShortcuts } from '@/a11y/useKeyboardShortcuts';
 import { registerDefaultCommands } from '@/commands';
 import { ToastHost } from '@/components/common';
+import { MenuBar } from '@/components/MenuBar/MenuBar';
 import { SearchBar } from '@/components/Search/SearchBar';
 import { Sidebar } from '@/components/Sidebar/Sidebar';
 import { Toolbar } from '@/components/Toolbar/Toolbar';
@@ -17,6 +18,7 @@ import { registerEditCommands } from '@/features/editing';
 import { registerExportCommands } from '@/features/export';
 import { registerFileOpen } from '@/features/fileopen';
 import { OcrProgressModal, registerOcrCommands } from '@/features/ocr';
+import { PlacementHint } from '@/features/placement';
 import { AboutModal } from '@/features/about';
 import { ContextMenu } from '@/features/contextmenu';
 import { registerSignatureCommands, SignatureModal } from '@/features/signatures';
@@ -97,6 +99,7 @@ export function App() {
   return (
     <div className="folio-app">
       <SkipLink />
+      <MenuBar />
       <Toolbar />
       <div className="folio-body">
         {/* Shown only on narrow viewports (CSS), where the sidebar is an
@@ -114,6 +117,7 @@ export function App() {
         </main>
       </div>
       {searchOpen && <SearchBar />}
+      <PlacementHint />
       <SignatureModal />
       <SigningModal />
       <OcrProgressModal />

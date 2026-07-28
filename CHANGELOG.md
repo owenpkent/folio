@@ -6,6 +6,57 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Application menu bar.** A classic File / Edit / View / Annotate / Sign /
+  Tools / Help menu row above the toolbar, built in-app (pure DOM, so it is
+  identical in the desktop app, the browser build, and the VS Code extension)
+  and driven by the command registry: each item executes the same command its
+  toolbar button did, shows the command's declared shortcut, and disables when
+  the command cannot run. Implements the full ARIA menubar keyboard pattern
+  (roving tab stop, arrow keys across and within menus, Home/End, Escape,
+  hover-slide between open menus). On narrow windows it folds into a single
+  hamburger Menu button with grouped rows. The Tools menu hosts
+  plugin-contributed commands and hides when no plugin contributes any.
+- **Thumbnails follow the current page.** The sidebar thumbnail strip scrolls
+  its highlighted page into view as you move through the document, using
+  nearest-edge scrolling so it never jumps when the thumb is already visible,
+  and stands down for a moment while you scroll the sidebar by hand.
+  Respects `prefers-reduced-motion`.
+
+- **Recent signature names.** The Type tab of the signature dialog remembers the
+  last five names you signed with (and the style you picked for each), offers
+  them as one-click chips, and prefills the most recent one, so signing a second
+  document no longer means retyping your name. Stored locally, text and font
+  only, never the rendered image.
+
+### Changed
+
+- **Text boxes, images, and signatures are placed where you click.** Adding one
+  no longer drops it in the middle of the page for you to drag into position:
+  the tool arms a click-to-place mode (with a banner; Escape, the banner's
+  Cancel, or a click anywhere off a page backs out) and the next click on a page
+  decides where the item lands. Text boxes start at the click, images and
+  signatures land centered on it. Picking a spot is a pointer affordance, so the
+  banner takes focus and carries the keyboard path: **Place in the middle**
+  centers the item on the current page, which is what these tools did before.
+- **A text box moves by dragging anywhere on it.** The narrow grip above the box
+  is gone; press anywhere on the box and drag. A press that does not travel is
+  still a plain click, so selecting a box and placing the caret work as before.
+- **The toolbar slimmed down.** With the menu bar carrying the full command
+  set, the toolbar's right side keeps only Save and Find next to the pinned
+  theme controls and About; comment, highlight, edit text, add text box, add
+  image, OCR, both signature actions, save a copy, and plugin buttons moved
+  into the menus.
+
+### Fixed
+
+- **Green and Amber dark schemes now apply to thumbnails.** Sidebar previews
+  used a plain CSS invert, so they stayed white-on-black while the page showed
+  the selected scheme. Thumbnails now render through the same raster-time
+  invert-and-tint path as the page (`renderPage` `invert`/`tint`) and re-render
+  when the theme or scheme changes, so the strip always matches the page.
+
 ## [0.4.0] - 2026-07-23
 
 ### Changed

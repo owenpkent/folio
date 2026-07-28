@@ -78,7 +78,7 @@ already hold values. The latter is deliberately otherwise blank, so any ink on
 the rendered canvas is a form widget that should have been left to the
 annotation layer, which is what makes the doubled-text assertion below possible.
 
-There are four specs.
+There are six specs.
 
 **`e2e/smoke.spec.ts`** — the core document flows:
 
@@ -120,6 +120,16 @@ squeezing the viewer, a tap on the backdrop or an **Escape** dismisses it
 clips and everything folded out of the bar (About, theme, fit modes, zoom)
 stays reachable in the **More** menu, and picking a thumbnail navigates and
 closes the drawer.
+
+**`e2e/placement.spec.ts`** — click-to-place and the text-box drag: a text box
+lands top-left at the click (not centered on the page) and takes typing straight
+away, the banner's focused **Place in the middle** button places one without a
+pointer at all (the keyboard path, WCAG 2.1.1), **Escape** or a click off a page
+(the margin, the toolbar) cancels an armed placement without placing anything, a
+box is dragged from anywhere on it while a press that does not travel still edits
+it,
+and a typed signature lands centered on the click and is offered back, prefilled,
+the next time the dialog opens.
 
 ### Tests that pin silent failures
 
@@ -226,10 +236,13 @@ Install the app first (the `.pdf` association is written by the installer, not b
 
 Works in both the browser build (`npm run dev`) and the desktop app.
 
-- **Text:** toolbar *Add text box* (the `T`), type into it, then use the inline
-  inspector (font, size, **B**, color) and drag the grip / corner to move and
-  resize. Click empty space or press Escape to deselect.
-- **Image:** toolbar *Add image*, pick a PNG/JPEG, drag/resize it.
+- **Text:** *Edit -> Add text box*, click where the box should go, type into it,
+  then use the inline inspector (font, size, **B**, color) and drag the box /
+  corner to move and resize. Click empty space or press Escape to deselect.
+  Escape while the placement banner is up cancels instead of placing, and its
+  *Place in the middle* button (focused on open) is the no-pointer route.
+- **Image:** *Edit -> Add image*, pick a PNG/JPEG, click to place it, then
+  drag/resize it.
 - **Round-trip:** Save a copy (Ctrl+S), reopen in Folio **and** a third-party
   reader; the text and image should sit where you placed them.
 

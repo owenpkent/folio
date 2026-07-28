@@ -151,7 +151,7 @@ folio/
 │  ├─ commands/             # command registry: every user action is a Command
 │  ├─ components/           # Viewer/, Toolbar/, Sidebar/, Search/, common/
 │  ├─ core/                 # engine-agnostic PDF core: pdf/ (PdfEngine + PdfJsEngine), document/
-│  ├─ features/             # annotations, editing (text/image), ocr, signatures, forms, export
+│  ├─ features/             # annotations, editing (text/image), placement, ocr, signatures, forms, export
 │  ├─ plugins/              # plugin host + SDK types + builtins/ (Word Count)
 │  ├─ state/                # Zustand stores
 │  ├─ styles/               # global CSS

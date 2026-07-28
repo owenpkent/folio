@@ -5,7 +5,12 @@ import { useFocusTrap } from '@/a11y/focus';
 import { Button, IconButton } from '@/components/common';
 import { useViewerStore } from '@/state/viewerStore';
 
-import { placeSignatureOnCurrentPage } from './commands';
+import { beginSignaturePlacement } from './commands';
+import {
+  getRecentSignatureNames,
+  rememberSignatureName,
+  type RecentSignatureName,
+} from './recents';
 import { loadImageFile, renderTypedSignature } from './render';
 import { SignaturePad, type SignaturePadHandle } from './SignaturePad';
 import { SIGNATURE_FONTS, type CreatedSignature, type SignatureSource } from './types';
@@ -20,10 +25,23 @@ export function SignatureModal() {
   const [typed, setTyped] = useState('');
   const [font, setFont] = useState(SIGNATURE_FONTS[0].value);
   const [upload, setUpload] = useState<CreatedSignature | null>(null);
+  const [recents, setRecents] = useState<RecentSignatureName[]>([]);
   const padRef = useRef<SignaturePadHandle>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useFocusTrap(dialogRef, open);
+
+  // Prefill with the name last signed with, so a returning user can go
+  // straight to "Place on page" without retyping it.
+  useEffect(() => {
+    if (!open) return;
+    const list = getRecentSignatureNames();
+    setRecents(list);
+    if (list.length > 0) {
+      setTyped(list[0].name);
+      setFont(list[0].font);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -42,7 +60,7 @@ export function SignatureModal() {
     setUpload(null);
   };
 
-  const onAdd = async () => {
+  const onAdd = () => {
     let created: CreatedSignature | null = null;
     if (tab === 'draw') created = padRef.current?.export() ?? null;
     else if (tab === 'type') created = renderTypedSignature(typed, font);
@@ -52,7 +70,9 @@ export function SignatureModal() {
       announce('Create a signature first', true);
       return;
     }
-    await placeSignatureOnCurrentPage(created.dataUrl, created.aspect);
+    if (tab === 'type') setRecents(rememberSignatureName(typed, font));
+    // The modal gets out of the way; the next click on a page places it.
+    beginSignaturePlacement(created.dataUrl, created.aspect);
     close();
   };
 
@@ -101,6 +121,25 @@ export function SignatureModal() {
 
           {tab === 'type' && (
             <div className="folio-sig-type">
+              {recents.length > 0 && (
+                <div className="folio-sig-recents">
+                  <span className="folio-modal__hint">Recent</span>
+                  {recents.map((r) => (
+                    <button
+                      key={r.name}
+                      type="button"
+                      className={`folio-sig-recent${typed === r.name && font === r.font ? ' is-active' : ''}`}
+                      style={{ fontFamily: r.font }}
+                      onClick={() => {
+                        setTyped(r.name);
+                        setFont(r.font);
+                      }}
+                    >
+                      {r.name}
+                    </button>
+                  ))}
+                </div>
+              )}
               <input
                 className="folio-input"
                 type="text"
@@ -147,7 +186,7 @@ export function SignatureModal() {
         <div className="folio-modal__footer">
           <Button onClick={close}>Cancel</Button>
           <Button variant="primary" onClick={onAdd}>
-            Add to page
+            Place on page
           </Button>
         </div>
       </div>

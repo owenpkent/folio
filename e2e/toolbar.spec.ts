@@ -50,6 +50,13 @@ test('toolbar keeps all controls on-screen on a narrow window', async ({ page })
   const overflow = await toolbar.evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(overflow, 'toolbar content overflows its own width').toBeLessThanOrEqual(1);
 
+  // The menu bar row is a separate fixed-height row above the toolbar; it must
+  // never overflow sideways either.
+  const menubarOverflow = await page
+    .locator('.folio-menubar')
+    .evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(menubarOverflow, 'menu bar content overflows its own width').toBeLessThanOrEqual(1);
+
   // The About control is pinned, so it stays on-screen at any width.
   const about = page.getByRole('button', { name: /about folio/i });
   const box = await about.boundingBox();
@@ -59,28 +66,34 @@ test('toolbar keeps all controls on-screen on a narrow window', async ({ page })
   );
 });
 
-test('overflowing tools collapse into a reachable "More" menu when very narrow', async ({
-  page,
-}) => {
+// The toolbar's own docTools shrank to just Save and Find once the menu bar
+// took over comment, highlight, edit text, add text, add image, OCR,
+// signatures, and save-a-copy; at 700px there is nothing left to collapse. The
+// menu bar itself (short text labels, not icon buttons) needs no narrow-window
+// overflow handling until it folds into the mobile hamburger at ≤640px.
+test('the menu bar stays fully visible and operable on a narrow window', async ({ page }) => {
   await page.setViewportSize({ width: 700, height: 800 });
   await page.goto('/');
   await openFixture(page);
 
-  // No horizontal clipping even at 700px wide.
-  const overflow = await page
+  // No horizontal clipping in either chrome row even at 700px wide.
+  const toolbarOverflow = await page
     .locator('.folio-toolbar')
     .evaluate((el) => el.scrollWidth - el.clientWidth);
-  expect(overflow).toBeLessThanOrEqual(1);
+  expect(toolbarOverflow, 'toolbar content overflows its own width').toBeLessThanOrEqual(1);
+  const menubarOverflow = await page
+    .locator('.folio-menubar')
+    .evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(menubarOverflow, 'menu bar content overflows its own width').toBeLessThanOrEqual(1);
 
   // The pinned About control is still directly visible.
   await expect(page.getByRole('button', { name: /about folio/i })).toBeVisible();
 
-  // The tools that don't fit are reachable through the overflow menu.
-  const more = page.getByRole('button', { name: 'More tools' });
-  await expect(more).toBeVisible();
-  await more.click();
-  const menu = page.getByRole('menu', { name: 'More tools' });
-  await expect(menu.getByRole('menuitem', { name: 'Find' })).toBeVisible();
+  // The menu bar is not folded into a hamburger at this width, and reaches
+  // actions that no longer live on the toolbar at all: Save a copy now only
+  // lives in the File menu.
+  await page.getByRole('menuitem', { name: 'File' }).click();
+  const menu = page.getByRole('menu', { name: 'File' });
   await expect(menu.getByRole('menuitem', { name: 'Save a copy' })).toBeVisible();
 });
 

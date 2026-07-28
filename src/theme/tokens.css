@@ -53,13 +53,10 @@
 
 /*
  * Dark mode is one unified experience: the UI chrome darkens via the tokens
- * above, and the rendered page inverts to match. The main page canvas is
- * inverted at raster time (see PdfJsEngine.renderPage `invert`) so it stays
- * razor-sharp; thumbnails are tiny and cheap, so a CSS filter is fine there.
+ * above, and the rendered page inverts to match. Both the main page canvas
+ * and thumbnails invert (and tint) at raster time (see PdfJsEngine.renderPage
+ * `invert`/`tint`), so there is no CSS filter for either here.
  */
-[data-theme='dark'] .folio-thumb__canvas {
-  filter: invert(1) hue-rotate(180deg);
-}
 
 /*
  * Windows High Contrast Mode (and any forced-colors mode).
@@ -107,7 +104,9 @@
   .folio-sidebar__tab.is-active,
   .folio-modal__tab.is-active,
   .folio-thumb.is-active .folio-thumb__frame,
-  .folio-search__result.is-active {
+  .folio-search__result.is-active,
+  .folio-menubar__trigger[aria-expanded='true'],
+  .folio-menubar__menuitem[aria-checked='true'] {
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }

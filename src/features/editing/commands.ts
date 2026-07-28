@@ -2,47 +2,76 @@ import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { pushToast } from '@/components/common';
 import { getEngine } from '@/core/pdf';
+import {
+  rectAt,
+  usePlacementStore,
+  type PagePoint,
+  type PlacementAnchor,
+} from '@/features/placement';
 import { useDocumentStore } from '@/state/documentStore';
-import { useViewerStore } from '@/state/viewerStore';
 
 import { useEditStore } from './store';
 import { DEFAULT_FONT_SIZE_PT, type ImageEdit } from './types';
 
 const ready = () => useDocumentStore.getState().status === 'ready';
 
-/** Add an empty text box centered on the page the user is viewing, ready to type. */
-export async function placeTextOnCurrentPage(): Promise<void> {
-  if (!ready()) return;
-  const { currentPage } = useViewerStore.getState();
-  const { height: ph } = await getEngine().getPageDimensions(currentPage, 1);
+/**
+ * Drop an empty text box where the user clicked, ready to type. Anchored
+ * top-left by default, so the text starts at the click.
+ */
+async function placeTextAt(
+  pageNumber: number,
+  point: PagePoint,
+  anchor: PlacementAnchor = 'topLeft',
+): Promise<void> {
+  const { height: ph } = await getEngine().getPageDimensions(pageNumber, 1);
 
   const rectW = 0.34;
   // Default to ~2 lines tall; the user can resize.
   const rectH = Math.min(0.5, (DEFAULT_FONT_SIZE_PT * 1.5 * 2) / (ph || 792));
-  const rect = { x: 0.5 - rectW / 2, y: 0.5 - rectH / 2, width: rectW, height: rectH };
 
-  useEditStore.getState().addText(currentPage, rect);
-  announce('Text box added. Type your text, then drag the grip to reposition.');
+  useEditStore.getState().addText(pageNumber, rectAt(point, rectW, rectH, anchor));
+  announce('Text box added. Type your text, then drag it to reposition.');
 }
 
-/** Place an image on the current page, preserving its aspect ratio. */
-export async function placeImageOnCurrentPage(
+/** Drop an image centered on the click, preserving its aspect ratio. */
+async function placeImageAt(
+  pageNumber: number,
+  point: PagePoint,
+  anchor: PlacementAnchor = 'center',
   dataUrl: string,
   mime: ImageEdit['mime'],
   aspect: number,
 ): Promise<void> {
-  if (!ready()) return;
-  const { currentPage } = useViewerStore.getState();
-  const { width: pw, height: ph } = await getEngine().getPageDimensions(currentPage, 1);
+  const { width: pw, height: ph } = await getEngine().getPageDimensions(pageNumber, 1);
 
   const rectW = 0.28;
   const displayW = rectW * pw;
   const displayH = displayW / (aspect || 1);
   const rectH = Math.min(0.4, displayH / (ph || 792));
-  const rect = { x: 0.5 - rectW / 2, y: 0.5 - rectH / 2, width: rectW, height: rectH };
 
-  useEditStore.getState().addImage(currentPage, dataUrl, mime, rect);
+  useEditStore.getState().addImage(pageNumber, dataUrl, mime, rectAt(point, rectW, rectH, anchor));
   announce('Image placed. Drag it to reposition, or drag the corner to resize.');
+}
+
+/** Arm click-to-place for a new text box. */
+export function beginTextPlacement(): void {
+  if (!ready()) return;
+  usePlacementStore.getState().begin({ label: 'text box', place: placeTextAt });
+}
+
+/** Arm click-to-place for an already-loaded image. */
+export function beginImagePlacement(
+  dataUrl: string,
+  mime: ImageEdit['mime'],
+  aspect: number,
+): void {
+  if (!ready()) return;
+  usePlacementStore.getState().begin({
+    label: 'image',
+    place: (pageNumber, point, anchor) =>
+      placeImageAt(pageNumber, point, anchor, dataUrl, mime, aspect),
+  });
 }
 
 interface PickedImage {
@@ -87,7 +116,8 @@ function pickImageFile(): Promise<PickedImage | null> {
       reader.onload = () => {
         const dataUrl = reader.result as string;
         const img = new Image();
-        img.onload = () => resolve({ dataUrl, mime, aspect: img.naturalWidth / (img.naturalHeight || 1) });
+        img.onload = () =>
+          resolve({ dataUrl, mime, aspect: img.naturalWidth / (img.naturalHeight || 1) });
         img.onerror = () => {
           pushToast('Could not decode the image', 'error');
           resolve(null);
@@ -112,7 +142,7 @@ export function registerEditCommands(): void {
     title: 'Add text box',
     category: 'Edit',
     when: ready,
-    run: () => placeTextOnCurrentPage(),
+    run: () => beginTextPlacement(),
   });
 
   commandRegistry.register({
@@ -122,7 +152,7 @@ export function registerEditCommands(): void {
     when: ready,
     run: async () => {
       const picked = await pickImageFile();
-      if (picked) await placeImageOnCurrentPage(picked.dataUrl, picked.mime, picked.aspect);
+      if (picked) beginImagePlacement(picked.dataUrl, picked.mime, picked.aspect);
     },
   });
 }

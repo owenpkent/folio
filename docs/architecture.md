@@ -67,9 +67,10 @@ Each layer maps to a real directory in the repository.
 | Accessibility | `src/a11y/` | Announcer (live region), focus trap, keyboard shortcut dispatch, skip link |
 | Annotations | `src/features/annotations/` | Annotation model, `store` (localStorage sidecar), `bake` (embeds highlights/notes as real `/Highlight` and `/Text` annotations on save), and tools |
 | Editing | `src/features/editing/` | Add text boxes and images (typewriter tool + placement), per-document `store`, and pdf-lib baking (`stampEdits`) |
+| Click to place | `src/features/placement/` | The shared "click where it goes" mode used by add-text, add-image, and signatures: a transient store holding the armed placement, the per-page click catcher, the hint banner (which also carries the keyboard path and the cancel affordances), and `rectAt` (anchor a rect at a point and keep it on the page) |
 | Text editing (in place) | `src/features/textedit/` | Edit text already on a page: a content-stream tokenizer/interpreter that locates show-text operators (`contentStream.ts`), a pdf-lib splice-and-redraw step (`mutate.ts`), the click-to-edit overlay, and a transient (not persisted) undo stack in `store` |
 | OCR | `src/features/ocr/` | tesseract.js recognition (self-hosted, lazy-loaded), per-document `store`, selectable on-screen text layer, invisible baked layer (`stampOcrLayer`), and the search fallback |
-| Signatures | `src/features/signatures/` | Visual signature creation (draw/type/upload), on-page placement, per-document `store` |
+| Signatures | `src/features/signatures/` | Visual signature creation (draw/type/upload), on-page placement, per-document `store`, and a small global list of recently typed names (`recents.ts`) |
 | Digital signing | `src/features/signing/` | Certificate identities (create/import .p12 via node-forge), PKCS#7 signing (@signpdf), and signature detection. Runs in the WebView today; a Rust/keychain backend is planned |
 | Save / export | `src/features/export/` | Writes the filled PDF (PDF.js `saveDocument`), then loads pdf-lib once to bake the OCR layer, edits, signatures, and review annotations |
 | Plugins | `src/plugins/` | Plugin host, SDK types, `contributionStore`, `builtins/` |
@@ -196,7 +197,7 @@ State is the single source of truth between the UI, commands, plugins, and the A
 | contribution store (`useContributionStore`) | `src/plugins/contributionStore.ts` | Plugin-contributed toolbar items, sidebar panels, annotation tools | Plugin host on activate/deactivate |
 | `toastStore` | `src/components/common/toastStore.ts` | Transient toast notifications | `pushToast` (commands, plugins) |
 
-Those are the core stores; the editing, OCR, signatures, signing, text-edit, and context-menu features colocate their own stores the same way (`src/features/*/store.ts`). There is no separate `viewportStore` or `uiStore`: view and UI state (zoom, fit, sidebar, search) all live in `viewerStore`. There is no `pluginStore`; plugin UI contributions live in `contributionStore`.
+Those are the core stores; the editing, OCR, signatures, signing, text-edit, placement, and context-menu features colocate their own stores the same way (`src/features/*/store.ts`). There is no separate `viewportStore` or `uiStore`: view and UI state (zoom, fit, sidebar, search) all live in `viewerStore`. There is no `pluginStore`; plugin UI contributions live in `contributionStore`.
 
 Design rules:
 

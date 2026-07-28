@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { commandRegistry } from '@/commands';
-import { IconButton, type IconName } from '@/components/common';
-import { useNotesUi } from '@/features/annotations';
+import { IconButton } from '@/components/common';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { useTextEditStore } from '@/features/textedit';
-import { useContributionStore } from '@/plugins';
 import { useDocumentStore } from '@/state/documentStore';
 import { focusViewer } from '@/state/viewerElement';
 import { AUTO_SCROLL_MAX, AUTO_SCROLL_MIN, useViewerStore } from '@/state/viewerStore';
@@ -48,88 +45,14 @@ export function Toolbar() {
   const setDarkScheme = useThemeStore((s) => s.setDarkScheme);
   const isNarrow = useMediaQuery(NARROW_VIEWPORT_QUERY);
   const isCompact = useMediaQuery(COMPACT_VIEWPORT_QUERY);
-  const addingNote = useNotesUi((s) => s.adding);
-  const textEditActive = useTextEditStore((s) => s.active);
-  const toolbarItems = useContributionStore((s) => s.toolbarItems);
 
-  // The right-group tools, in display order. Those that don't fit collapse into
-  // the overflow (⋯) menu, from the end, so a narrow window never clips them.
+  // The right-group tools, in display order. Everything else that used to live
+  // here (plugin buttons, comment, highlight, edit text, add text, add image,
+  // OCR, signatures, save a copy) now lives only in the menu bar above; this
+  // group keeps just the two actions common enough to warrant a direct button.
+  // Those that don't fit collapse into the overflow (⋯) menu, from the end, so
+  // a narrow window never clips them.
   const docTools: OverflowTool[] = [
-    ...toolbarItems.map((item) => ({
-      id: item.id,
-      icon: (item.icon as IconName) ?? 'note',
-      label: item.title,
-      menuLabel: item.title,
-      onClick: () => commandRegistry.execute(item.commandId),
-    })),
-    {
-      id: 'comment',
-      icon: 'comment',
-      label: 'Comment on selected text, or click to place (Ctrl/Cmd + Shift + M)',
-      menuLabel: 'Comment',
-      active: addingNote,
-      disabled: !hasDoc,
-      preserveSelection: true,
-      onClick: () => run('annotate.addNote'),
-    },
-    {
-      id: 'highlight',
-      icon: 'highlighter',
-      label: 'Highlight selection (Ctrl/Cmd + Shift + H)',
-      menuLabel: 'Highlight',
-      disabled: !hasDoc,
-      preserveSelection: true,
-      onClick: () => run('annotate.highlight'),
-    },
-    {
-      id: 'edit-text',
-      icon: 'pencil',
-      label: 'Edit text',
-      menuLabel: 'Edit text',
-      active: textEditActive,
-      disabled: !hasDoc,
-      onClick: () => run('textedit.toggle'),
-    },
-    {
-      id: 'add-text',
-      icon: 'type',
-      label: 'Add text box',
-      menuLabel: 'Add text box',
-      disabled: !hasDoc,
-      onClick: () => run('edit.addText'),
-    },
-    {
-      id: 'add-image',
-      icon: 'image',
-      label: 'Add image',
-      menuLabel: 'Add image',
-      disabled: !hasDoc,
-      onClick: () => run('edit.addImage'),
-    },
-    {
-      id: 'ocr',
-      icon: 'scan',
-      label: 'Recognize text (OCR)',
-      menuLabel: 'Recognize text (OCR)',
-      disabled: !hasDoc,
-      onClick: () => run('ocr.recognizeDocument'),
-    },
-    {
-      id: 'signature',
-      icon: 'signature',
-      label: 'Add signature',
-      menuLabel: 'Add signature',
-      disabled: !hasDoc,
-      onClick: () => run('sign.addSignature'),
-    },
-    {
-      id: 'digitally-sign',
-      icon: 'shield',
-      label: 'Digitally sign',
-      menuLabel: 'Digitally sign',
-      disabled: !hasDoc,
-      onClick: () => run('sign.digitallySign'),
-    },
     {
       id: 'save',
       icon: 'save',
@@ -137,14 +60,6 @@ export function Toolbar() {
       menuLabel: 'Save',
       disabled: !hasDoc,
       onClick: () => run('file.save'),
-    },
-    {
-      id: 'save-copy',
-      icon: 'download',
-      label: 'Save a copy (Ctrl/Cmd + Shift + S)',
-      menuLabel: 'Save a copy',
-      disabled: !hasDoc,
-      onClick: () => run('file.saveAs'),
     },
     {
       id: 'find',
