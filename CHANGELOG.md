@@ -6,29 +6,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Fixed
-
-- **The densest displays no longer render below their own pixel density**
-  ([#29](https://github.com/owenpkent/folio/issues/29)). The backing-store scale
-  aimed for "at least 2x, at most 3x", so a panel reporting a `devicePixelRatio`
-  above 3 was handed a 3x render that it then had to stretch. The 3x ceiling is
-  gone: the target is now the greater of 2x and the display's own ratio, bounded
-  by the canvas pixel budget, which was always the real limit. The earlier half
-  of this issue — a `Math.min(1, dpr)` floor that could both under-render *and*
-  bust the budget — was already fixed; the docs and an old release note that
-  still claimed the render was never below the display ratio are corrected here.
-- **Re-render on DPI change now works on fractional-scaling displays**
-  ([#30](https://github.com/owenpkent/folio/issues/30)). Detection built a
-  `matchMedia('(resolution: Xdppx)')` query by interpolating
-  `window.devicePixelRatio`, relying on it evaluating true so that any change
-  would flip it false and fire. Windows at 133% reports 1.3333333333333333, and
-  an equality query built from a float like that may never evaluate true — and a
-  query that starts false never flips, so dragging a window between monitors left
-  pages baked at the old ratio and visibly blurry. Exactly the displays the
-  feature exists for. It now brackets the ratio with a range query, true by
-  construction whatever the float, and falls back to a low-frequency poll if even
-  that fails to match rather than silently doing nothing a second time.
-
+## [0.5.0] - 2026-07-28
 
 ### Added
 
@@ -46,10 +24,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Aspect ratio stays locked wherever the pointer locks it, and a resize that
   would push one axis past its limit is refused whole rather than silently
   reshaping the item.
-
-
-### Added
-
 - **Application menu bar.** A classic File / Edit / View / Annotate / Sign /
   Tools / Help menu row above the toolbar, built in-app (pure DOM, so it is
   identical in the desktop app, the browser build, and the VS Code extension)
@@ -65,13 +39,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   nearest-edge scrolling so it never jumps when the thumb is already visible,
   and stands down for a moment while you scroll the sidebar by hand.
   Respects `prefers-reduced-motion`.
-
 - **Recent signature names.** The Type tab of the signature dialog remembers the
   last five names you signed with (and the style you picked for each), offers
   them as one-click chips, and prefills the most recent one, so signing a second
   document no longer means retyping your name. Stored locally, text and font
   only, never the rendered image.
-
 - **Text inside Form XObjects is now editable.** The content-stream parser
   descends into `Do`-invoked Form XObjects, composing each form's own
   `/Matrix` with the transform at the invocation site, so text placed by a
@@ -122,15 +94,40 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   theme controls and About; comment, highlight, edit text, edit images, add text
   box, add image, add check mark, OCR, both signature actions, save a copy, and
   plugin buttons all live in the menus.
+- **Upgraded to React 19** (`react`, `react-dom`, and both `@types` packages
+  together). No source changes were needed: no removed React 18 API is used
+  anywhere, and no ref callback returns a value, which is the React 19 change
+  least likely to be caught by a test suite since a returned value is now treated
+  as a cleanup function. Also picks up grouped GitHub Actions and Cargo
+  dependency bumps.
 
 ### Fixed
 
+- **The densest displays no longer render below their own pixel density**
+  ([#29](https://github.com/owenpkent/folio/issues/29)). The backing-store scale
+  aimed for "at least 2x, at most 3x", so a panel reporting a `devicePixelRatio`
+  above 3 was handed a 3x render that it then had to stretch. The 3x ceiling is
+  gone: the target is now the greater of 2x and the display's own ratio, bounded
+  by the canvas pixel budget, which was always the real limit. The earlier half
+  of this issue — a `Math.min(1, dpr)` floor that could both under-render *and*
+  bust the budget — was already fixed; the docs and an old release note that
+  still claimed the render was never below the display ratio are corrected here.
+- **Re-render on DPI change now works on fractional-scaling displays**
+  ([#30](https://github.com/owenpkent/folio/issues/30)). Detection built a
+  `matchMedia('(resolution: Xdppx)')` query by interpolating
+  `window.devicePixelRatio`, relying on it evaluating true so that any change
+  would flip it false and fire. Windows at 133% reports 1.3333333333333333, and
+  an equality query built from a float like that may never evaluate true — and a
+  query that starts false never flips, so dragging a window between monitors left
+  pages baked at the old ratio and visibly blurry. Exactly the displays the
+  feature exists for. It now brackets the ratio with a range query, true by
+  construction whatever the float, and falls back to a low-frequency poll if even
+  that fails to match rather than silently doing nothing a second time.
 - **Green and Amber dark schemes now apply to thumbnails.** Sidebar previews
   used a plain CSS invert, so they stayed white-on-black while the page showed
   the selected scheme. Thumbnails now render through the same raster-time
   invert-and-tint path as the page (`renderPage` `invert`/`tint`) and re-render
   when the theme or scheme changes, so the strip always matches the page.
-
 - **Signatures, text boxes, images, annotations, and the OCR layer no longer
   render twice after saving and reopening a document.** Overlay content is
   kept in a per-document sidecar keyed by the PDF fingerprint, which PDF.js
@@ -562,7 +559,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
   cargo-deny policy.
 
-[Unreleased]: https://github.com/owenpkent/folio/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/owenpkent/folio/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/owenpkent/folio/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/owenpkent/folio/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/owenpkent/folio/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/owenpkent/folio/compare/v0.2.0...v0.3.0
