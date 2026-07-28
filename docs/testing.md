@@ -22,6 +22,11 @@ The first e2e run needs the browser binary:
 npx playwright install chromium
 ```
 
+Run it again after any `@playwright/test` upgrade. Playwright pins each release
+to its own browser build, so a version bump leaves the old binary behind and
+**every spec fails at 0ms** with `browserType.launch: Executable doesn't exist`.
+That reads like a catastrophic regression and is nothing of the sort.
+
 ## Unit tests (Vitest)
 
 Test files live next to the code they cover, named `*.test.ts` (or `.test.tsx`

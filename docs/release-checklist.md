@@ -20,7 +20,7 @@ issue or defer the release.
 - [ ] `npm run typecheck` — no type errors
 - [ ] `npm run check:versions` — `tauri` crate and `@tauri-apps/api` share the same major.minor (also enforced in CI)
 - [ ] `npm run build` — clean production build, no warnings worth investigating
-- [ ] `npm run test:e2e` — Playwright smoke suite green (needs `npx playwright install chromium` once)
+- [ ] `npm run test:e2e` — Playwright smoke suite green (needs `npx playwright install chromium`, and again after any `@playwright/test` upgrade, or every spec fails at 0ms on a missing browser)
 - [ ] No outstanding **High** or **Critical** Dependabot alerts on `main`
       (`gh api repos/owenpkent/folio/dependabot/alerts --jq '.[] | select(.state=="open") | select(.security_advisory.severity=="high" or .security_advisory.severity=="critical")'`).
       Document any accepted Medium/Low alerts in the CHANGELOG.

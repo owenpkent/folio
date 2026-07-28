@@ -47,6 +47,10 @@ Folio rendering a two-page form PDF, in light and dark:
 **Accessibility (first-class, not bolted on)**
 - Real text layer over every page: selectable, screen-reader readable
 - Full keyboard control with a command-driven shortcut system
+- Everything you place on a page (text boxes, images, check marks, signatures)
+  can be moved, resized, and deleted from the keyboard, not only by dragging.
+  Images already embedded in the PDF can be deleted the same way, and moved and
+  resized too where the file's own structure allows it
 - ARIA landmarks and roles, a skip link, and live-region announcements
 - Respects `prefers-reduced-motion`; targets WCAG 2.2 AA
 
@@ -124,7 +128,7 @@ are trying to do.
 | Layer      | Choice                                             |
 | ---------- | -------------------------------------------------- |
 | Shell      | [Tauri 2](https://tauri.app) (Rust)                |
-| UI         | [React 18](https://react.dev) + TypeScript         |
+| UI         | [React 19](https://react.dev) + TypeScript         |
 | Build      | [Vite](https://vitejs.dev)                         |
 | Rendering  | [PDF.js](https://mozilla.github.io/pdf.js/)        |
 | State      | [Zustand](https://github.com/pmndrs/zustand)       |
@@ -198,12 +202,12 @@ folio/
 ├─ src/                  React + TypeScript frontend
 │  ├─ core/pdf/          PdfEngine interface + PDF.js implementation
 │  ├─ commands/          command registry (every user action)
-│  ├─ components/        Viewer, Toolbar, Sidebar, Search, common
+│  ├─ components/        Viewer, MenuBar, Toolbar, Sidebar, Search, common
 │  ├─ features/          annotations, editing, placement, textedit, imageedit, ocr, signatures, forms, save/export
 │  ├─ plugins/           plugin host, SDK types, built-in Word Count plugin
 │  ├─ ai/                provider-agnostic AI layer (Claude, experimental) + MCP stubs
 │  ├─ theme/             tokens, ThemeProvider, dark schemes, breakpoints
-│  ├─ hooks/             shared React hooks (useMediaQuery)
+│  ├─ hooks/             shared React hooks (media queries, DPI-change watch)
 │  ├─ a11y/              announcer, focus, keyboard shortcuts
 │  ├─ state/             Zustand stores
 │  ├─ styles/            global CSS

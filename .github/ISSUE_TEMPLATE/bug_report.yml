@@ -52,7 +52,7 @@ body:
     attributes:
       label: Folio version
       description: Which version of Folio are you running? See Help > About, or the release tag.
-      placeholder: "0.4.2"
+      placeholder: "0.5.0"
     validations:
       required: true
 
