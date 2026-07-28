@@ -326,8 +326,27 @@ organized and what is covered. All tests must pass in CI before a PR can merge.
   `.github/dependabot.yml`, and the reason is concrete: before they were, a PR
   bumping half a cohort could not even `npm ci`, so it sat red for weeks without
   saying anything about whether the upgrade worked. Grouping keeps one dedicated
-  PR per breaking upgrade while making that PR installable. If you meet a new
-  half-bump that fails at install, add its cohort rather than closing the PR.
+  PR per breaking upgrade while making that PR installable.
+
+  A dependency PR that dies at `npm ci` with `ERESOLVE` has **two** causes that
+  look identical, and they need opposite responses. Read the peer conflict npm
+  prints, find the package holding the old range, and check the registry
+  (`npm view <pkg> peerDependencies`) before doing anything:
+
+  1. **A cohort member was left behind**, and a compatible release exists. Add it
+     to the group in `.github/dependabot.yml` rather than closing the PR. This
+     was #20/#21 (`react-dom`) and #50/#51 (`@vitejs/plugin-react`).
+  2. **Upstream has not shipped support yet**, so there is no version to move to.
+     Nothing you can add to the cohort will help. Leave the PR open, record the
+     blocking package on it, and let it go green on its own when upstream
+     releases. This is [#47](https://github.com/owenpkent/folio/pull/47): the
+     `eslint-major` group already matches `eslint-plugin-*`, but
+     `eslint-plugin-jsx-a11y` has no eslint 10 release at all, so eslint stays at
+     9 until it does.
+
+  Do not reach for `--legacy-peer-deps` in either case. CI runs `npm ci` and
+  would still fail, and it would only convert an honest install error into a lint
+  run against an unsupported pairing.
 
   Never merge a dependency PR with failing CI.
 
