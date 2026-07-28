@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { announce } from '@/a11y/announcer';
 import { getEngine } from '@/core/pdf';
 import { useContextMenu } from '@/features/contextmenu';
+import { watchDevicePixelRatio } from '@/hooks/watchDevicePixelRatio';
 import { focusViewer, setViewerElement } from '@/state/viewerElement';
 import { MAX_SCALE, MIN_SCALE, useViewerStore } from '@/state/viewerStore';
 import { useDocumentStore } from '@/state/documentStore';
@@ -152,24 +153,15 @@ export function PdfViewer() {
 
   // Re-rasterise every page when devicePixelRatio changes — dragging the window
   // to a monitor of a different scale leaves canvases baked at the old ratio,
-  // which the OS then stretches (blur). devicePixelRatio has no change event, so
-  // use the documented trick: a `(resolution: Xdppx)` media query is a fixed
-  // boundary that stops matching the instant dpr changes; re-register a fresh
-  // query each time it fires.
-  useEffect(() => {
-    let mql: MediaQueryList | null = null;
-    const onChange = () => {
-      useViewerStore.getState().bumpRenderNonce();
-      subscribe();
-    };
-    const subscribe = () => {
-      mql?.removeEventListener('change', onChange);
-      mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
-      mql.addEventListener('change', onChange, { once: true });
-    };
-    subscribe();
-    return () => mql?.removeEventListener('change', onChange);
-  }, []);
+  // which the OS then stretches (blur). devicePixelRatio has no change event of
+  // its own, so the detection lives in watchDevicePixelRatio; see there for why
+  // it brackets the ratio with a range query rather than testing it for equality
+  // (an equality query built from a fractional ratio may never match, which is
+  // exactly the fractional-scaling case the feature exists for).
+  useEffect(
+    () => watchDevicePixelRatio(() => useViewerStore.getState().bumpRenderNonce()),
+    [],
+  );
 
   // Honor scroll-to-page requests (outline clicks, page box, next/prev).
   useEffect(() => {

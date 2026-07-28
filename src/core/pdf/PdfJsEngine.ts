@@ -15,6 +15,14 @@ import type {
   SearchMatch,
 } from './types';
 
+/**
+ * Lowest backing-store scale to render at, whatever the display reports. A 1x
+ * panel still benefits from a supersampled store downsampled into the canvas's
+ * CSS size, which is what keeps text crisp where the platform under-reports DPI
+ * (WebView2 under Windows scaling) as well as on genuinely 1x screens.
+ */
+const SUPERSAMPLE_MIN = 2;
+
 // Canvas backing-store budget. pdf.js's low-level render API enforces no limit,
 // so we cap it ourselves: past the browser's canvas ceiling the page is silently
 // downscaled (blur) and memory balloons. 2^24 px matches pdf.js's own viewer
@@ -22,6 +30,33 @@ import type {
 // max-dimension limit (Chromium/WebKit ~16k, but large canvases get unstable).
 const MAX_CANVAS_AREA = 16_777_216; // 2 ** 24
 const MAX_CANVAS_DIM = 4096;
+
+/**
+ * The scale to rasterise a page's backing store at, given its CSS size and the
+ * display's pixel ratio. Exported for tests: the two competing pressures here
+ * (be at least as dense as the display, stay inside the canvas budget) are what
+ * issue #29 was about, and they are worth pinning down.
+ *
+ * Supersamples toward crisp: at least SUPERSAMPLE_MIN, so even a 1x panel gets a
+ * higher-resolution store to downsample from, and never below the display's own
+ * density, so a 4x panel is not handed a 3x render it has to stretch. There is
+ * deliberately no ceiling of its own -- the budget below is the one bound, and a
+ * second, smaller ceiling only served to under-render the densest displays.
+ *
+ * The budget then wins unconditionally: past roughly 5x zoom a page's CSS layout
+ * size alone exceeds it, so any floor (even 1x) would hand the browser an
+ * oversized canvas that it silently downscales anyway (blur) while burning the
+ * memory the cap exists to bound. There, a sub-density render is the honest
+ * outcome and the browser upsamples.
+ */
+export function backingStoreScale(cssWidth: number, cssHeight: number, dpr: number): number {
+  const target = Math.max(SUPERSAMPLE_MIN, dpr);
+  const cap = Math.min(
+    MAX_CANVAS_DIM / Math.max(cssWidth, cssHeight),
+    Math.sqrt(MAX_CANVAS_AREA / (cssWidth * cssHeight)),
+  );
+  return Math.min(target, cap);
+}
 
 // PDF.js raw outline items, typed loosely to avoid depending on internals.
 interface RawOutlineItem {
@@ -97,21 +132,11 @@ export class PdfJsEngine implements PdfEngine {
     // a max DIMENSION: the low-level pdf.js API enforces neither, and a canvas
     // past the browser's limit gets silently downscaled (blur) and burns memory.
     const viewport = page.getViewport({ scale });
-    const dpr = window.devicePixelRatio || 1;
-    const target = Math.min(3, Math.max(2, dpr)); // supersample toward crisp
-    // Hard ceiling on the backing store: the tighter of the max-per-side and
-    // pixel-budget limits. It has to win unconditionally — past ~5x zoom the
-    // page's CSS layout size alone already exceeds the budget, so any floor
-    // (even 1x) would bust the cap and hand the browser an oversized canvas it
-    // silently downscales anyway (blur) while burning the memory the cap exists
-    // to bound. There we accept a sub-1x, browser-downsampled render instead.
-    const cap = Math.min(
-      MAX_CANVAS_DIM / Math.max(viewport.width, viewport.height),
-      Math.sqrt(MAX_CANVAS_AREA / (viewport.width * viewport.height)),
+    const outputScale = backingStoreScale(
+      viewport.width,
+      viewport.height,
+      window.devicePixelRatio || 1,
     );
-    // Aim for `target` (>= 2x, so normal pages never drop below CSS resolution),
-    // but never above the cap.
-    const outputScale = Math.min(target, cap);
 
     canvas.width = Math.round(viewport.width * outputScale);
     canvas.height = Math.round(viewport.height * outputScale);
