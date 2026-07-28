@@ -38,6 +38,28 @@ updates:
           - "eslint-plugin-*"
         update-types:
           - "major"
+      # Demonstrated by #50 and #51, the same half-bump as #20/#21 in a cohort the
+      # first pass missed: @vitejs/plugin-react@6 peers on vite@^8 while
+      # plugin-react@4 caps at vite@7, so neither package can cross a major on its
+      # own and both PRs failed at `npm ci`.
+      vite-major:
+        applies-to: version-updates
+        patterns:
+          - vite
+          - "@vitejs/*"
+        update-types:
+          - "major"
+      # Preventive rather than demonstrated: @vitest/coverage-v8 peers on the exact
+      # vitest version, so a vitest major has the identical problem the moment one
+      # is published. Grouped now while the reasoning is in front of us, rather
+      # than after another pair of permanently red PRs.
+      vitest-major:
+        applies-to: version-updates
+        patterns:
+          - vitest
+          - "@vitest/*"
+        update-types:
+          - "major"
       npm-minor:
         patterns: ["*"]
         update-types:
