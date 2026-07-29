@@ -6,47 +6,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Changed
-
-- **Documentation sweep after 0.5.0.** The stack table, the setup guide, the
-  contributing guide, and the architecture doc all still said React 18; the
-  in-place image tool was still described as living on the toolbar rather than in
-  the Edit menu; and the source-tree listing was missing `components/MenuBar`.
-  Corrected, along with a broken relative link in `CLAUDE.md` that pointed into
-  the security-tooling repo.
-- **The per-page overlay stack is now documented**
-  ([architecture.md](docs/architecture.md#the-per-page-overlay-stack)), with the
-  rule that keeps catching people out: a tool that covers the page with a
-  click-catcher sits *above* the forms layer, which only takes pointer events over
-  each field's own rect, so without the shared `formWidgetAt` hit-test any armed
-  tool makes form fields unfillable. Three tools do this and one of them inverts
-  the rule on purpose.
-- **`npm audit` guidance now points at the known-accepted list.** "Treat
-  high/critical as blocking" was becoming impossible to follow literally: the
-  gate that blocks a release is Dependabot, and `npm audit` additionally reports
-  findings that cannot be fixed from this repository at all
-  ([#57](https://github.com/owenpkent/folio/issues/57),
-  [#58](https://github.com/owenpkent/folio/issues/58)). The Dependabot section
-  also described major upgrades as never grouped, which stopped being true when
-  cohort grouping landed.
-- **The Playwright browser gotcha is documented** in
-  [testing.md](docs/testing.md) and the release checklist: the binary must be
-  reinstalled after any `@playwright/test` upgrade, or every spec fails at 0ms on
-  a missing executable, which reads as a catastrophic regression and is not one.
-
-### Security
-
-- **Updated `postcss` to 8.5.24 and the VS Code extension's `esbuild` to 0.25**,
-  clearing the two Dependabot alerts that appeared once alerts were enabled for
-  the repository. Both are development-only dependencies and neither ships in a
-  built artifact: postcss arrives transitively through Vite
-  ([GHSA-r28c-9q8g-f849](https://github.com/advisories/GHSA-r28c-9q8g-f849), path
-  traversal in source-map auto-loading), and esbuild is the extension's bundler
-  ([GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99), dev
-  server request handling). The postcss one was a **high**, which the release
-  checklist gates on, so it would have blocked the next release.
-
-
 ## [0.5.0] - 2026-07-28
 
 ### Added
@@ -141,6 +100,41 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   least likely to be caught by a test suite since a returned value is now treated
   as a cleanup function. Also picks up grouped GitHub Actions and Cargo
   dependency bumps.
+- **Documentation swept to match the code.** The stack table, the setup guide,
+  the contributing guide, and the architecture doc all still said React 18; the
+  in-place image tool was still described as living on the toolbar rather than in
+  the Edit menu; and the source-tree listing was missing `components/MenuBar`.
+  Corrected, along with a broken relative link in `CLAUDE.md` that pointed into
+  the security-tooling repo.
+- **The per-page overlay stack is now documented**
+  ([architecture.md](docs/architecture.md#the-per-page-overlay-stack)), with the
+  rule that keeps catching people out: a tool that covers the page with a
+  click-catcher sits *above* the forms layer, which only takes pointer events over
+  each field's own rect, so without the shared `formWidgetAt` hit-test any armed
+  tool makes form fields unfillable. Three tools do this and one of them inverts
+  the rule on purpose.
+- **`npm audit` guidance now points at the known-accepted list.** "Treat
+  high/critical as blocking" was becoming impossible to follow literally: the
+  gate that blocks a release is Dependabot, and `npm audit` additionally reports
+  findings that cannot be fixed from this repository at all
+  ([#57](https://github.com/owenpkent/folio/issues/57),
+  [#58](https://github.com/owenpkent/folio/issues/58)). The Dependabot section
+  also described major upgrades as never grouped, which stopped being true when
+  cohort grouping landed.
+- **The two causes of a dependency PR dying at `npm ci` are named separately**,
+  in CONTRIBUTING and in the header of `.github/dependabot.yml`. An `ERESOLVE`
+  prints the same peer conflict whether a cohort member was left behind (add it
+  to the group) or upstream has not shipped support at all (no group change
+  helps; the PR waits), and the guidance previously offered only the first
+  answer. Both places now point at `npm view <pkg> peerDependencies` as the way
+  to tell them apart, and rule out `--legacy-peer-deps`, which cannot help under
+  `npm ci` either way. The labels that config assigns (`dependencies`,
+  `javascript`, `rust`, `github-actions`) also did not exist, so Dependabot
+  commented that it could not apply them on every PR it opened; they exist now.
+- **The Playwright browser gotcha is documented** in
+  [testing.md](docs/testing.md) and the release checklist: the binary must be
+  reinstalled after any `@playwright/test` upgrade, or every spec fails at 0ms on
+  a missing executable, which reads as a catastrophic regression and is not one.
 
 ### Fixed
 
@@ -207,6 +201,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fan-out to the power of the depth limit in stream traversals, enough to hang
   the tab on a file the user only meant to open. Total descents per parse are
   now capped, well above what real documents use.
+- **Updated `postcss` to 8.5.24 and the VS Code extension's `esbuild` to 0.25**,
+  clearing the two Dependabot alerts that appeared once alerts were enabled for
+  the repository. Both are development-only dependencies and neither ships in a
+  built artifact: postcss arrives transitively through Vite
+  ([GHSA-r28c-9q8g-f849](https://github.com/advisories/GHSA-r28c-9q8g-f849), path
+  traversal in source-map auto-loading), and esbuild is the extension's bundler
+  ([GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99), dev
+  server request handling). The postcss one was a **high**, which the release
+  checklist gates on, so it would otherwise have blocked this release.
+- **Accepted for this release: one medium Dependabot alert.** `glib` carries an
+  unsoundness advisory in the `Iterator` and `DoubleEndedIterator` impls for
+  `VariantStrIter`, fixed upstream in 0.20.0. The version here is pinned
+  transitively by Tauri's Linux stack, so it cannot be moved from this
+  repository, and it is not in the Windows build that ships. Tracked in
+  [#58](https://github.com/owenpkent/folio/issues/58); the release checklist
+  gates on high and critical only.
 
 ## [0.4.0] - 2026-07-23
 
