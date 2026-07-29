@@ -163,7 +163,7 @@ kbd {
   color: var(--folio-text);
 }
 
-/* ---- Toolbar dropdown (dark reading color) ---- */
+/* ---- Toolbar dropdown (appearance: viewing mode + dark reading color) ---- */
 .folio-dropdown {
   position: relative;
   display: inline-flex;
@@ -209,6 +209,19 @@ kbd {
 }
 .folio-dropdown__label {
   flex: 1;
+}
+.folio-dropdown__group-label {
+  padding: 6px 10px 3px;
+  color: var(--folio-text-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.folio-dropdown__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--folio-border);
 }
 .folio-swatch {
   display: inline-flex;

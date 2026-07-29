@@ -114,7 +114,11 @@ When dark mode is active, `darkScheme` (`src/theme/themeStore.ts`, values `'nigh
 
 The tint is applied at raster time, after the difference-invert: a `multiply` fill of an RGB color over the now-inverted canvas. `DARK_SCHEME_TINT` (`src/theme/themeStore.ts`) maps `green` to `[85, 255, 85]` and `amber` to `[240, 185, 80]`; `night` has no tint (`null`). Multiplying rather than replacing the color means the now-white ink picks up the tint while black stays black, so anti-aliasing at glyph edges is preserved instead of banding. `DARK_SCHEME_LABELS` supplies the display names shown in the picker.
 
-`darkScheme` is chosen from a toolbar dropdown, `DarkSchemeMenu` (`src/components/Toolbar/DarkSchemeMenu.tsx`, using the contrast/◐ icon), which sits next to the light/dark toggle. The setting is tied to dark mode: in light mode the page renders as authored regardless of which scheme is selected; in dark mode, the selected scheme is what you see. Changing the scheme while dark mode is active re-renders visible pages immediately, the same as toggling the theme itself.
+`darkScheme` is chosen from the toolbar's single appearance dropdown, `AppearanceMenu` (`src/components/Toolbar/AppearanceMenu.tsx`), under its "Dark reading color" group. That one menu owns the whole viewing mode: the `theme` radio group (Light / Dark / Match system) sits above the schemes, separated by a rule. It replaced a pair of adjacent buttons, a light/dark toggle and a scheme-only dropdown, which between them left `system` unreachable from the toolbar. The trigger icon reports the mode in effect (moon when dark, sun when light) rather than the mode a click would switch to, because it opens a menu instead of toggling.
+
+The scheme setting is tied to dark mode: in light mode the page renders as authored regardless of which scheme is selected; in dark mode, the selected scheme is what you see. Changing the scheme while dark mode is active re-renders visible pages immediately, the same as changing the theme itself.
+
+On narrow viewports the pinned tail folds away and both settings reappear in the More (⋯) menu as flat "tap to change" rows that cycle, since a dropdown cannot nest inside that menu.
 
 **Thumbnails follow the same raster-time path**: `Thumbnails.tsx` passes the same `invert`/`tint` options into `renderPage` that `Page.tsx` does, so the sidebar previews match the page exactly in every scheme. No CSS filter is involved anywhere anymore; already-rendered thumbnails re-render when the theme or scheme changes.
 

@@ -38,10 +38,29 @@ test('renders the empty state on launch', async ({ page }) => {
   ).toBeVisible();
 });
 
-test('toggles dark mode', async ({ page }) => {
+test('the appearance menu switches to dark mode', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: /toggle light \/ dark/i }).click();
+  await page.getByRole('button', { name: /^appearance:/i }).click();
+  await page.getByRole('menuitemradio', { name: 'Dark', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+});
+
+test('one button opens every viewing-mode option, mode and dark colour alike', async ({ page }) => {
+  await page.goto('/');
+
+  // The mode and the dark reading colour used to be two separate buttons.
+  await expect(page.getByRole('button', { name: /^appearance:/i })).toHaveCount(1);
+  await page.getByRole('button', { name: /^appearance:/i }).click();
+
+  const menu = page.getByRole('menu', { name: 'Appearance' });
+  for (const option of ['Light', 'Dark', 'Match system', 'Night', 'Green', 'Amber']) {
+    await expect(menu.getByRole('menuitemradio', { name: option, exact: true })).toBeVisible();
+  }
+
+  // 'system' is only reachable now that the toggle became a menu; picking it
+  // hands the choice back to the OS query rather than pinning a theme.
+  await menu.getByRole('menuitemradio', { name: 'Match system', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Appearance: Match system' })).toBeVisible();
 });
 
 test('opens a PDF and renders its pages', async ({ page }) => {

@@ -8,6 +8,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **One toolbar button for the viewing mode.** The light/dark toggle and the
+  dark-reading-colour dropdown were two adjacent buttons; they are now a single
+  `AppearanceMenu` that opens a menu with every option: Light, Dark, Match
+  system, then Night, Green, Amber. `Match system` was already a supported
+  `theme` value but no toolbar control could reach it, since the toggle only
+  ever flipped between light and dark. The trigger icon now reports the mode in
+  effect rather than the one a click would apply, because it opens a menu rather
+  than toggling. `Ctrl/Cmd + Shift + L` and the View menu are unchanged.
 - **Documentation sweep after 0.5.0.** The stack table, the setup guide, the
   contributing guide, and the architecture doc all still said React 18; the
   in-place image tool was still described as living on the toolbar rather than in
