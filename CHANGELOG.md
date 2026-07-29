@@ -6,6 +6,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Print.** `Ctrl/Cmd + P`, or File → Print…, sends the open document to the
+  system print dialog. Printing goes through the same bake pipeline as Save
+  (`exportDocument`), then rasterizes those bytes in a throwaway PDF.js
+  document, so placed text, images, check marks, signatures, and highlights all
+  reach the paper. Printing the on-screen canvas instead would have dropped
+  every one of them, since they are DOM overlays above the canvas rather than
+  pixels in it. Pages are rendered at 144dpi in their authored colors: dark mode
+  is a screen reading aid and is deliberately not carried onto paper.
+
 ### Changed
 
 - **One toolbar button for the viewing mode.** The light/dark toggle and the

@@ -74,6 +74,7 @@ Each layer maps to a real directory in the repository.
 | Signatures | `src/features/signatures/` | Visual signature creation (draw/type/upload), on-page placement, per-document `store`, and a small global list of recently typed names (`recents.ts`) |
 | Digital signing | `src/features/signing/` | Certificate identities (create/import .p12 via node-forge), PKCS#7 signing (@signpdf), and signature detection. Runs in the WebView today; a Rust/keychain backend is planned |
 | Save / export | `src/features/export/` | Writes the filled PDF (PDF.js `saveDocument`), then loads pdf-lib once to bake the OCR layer, edits, signatures, and review annotations |
+| Print | `src/features/print/` | Bakes via `exportDocument`, rasterizes the result in a throwaway PDF.js document at 144dpi, and hands `#folio-print-root` to `window.print()` |
 | Plugins | `src/plugins/` | Plugin host, SDK types, `contributionStore`, `builtins/` |
 | AI layer | `src/ai/` | `aiStore`, `providers/` (`AIProvider` impls, Claude default), `mcp/` (experimental MCP transport) |
 

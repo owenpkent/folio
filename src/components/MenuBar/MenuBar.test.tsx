@@ -60,6 +60,26 @@ describe('MenuBar', () => {
     expect(within(menu).getByRole('menuitem', { name: 'Open' })).toBeEnabled();
     expect(within(menu).getByRole('menuitem', { name: 'Save' })).toBeDisabled();
     expect(within(menu).getByRole('menuitem', { name: 'Save a copy' })).toBeDisabled();
+    expect(within(menu).getByRole('menuitem', { name: 'Print…' })).toBeDisabled();
+  });
+
+  it('offers Print in the File menu with its registry shortcut, enabled once a document opens', () => {
+    registerCommand({
+      id: 'file.print',
+      title: 'Print',
+      keybinding: 'Mod+P',
+      when: () => useDocumentStore.getState().status === 'ready',
+      run: vi.fn(),
+    });
+    render(<MenuBar />);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'File' }));
+
+    const print = screen.getByRole('menuitem', { name: 'Print…' });
+    expect(print).toHaveTextContent('Ctrl/Cmd + P');
+    expect(print).toBeDisabled();
+
+    act(() => useDocumentStore.setState({ status: 'ready' }));
+    expect(screen.getByRole('menuitem', { name: 'Print…' })).toBeEnabled();
   });
 
   it('shows a command shortcut sourced from the registry, and enables Save once a document opens', () => {
@@ -137,7 +157,7 @@ describe('MenuBar', () => {
     expect(file).toHaveFocus();
   });
 
-  it("lists a plugin-contributed command in the Tools menu, disabled per its own command guard", () => {
+  it('lists a plugin-contributed command in the Tools menu, disabled per its own command guard', () => {
     registerCommand({
       id: 'plugin.test.run',
       title: 'Test tool',

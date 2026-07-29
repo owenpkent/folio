@@ -192,17 +192,15 @@ export function MenuBar() {
   // The Tools menu is entirely plugin-contributed (Word Count today); its
   // enabled state comes from each command's own guard rather than `hasDoc`
   // directly, since a future plugin's command may have a different guard.
-  const toolsEntries: MenuItemDef[] = toolbarItems.map(
-    (item): MenuItemDef => ({
-      kind: 'item',
-      id: item.id,
-      label: item.title,
-      icon: (item.icon as IconName) ?? 'note',
-      disabled: !commandEnabled(item.commandId),
-      shortcut: shortcutFor(item.commandId),
-      onSelect: () => run(item.commandId),
-    }),
-  );
+  const toolsEntries: MenuItemDef[] = toolbarItems.map((item): MenuItemDef => ({
+    kind: 'item',
+    id: item.id,
+    label: item.title,
+    icon: (item.icon as IconName) ?? 'note',
+    disabled: !commandEnabled(item.commandId),
+    shortcut: shortcutFor(item.commandId),
+    onSelect: () => run(item.commandId),
+  }));
 
   const menus: TopMenuDef[] = [
     {
@@ -213,6 +211,8 @@ export function MenuBar() {
         sep('file-sep-1'),
         docItem('file.save', 'Save', 'save'),
         docItem('file.saveAs', 'Save a copy', 'download'),
+        sep('file-sep-2'),
+        docItem('file.print', 'Print…', 'print'),
       ],
     },
     {
@@ -257,17 +257,15 @@ export function MenuBar() {
           shortcut: shortcutFor('theme.toggle'),
           onSelect: () => run('theme.toggle'),
         },
-        ...DARK_SCHEMES.map(
-          (scheme): MenuItemDef => ({
-            kind: 'item',
-            id: `view.darkScheme.${scheme}`,
-            label: DARK_SCHEME_LABELS[scheme],
-            swatch: scheme,
-            role: 'menuitemradio',
-            checked: darkScheme === scheme,
-            onSelect: () => setDarkScheme(scheme),
-          }),
-        ),
+        ...DARK_SCHEMES.map((scheme): MenuItemDef => ({
+          kind: 'item',
+          id: `view.darkScheme.${scheme}`,
+          label: DARK_SCHEME_LABELS[scheme],
+          swatch: scheme,
+          role: 'menuitemradio',
+          checked: darkScheme === scheme,
+          onSelect: () => setDarkScheme(scheme),
+        })),
       ],
     },
     {
@@ -345,7 +343,8 @@ export function MenuBar() {
     if (!openId || !focus) return;
     const menu = menusRef.current.find((m) => m.id === openId);
     if (!menu) return;
-    const idx = focus === 'first' ? firstEnabledIndex(menu.entries) : lastEnabledIndex(menu.entries);
+    const idx =
+      focus === 'first' ? firstEnabledIndex(menu.entries) : lastEnabledIndex(menu.entries);
     focusRow(menu.id, idx);
   }, [openId]);
 
@@ -616,7 +615,12 @@ export function MenuBar() {
               onKeyDown={onMobileMenuKeyDown}
             >
               {menus.map((menu) => (
-                <div key={menu.id} role="group" aria-label={menu.label} className="folio-menubar__mobile-group">
+                <div
+                  key={menu.id}
+                  role="group"
+                  aria-label={menu.label}
+                  className="folio-menubar__mobile-group"
+                >
                   <div className="folio-menubar__mobile-heading" aria-hidden="true">
                     {menu.label}
                   </div>

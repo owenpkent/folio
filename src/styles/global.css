@@ -1885,3 +1885,43 @@ kbd {
     min-height: 44px;
   }
 }
+
+/* ---- Print ----
+   printDocument() rasterizes the baked PDF into #folio-print-root and appends
+   it to <body> only for the duration of the print call. On screen it is never
+   visible; when printing, it is the only thing that is. */
+#folio-print-root {
+  display: none;
+}
+
+@media print {
+  /* Everything the app draws — toolbar, sidebar, canvas, modals, toasts — is a
+     body child, so one rule hides the whole UI without enumerating it. */
+  body > *:not(#folio-print-root) {
+    display: none !important;
+  }
+
+  #folio-print-root {
+    display: block;
+  }
+
+  .folio-print-page {
+    break-after: page;
+    page-break-after: always; /* legacy alias; WebKitGTK still wants it */
+  }
+  .folio-print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  .folio-print-page img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  /* The PDF's own margins are already in the raster, so the sheet gets none of
+     its own. Paper size and orientation are left to the print dialog. */
+  @page {
+    margin: 0;
+  }
+}

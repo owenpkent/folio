@@ -181,6 +181,7 @@ npm run typecheck    # tsc --noEmit
 | Open document     | `Ctrl/Cmd + O`              |
 | Save              | `Ctrl/Cmd + S`              |
 | Save a copy       | `Ctrl/Cmd + Shift + S`      |
+| Print             | `Ctrl/Cmd + P`              |
 | Find in document  | `Ctrl/Cmd + F`              |
 | Zoom in / out     | `Ctrl/Cmd + =` / `Ctrl/Cmd + -` |
 | Actual size       | `Ctrl/Cmd + 0`              |

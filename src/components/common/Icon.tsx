@@ -201,6 +201,13 @@ const ICONS = {
       <path d="M7 20v-6h10v6" />
     </>
   ),
+  print: (
+    <>
+      <path d="M7 9V3h10v6" />
+      <path d="M7 18H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" />
+      <path d="M7 14h10v7H7Z" />
+    </>
+  ),
   signature: (
     <>
       <path d="M3 17c2.5 0 2.5-9 5-9s2 9 4.5 9 3-4 5.5-4" />
