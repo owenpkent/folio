@@ -61,7 +61,7 @@ export function SignatureModal() {
   };
 
   const onAdd = () => {
-    let created: CreatedSignature | null = null;
+    let created: CreatedSignature | null;
     if (tab === 'draw') created = padRef.current?.export() ?? null;
     else if (tab === 'type') created = renderTypedSignature(typed, font);
     else created = upload;

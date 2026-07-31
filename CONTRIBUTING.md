@@ -339,14 +339,32 @@ organized and what is covered. All tests must pass in CI before a PR can merge.
   2. **Upstream has not shipped support yet**, so there is no version to move to.
      Nothing you can add to the cohort will help. Leave the PR open, record the
      blocking package on it, and let it go green on its own when upstream
-     releases. This is [#47](https://github.com/owenpkent/folio/pull/47): the
-     `eslint-major` group already matches `eslint-plugin-*`, but
-     `eslint-plugin-jsx-a11y` has no eslint 10 release at all, so eslint stays at
-     9 until it does.
+     releases.
+
+  Case 2 has exactly one exception: a peer range that is **stale metadata**
+  rather than a real incompatibility. It has to be earned with evidence, never
+  assumed. That is [#47](https://github.com/owenpkent/folio/pull/47).
+  `eslint-plugin-jsx-a11y@6.10.2` is still the latest release and caps eslint at
+  `^9`, but it touches only `context.report`, `context.options`, and
+  `context.settings`. None of the context APIs eslint 10 removed (`getScope`,
+  `getAncestors`, `getSourceCode`, `getDeclaredVariables`,
+  `markVariableAsUsed`, `getFilename`, `getCwd`, `parserServices`) appear in its
+  `lib/` at all, it never reads `sourceCode`, and all 39 of its rules declare
+  `meta.schema`. So `package.json` carries a single-package override relaxing
+  that one peer and nothing else:
+
+  ```json
+  "overrides": { "eslint-plugin-jsx-a11y": { "eslint": "$eslint" } }
+  ```
+
+  Before adding a second one, re-run that search against the package's `lib/`
+  yourself. If the evidence is not that concrete, leave the PR blocked.
 
   Do not reach for `--legacy-peer-deps` in either case. CI runs `npm ci` and
   would still fail, and it would only convert an honest install error into a lint
-  run against an unsupported pairing.
+  run against an unsupported pairing. A scoped override is not the same tool: it
+  names one package and one peer, it shows up in the diff, and it leaves every
+  other peer conflict in the tree still failing loudly.
 
   Never merge a dependency PR with failing CI.
 

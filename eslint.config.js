@@ -35,7 +35,15 @@ export default tseslint.config(
       'jsx-a11y': jsxA11y,
     },
     rules: {
-      ...reactHooks.configs.recommended.rules,
+      // Name the two react-hooks rules instead of spreading the plugin's
+      // `recommended` preset. In react-hooks 7 that preset also carries the
+      // React Compiler rules, taking it from 2 rules to 16 and turning on 12
+      // errors nobody here opted into. Adopting those is a real decision with
+      // real work behind it -- several in-flight branches mutate module scope
+      // from effects and would fail them -- so it should land as its own change,
+      // not arrive because an upstream preset grew.
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
       ...jsxA11y.flatConfigs.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       // A placed overlay (text box, image, check mark, signature) is a focusable
