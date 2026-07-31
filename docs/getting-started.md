@@ -8,7 +8,8 @@ You need three things: Node, the Rust toolchain, and your platform's Tauri 2 sys
 
 ### Node.js
 
-- **Node >= 20** is required. Development uses **v22**.
+- **Node >= 22.22.2** is required. Development uses **v22**. Node 20 reached end of
+  life on 2026-04-30 and jsdom, which the unit suite runs in, no longer supports it.
 - Comes with **npm**, which is Folio's package manager. Do not substitute yarn or pnpm; the lockfile is `package-lock.json`.
 
 Check:

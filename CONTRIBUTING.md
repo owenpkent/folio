@@ -66,7 +66,7 @@ The short version:
 
 ### Prerequisites
 
-- **Node.js >= 20** (CI runs on 20 and 22) and **npm**.
+- **Node.js >= 22.22.2** (CI runs on 22 and 24) and **npm**.
 - **Rust (stable)** via [rustup](https://rustup.rs/).
 - Tauri's OS prerequisites. On Debian/Ubuntu Linux:
 
@@ -418,7 +418,7 @@ Tips for a smooth first contribution:
   normal and healthy.
 - Address comments by pushing additional commits (we squash on merge, so you do
   not need to rewrite history for every round). Re-request review when ready.
-- CI must be green: lint, typecheck, unit tests (Node 20 and 22), the end-to-end
+- CI must be green: lint, typecheck, unit tests (Node 22 and 24), the end-to-end
   (Playwright) run, and the Tauri build matrix (ubuntu/windows/macos) are
   required status checks enforced by branch protection on `main` — a PR cannot
   be merged until they pass. Sign-off (see the DCO section) is checked in
