@@ -116,7 +116,7 @@ export async function saveDocumentInPlace(): Promise<void> {
   const bytes = await exportForSave();
   if (!bytes) return;
   try {
-    await invoke('write_document', { path: sourcePath, contents: Array.from(bytes) });
+    await writeDocument(sourcePath, bytes);
     pushToast('Saved', 'success');
     announce(`Saved ${info.name}`);
   } catch (error) {
@@ -144,6 +144,32 @@ export async function saveDocumentToFile(): Promise<void> {
   await saveBytes(bytes, `${base} (${suffix}).pdf`);
 }
 
+/**
+ * Hand raw PDF bytes to the Rust `write_document` command.
+ *
+ * The bytes are the *entire* invoke payload, which is what makes Tauri ship
+ * them as an `application/octet-stream` body -- the write-direction mirror of
+ * `read_document` returning an `ipc::Response`. Nesting the array inside an
+ * arguments object instead (`{ path, contents }`) is the cliff this used to be
+ * on: Tauri expands a nested `Uint8Array` with `Array.from`, so a 50MB PDF
+ * became a 50-million-element array serialized into a ~150MB JSON string, built
+ * on the UI thread every time the user hit Save.
+ *
+ * A raw body leaves no room for a sibling named argument, so the destination
+ * path travels as a header, percent-encoded because header values are ASCII
+ * only (a path under `C:\Users\Ömer\` would otherwise be rejected by the Rust
+ * side) and because encoding removes any CR/LF header-injection surface.
+ *
+ * `headers` is a plain object literal on purpose: the postMessage fallback path
+ * JSON-stringifies the options, and a `Headers` instance serializes to `{}`,
+ * which would silently drop the path.
+ */
+async function writeDocument(path: string, bytes: Uint8Array): Promise<void> {
+  await invoke('write_document', bytes, {
+    headers: { 'Folio-Path': encodeURIComponent(path) },
+  });
+}
+
 /** Run {@link exportDocument}, surfacing failures as a toast; null on failure. */
 async function exportForSave(): Promise<Uint8Array | null> {
   try {
@@ -167,7 +193,7 @@ export async function saveBytes(bytes: Uint8Array, suggested: string): Promise<b
       if (!path) return false;
       // Write through the Rust `write_document` command (mirrors read_document)
       // so no broad fs:allow-write-file capability scope is needed.
-      await invoke('write_document', { path, contents: Array.from(bytes) });
+      await writeDocument(path, bytes);
       pushToast('Saved', 'success');
       announce(`Saved ${suggested}`);
       return true;

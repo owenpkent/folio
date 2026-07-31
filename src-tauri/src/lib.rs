@@ -125,9 +125,44 @@ fn read_document(path: String) -> Result<Response, String> {
 /// before writing, so a crash or full disk mid-write would corrupt the only
 /// copy of a document being saved in place; with the rename swap the target
 /// always holds either the old bytes or the new bytes, never a partial write.
+///
+/// # Why the bytes arrive as a request body
+///
+/// Taking a [`tauri::ipc::Request`] rather than a `contents: Vec<u8>` argument
+/// is the write-direction mirror of [`read_document`] returning a
+/// [`Response`]. A `Uint8Array` passed as *the whole* invoke payload ships as a
+/// raw `application/octet-stream` body; the same array nested inside an
+/// arguments object is expanded into a JSON array of numbers, which is what
+/// this used to do -- a 50MB PDF became a 50-million-element array serialized
+/// into a ~150MB string, built on the UI thread on every save.
+///
+/// A raw body leaves no room for a sibling named argument, so the destination
+/// path travels as a header. Both body shapes are accepted: `Json` is what
+/// arrives if the IPC custom protocol is ever unavailable and Tauri falls back
+/// to `postMessage`, and headers survive that fallback either way.
 #[tauri::command]
-fn write_document(path: String, contents: Vec<u8>) -> Result<(), String> {
+fn write_document(request: tauri::ipc::Request<'_>) -> Result<(), String> {
     use std::io::Write;
+
+    let contents: Vec<u8> = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => bytes.clone(),
+        tauri::ipc::InvokeBody::Json(value) => serde_json::from_value(value.clone())
+            .map_err(|_| "write_document expects the PDF bytes as its payload".to_string())?,
+    };
+
+    // Percent-encoded by the caller because HTTP header values are ASCII only:
+    // a path like C:\Users\Ömer\report.pdf would otherwise fail to_str() here.
+    // Decoding also removes any CR/LF header-injection surface.
+    let raw_path = request
+        .headers()
+        .get("Folio-Path")
+        .ok_or("Missing Folio-Path header")?
+        .to_str()
+        .map_err(|_| "Folio-Path header must be ASCII")?;
+    let path = percent_encoding::percent_decode_str(raw_path)
+        .decode_utf8()
+        .map_err(|_| "Folio-Path header is not valid UTF-8")?
+        .into_owned();
 
     if !path.to_lowercase().ends_with(".pdf") {
         return Err(format!("Unsupported file type (expected .pdf): {path}"));

@@ -55,12 +55,32 @@ describe('saveDocumentInPlace', () => {
 
     await saveDocumentInPlace();
 
-    expect(invoke).toHaveBeenCalledWith('write_document', {
-      path: 'C:/docs/report.pdf',
-      contents: [1, 2, 3],
+    // The bytes are the whole payload, not a field in an arguments object:
+    // that is what makes Tauri send them as a raw binary body instead of
+    // expanding them into a JSON array of numbers. The destination rides in a
+    // header because a raw body cannot carry a sibling argument.
+    expect(invoke).toHaveBeenCalledWith('write_document', new Uint8Array([1, 2, 3]), {
+      headers: { 'Folio-Path': 'C%3A%2Fdocs%2Freport.pdf' },
     });
     expect(saveDialog).not.toHaveBeenCalled();
     expect(useToastStore.getState().toasts).toMatchObject([{ kind: 'success' }]);
+  });
+
+  it('percent-encodes a non-ASCII destination path', async () => {
+    setTauri(true);
+    // Header values are ASCII only, so an unencoded path here would be rejected
+    // by the Rust side rather than saved.
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/Users/Ömer/report.pdf' });
+    invoke.mockResolvedValue(undefined);
+
+    await saveDocumentInPlace();
+
+    const [, , options] = invoke.mock.calls[0];
+    const header = (options as { headers: Record<string, string> }).headers['Folio-Path'];
+    expect(header).toBe('C%3A%2FUsers%2F%C3%96mer%2Freport.pdf');
+    expect(decodeURIComponent(header)).toBe('C:/Users/Ömer/report.pdf');
+    // eslint-disable-next-line no-control-regex
+    expect(header).not.toMatch(/[^\x00-\x7f]/);
   });
 
   it('falls back to the save-a-copy dialog when there is no source path', async () => {
