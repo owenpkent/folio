@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { getEngine } from '@/core/pdf';
+import { useNearViewport } from '@/hooks/useNearViewport';
 import { useViewerStore } from '@/state/viewerStore';
 import { isNarrowViewport } from '@/theme/breakpoints';
 import { DARK_SCHEME_TINT, useThemeStore } from '@/theme/themeStore';
@@ -93,31 +94,30 @@ function Thumbnail({ pageNumber, active, onSelect }: ThumbnailProps) {
   const tint = dark ? (DARK_SCHEME_TINT[darkScheme] ?? undefined) : undefined;
   const buttonRef = useRef<HTMLButtonElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [render, setRender] = useState(false);
+
+  // The root must be the element that actually scrolls (.folio-sidebar__body),
+  // not the flex column inside it. With an element root, IntersectionObserver
+  // clips only against containers *between* target and root, never above it, so
+  // rooting this at the unclipped .folio-thumbnails made every thumb in the
+  // document report as intersecting on the first observation, which rasterised
+  // every page at once on open. Same element the scroll effect above targets.
+  //
+  // Two-way (rather than latching on first sight, like it used to) so thumbnails
+  // that scroll away drop their backing store again; otherwise a long document
+  // accumulates a canvas per page visited and never gives one back.
+  const render = useNearViewport(buttonRef, '300px 0px', '.folio-sidebar__body');
 
   useEffect(() => {
-    const el = buttonRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setRender(true);
-            observer.disconnect();
-            break;
-          }
-        }
-      },
-      { root: el.closest('.folio-thumbnails'), rootMargin: '300px 0px' },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!render) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // Scrolled away: 0x0 frees the raster memory, matching Page.tsx.
+    if (!render) {
+      canvas.width = 0;
+      canvas.height = 0;
+      return;
+    }
+
     const controller = new AbortController();
     getEngine()
       .renderPage(pageNumber, {
