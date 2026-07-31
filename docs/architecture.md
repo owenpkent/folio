@@ -1,6 +1,6 @@
 # Folio Architecture
 
-Folio is a desktop PDF viewer built on **Tauri 2** (Rust backend) with a **React 19 + TypeScript 5** frontend, bundled by **Vite 7**. Rendering is delegated to **PDF.js** (`pdfjs-dist` v4). Application state lives in **Zustand** stores. Theming is driven entirely by **CSS custom properties**.
+Folio is a desktop PDF viewer built on **Tauri 2** (Rust backend) with a **React 19 + TypeScript 5** frontend, bundled by **Vite 8** (rolldown-based). Rendering is delegated to **PDF.js** (`pdfjs-dist` v4). Application state lives in **Zustand** stores. Theming is driven entirely by **CSS custom properties**.
 
 This document describes the layer stack, the data flow for opening and rendering a PDF, the engine abstraction, the PDF.js worker threading model, state management, extension points, and the Tauri command boundary.
 

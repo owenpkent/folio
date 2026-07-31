@@ -58,7 +58,12 @@ export default defineConfig({
 
   build: {
     target: 'es2021',
-    minify: 'esbuild',
+    // Vite 8 is rolldown-based: 'oxc' is the built-in minifier and the default.
+    // 'esbuild' still works but routes chunks through the deprecated
+    // `transformWithEsbuild` path, which needs esbuild installed as an optional
+    // peer that Vite no longer pulls in. Downlevelling to `target` is done by
+    // rolldown either way, so oxc costs nothing and keeps the build self-contained.
+    minify: 'oxc',
     sourcemap: true,
   },
 
