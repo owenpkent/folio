@@ -101,8 +101,8 @@ export interface PdfEngine {
 
   /**
    * The page's viewport at `scale`, for converting between screen (CSS pixel)
-   * and PDF user-space coordinates via its `convertToPdfPoint` /
-   * `convertToViewportRectangle` helpers.
+   * and PDF user-space coordinates via its own `convertToPdfPoint` and the
+   * barrel's `convertToViewportRectangle` (which PDF.js 6 dropped).
    */
   getPageViewport(pageNumber: number, scale: number): Promise<PageViewport>;
 

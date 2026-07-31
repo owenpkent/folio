@@ -66,19 +66,40 @@ const app = {
   external: ['canvas'],
 };
 
+// The legacy build, to match the one src/core/pdf/setupWorker.ts imports: the
+// worker refuses to talk to an API bundle of a different version.
 function copyWorker() {
-  const worker = require.resolve('pdfjs-dist/build/pdf.worker.min.mjs');
+  const worker = require.resolve('pdfjs-dist/legacy/build/pdf.worker.min.mjs');
   fs.copyFileSync(worker, path.join(out, 'pdf.worker.min.mjs'));
   console.log('copied pdf.worker.min.mjs');
+}
+
+// PDF.js 6 fetches its JBIG2 / JPEG2000 / ICC decoders as .wasm at run time from
+// a directory (see setupWorker.ts). The desktop build gets that directory from
+// vite.config.ts; here it has to land in out/ so the webview can address it via
+// asWebviewUri. Without it, scanned PDFs render blank pages.
+function copyWasm() {
+  const src = path.join(path.dirname(require.resolve('pdfjs-dist/package.json')), 'wasm');
+  const dest = path.join(out, 'pdfjs-wasm');
+  fs.mkdirSync(dest, { recursive: true });
+  // Same filter as vite.config.ts: skip the LICENSE_* siblings, and skip
+  // quickjs-eval.* (the embedded-JavaScript sandbox Folio never enables).
+  const files = fs
+    .readdirSync(src)
+    .filter((f) => /\.(wasm|js)$/.test(f) && !f.startsWith('quickjs-eval'));
+  for (const file of files) fs.copyFileSync(path.join(src, file), path.join(dest, file));
+  console.log(`copied ${files.length} pdfjs wasm assets`);
 }
 
 if (watch) {
   const ctxs = await Promise.all([esbuild.context(extension), esbuild.context(app)]);
   copyWorker();
+  copyWasm();
   await Promise.all(ctxs.map((c) => c.watch()));
   console.log('watching for changes…');
 } else {
   await Promise.all([esbuild.build(extension), esbuild.build(app)]);
   copyWorker();
+  copyWasm();
   console.log('build complete → out/');
 }

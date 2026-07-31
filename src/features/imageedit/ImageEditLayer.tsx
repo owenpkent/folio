@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 
 import { announce } from '@/a11y/announcer';
 import { useNudgeKeys, type NudgeRect } from '@/a11y/useNudgeKeys';
 import { Icon, pushToast } from '@/components/common';
-import { getEngine, type PageViewport } from '@/core/pdf';
+import { convertToViewportRectangle, getEngine, type PageViewport } from '@/core/pdf';
 import { pickImageFile } from '@/features/editing/commands';
 import { reloadEditedBytes } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
@@ -57,12 +57,12 @@ function findImageAt(images: LocatedImage[], x: number, y: number): LocatedImage
 
 /** rect (PDF user space, bottom-left origin) to a CSS-pixel rect, the way TextEditLayer.tsx converts an item's box. */
 function pdfRectToCssRect(viewport: PageViewport, rect: ImageEditRect): ImageEditRect {
-  const vr = viewport.convertToViewportRectangle([
+  const vr = convertToViewportRectangle(viewport, [
     rect.x,
     rect.y,
     rect.x + rect.width,
     rect.y + rect.height,
-  ]) as [number, number, number, number];
+  ]);
   return {
     x: Math.min(vr[0], vr[2]),
     y: Math.min(vr[1], vr[3]),
