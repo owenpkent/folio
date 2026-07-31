@@ -29,11 +29,18 @@ const pdf = vi.hoisted(() => ({
 }));
 
 vi.mock('@/features/export', () => ({ exportDocument }));
-vi.mock('@/core/pdf/setupWorker', () => ({ ensureWorker: vi.fn() }));
+vi.mock('@/core/pdf/setupWorker', () => ({
+  ensureWorker: vi.fn(),
+  pdfWasmUrl: () => 'https://folio.test/pdfjs-wasm/',
+}));
 vi.mock('@/a11y/announcer', () => ({ announce: vi.fn() }));
 
+// Shaped like PDF.js 6: getDocument() hands back a loading task that owns
+// destroy() (PDFDocumentProxy.destroy() is gone), and render() takes the canvas
+// rather than a 2D context.
 vi.mock('pdfjs-dist', () => ({
-  getDocument: vi.fn(() => ({
+  getDocument: vi.fn((params: { wasmUrl?: string }) => ({
+    destroy,
     promise: Promise.resolve({
       get numPages() {
         return pdf.numPages;
@@ -43,7 +50,21 @@ vi.mock('pdfjs-dist', () => ({
           width: pdf.baseWidth * scale,
           height: pdf.baseHeight * scale,
         }),
-        render: ({ viewport }: { viewport: { width: number } }) => {
+        render: ({
+          canvas,
+          viewport,
+        }: {
+          canvas: HTMLCanvasElement;
+          viewport: { width: number };
+        }) => {
+          // A render that was handed no canvas draws nothing, and every
+          // assertion downstream is about a viewport, so it would pass anyway.
+          if (!(canvas instanceof HTMLCanvasElement)) {
+            throw new Error('render() was called without a canvas');
+          }
+          if (!params.wasmUrl) {
+            throw new Error('getDocument() was called without wasmUrl');
+          }
           pdf.renderScales.push(viewport.width / pdf.baseWidth);
           let rejectTask: (reason: unknown) => void = () => undefined;
           const promise = new Promise<void>((resolve, reject) => {
@@ -64,7 +85,6 @@ vi.mock('pdfjs-dist', () => ({
           };
         },
       })),
-      destroy,
     }),
   })),
 }));

@@ -137,7 +137,7 @@ are trying to do.
 
 ## Quick start
 
-Prerequisites: **Node 20+**, **Rust (stable)**, and the Tauri system
+Prerequisites: **Node 22.22.2+**, **Rust (stable)**, and the Tauri system
 dependencies for your OS. Full setup, including the exact Linux packages, is in
 [docs/getting-started.md](docs/getting-started.md).
 

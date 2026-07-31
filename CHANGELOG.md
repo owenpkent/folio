@@ -6,6 +6,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+<<<<<<< HEAD
 ### Added
 
 - **Print.** `Ctrl/Cmd + P`, or File → Print…, sends the open document to the
@@ -27,6 +28,115 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ever flipped between light and dark. The trigger icon now reports the mode in
   effect rather than the one a click would apply, because it opens a menu rather
   than toggling. `Ctrl/Cmd + Shift + L` and the View menu are unchanged.
+=======
+### Fixed
+
+- **Opening a large PDF no longer white-screens the app.** The thumbnail
+  sidebar's lazy loading was inert: its `IntersectionObserver` was rooted at
+  `.folio-thumbnails`, which is not the element that scrolls. With an element
+  root, `IntersectionObserver` clips only against containers *between* target and
+  root and never above it, so the unclipped inner wrapper reported **every**
+  thumbnail in the document as visible in the first observation batch. Every page
+  then rasterized at once, with no concurrency cap. The sidebar is open by
+  default on desktop, so this ran on every open with no user action, and every
+  failure was swallowed by a `.catch(() => {})` -- including the "could not
+  acquire a 2D canvas context" that Chromium raises when canvas memory is
+  exhausted. The app therefore died silently, with the WebView2 renderer
+  OOM-killed and the window left blank. Rooted at the real scroller, and the
+  observer is now two-way so a thumbnail that scrolls away gives its canvas back
+  instead of retaining every one it ever rendered.
+- **Scrolling quickly through a long document no longer leaks a canvas per page.**
+  `renderPage` sized the canvas *after* awaiting the page, so a render aborted
+  mid-flight re-allocated the backing store for a page the viewer had already
+  zeroed and scrolled past, and nothing zeroed it a second time.
+- **Save refuses a payload that is not a document.** Saving in place replaces the
+  open file with the exported bytes, so an export that came back empty or
+  truncated would take the only copy with it, and nothing checked. Both save
+  paths now require the `%PDF-` header and a plausible length before anything is
+  written, and refusing says so instead of returning silently, which is
+  indistinguishable from a save that worked.
+
+### Security
+
+- **A `/ByteRange` that runs past the end of the file no longer verifies as
+  clean.** `coversWholeDocument` was computed by scanning from the end of the
+  signed byte range, but that offset is read straight out of the file: when it
+  pointed past the end, the scan had nothing to iterate and returned true
+  *vacuously*. A `/ByteRange` naming a range longer than the file, plus arbitrary
+  appended content, earned the green badge. A range that ends past EOF is now
+  treated as a failure, not a pass. Note the scope of that badge, which the
+  docstring and the signatures documentation had overstated and now describe
+  accurately: the check is structural, so it establishes that nothing was
+  appended after the signature, not that the signed content is unmodified. The
+  CMS digest is still not computed, so an in-place edit inside the signed range
+  is not detected.
+- **Signature detection no longer builds a string copy of the whole document.**
+  It runs synchronously on the main thread as a document opens, and it used to
+  latin-1 decode the entire file (which the first regex then flattened into a
+  second full-size copy) before looking for anything. Above V8's ~512MB string
+  limit that threw outright; below it, it pushed the renderer toward the same
+  out-of-memory condition the rest of this release is about. It now scans the raw
+  bytes and decodes only small windows around each signature dictionary. The byte
+  scan is bounded as well, at 200 candidate `/ByteRange` sites and 16MB of total
+  decoding per pass: those caps caught a cost introduced by this rewrite rather
+  than a pre-existing one, since a file made of nothing but repeated `/ByteRange`
+  markers measured ~290ms of scanning per megabyte before they were added.
+
+### Added
+
+- **Property/fuzz tests** (`fast-check`, `*.fuzz.test.ts`) over the parsers that
+  read bytes straight out of a PDF, run as part of `npm test` and at a much
+  higher iteration count via `npm run test:fuzz`. They cover `detectSignatures`
+  and the content-stream tokenizer and splice primitives, asserting the
+  properties an example-based test tends not to reach: the functions are total,
+  reported offsets stay in range, an operator splice never glues two tokens
+  together, and neither can be driven into unbounded work. The signature badge
+  bug above was found this way. See
+  [testing.md](docs/testing.md#property-and-fuzz-tests-fast-check).
+- **A root `ErrorBoundary`.** A render-phase throw previously unmounted the whole
+  tree and left a blank window, which is indistinguishable from the crash above
+  and equally unreportable. It now shows a message and a way out, moves focus to
+  it so it is not a screen the user is never told about, announces itself as an
+  alert, and logs the raw throw with the failing component stack to the console.
+  Whatever was thrown is reduced to one line for display, since a throw need not
+  be an `Error`, and file paths are stripped out of it: the crash screen is one
+  people screenshot into bug reports, and the install path names the account.
+- **The e2e suite now also runs against a production build**
+  (`npm run test:e2e:preview`, and a second CI step). Every spec previously ran
+  only against the dev server, which ships each module roughly as authored, so
+  nothing exercised the bundler or its minifier. The Vite 8 bump
+  ([#62](https://github.com/owenpkent/folio/pull/62)) proved what that costs: it
+  broke digital signing in the built app, and `tsc` could not see it (it reads
+  the `.d.ts`), Vitest could not see it (Node's interop matches esbuild), and the
+  dev-server run caught it only because the dep optimizer happened to agree with
+  the bundler. Verified by reintroducing that bug, which the new run fails on.
+  See [testing.md](docs/testing.md#the-same-suite-against-a-production-build).
+
+### Changed
+
+- **Long documents no longer do whole-document work at open.** Every page
+  measured itself on mount, so opening fired one worker round-trip per page in a
+  single burst and pinned a page object per page for the session -- and did it
+  all again on every zoom step, because the measurement was taken at the current
+  scale. Pages are now measured once at scale 1, only when approached, and lay
+  out at an estimate taken from page 1 until then. The engine's page, text, and
+  text-item caches are now LRU-bounded, calling `PDFPageProxy.cleanup()` on
+  eviction, which is the call that actually frees anything (PDF.js keeps its own
+  reference to every page it hands out). The eight per-page overlay layers now
+  mount only near the viewport rather than for every page.
+- **Saving no longer serializes the PDF as a JSON array of numbers.** The bytes
+  went to Rust as `Array.from(bytes)`, so a 50MB document became a
+  50-million-element array on the UI thread -- the exact cost `read_document` was
+  written to avoid in the other direction. They now travel as a raw binary body,
+  with the destination path in a percent-encoded header. Requires
+  `ipc: http://ipc.localhost` in the CSP `connect-src`; the Rust side still
+  accepts a JSON body so the `postMessage` fallback keeps working.
+- **The engine no longer retains a second copy of the open file.** It kept a
+  defensive `.slice()` of the whole document for the session so signature
+  detection could read it later, because PDF.js transfers (and detaches) the
+  array it is given. Detection now runs before the handover instead.
+
+>>>>>>> origin/main
 - **Documentation sweep after 0.5.0.** The stack table, the setup guide, the
   contributing guide, and the architecture doc all still said React 18; the
   in-place image tool was still described as living on the toolbar rather than in

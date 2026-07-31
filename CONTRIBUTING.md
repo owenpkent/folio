@@ -56,7 +56,7 @@ You do not have to write code to make a difference:
 ## Development setup
 
 Folio is a [Tauri 2](https://tauri.app) desktop app: a Rust backend with a
-React 19 + TypeScript 5 frontend built by Vite 7, rendering PDFs with
+React 19 + TypeScript 5 frontend built by Vite 8, rendering PDFs with
 [PDF.js](https://mozilla.github.io/pdf.js/) and managing state with
 [Zustand](https://github.com/pmndrs/zustand).
 
@@ -66,7 +66,7 @@ The short version:
 
 ### Prerequisites
 
-- **Node.js >= 20** (CI runs on 20 and 22) and **npm**.
+- **Node.js >= 22.22.2** (CI runs on 22 and 24) and **npm**.
 - **Rust (stable)** via [rustup](https://rustup.rs/).
 - Tauri's OS prerequisites. On Debian/Ubuntu Linux:
 
@@ -339,14 +339,32 @@ organized and what is covered. All tests must pass in CI before a PR can merge.
   2. **Upstream has not shipped support yet**, so there is no version to move to.
      Nothing you can add to the cohort will help. Leave the PR open, record the
      blocking package on it, and let it go green on its own when upstream
-     releases. This is [#47](https://github.com/owenpkent/folio/pull/47): the
-     `eslint-major` group already matches `eslint-plugin-*`, but
-     `eslint-plugin-jsx-a11y` has no eslint 10 release at all, so eslint stays at
-     9 until it does.
+     releases.
+
+  Case 2 has exactly one exception: a peer range that is **stale metadata**
+  rather than a real incompatibility. It has to be earned with evidence, never
+  assumed. That is [#47](https://github.com/owenpkent/folio/pull/47).
+  `eslint-plugin-jsx-a11y@6.10.2` is still the latest release and caps eslint at
+  `^9`, but it touches only `context.report`, `context.options`, and
+  `context.settings`. None of the context APIs eslint 10 removed (`getScope`,
+  `getAncestors`, `getSourceCode`, `getDeclaredVariables`,
+  `markVariableAsUsed`, `getFilename`, `getCwd`, `parserServices`) appear in its
+  `lib/` at all, it never reads `sourceCode`, and all 39 of its rules declare
+  `meta.schema`. So `package.json` carries a single-package override relaxing
+  that one peer and nothing else:
+
+  ```json
+  "overrides": { "eslint-plugin-jsx-a11y": { "eslint": "$eslint" } }
+  ```
+
+  Before adding a second one, re-run that search against the package's `lib/`
+  yourself. If the evidence is not that concrete, leave the PR blocked.
 
   Do not reach for `--legacy-peer-deps` in either case. CI runs `npm ci` and
   would still fail, and it would only convert an honest install error into a lint
-  run against an unsupported pairing.
+  run against an unsupported pairing. A scoped override is not the same tool: it
+  names one package and one peer, it shows up in the diff, and it leaves every
+  other peer conflict in the tree still failing loudly.
 
   Never merge a dependency PR with failing CI.
 
@@ -400,7 +418,7 @@ Tips for a smooth first contribution:
   normal and healthy.
 - Address comments by pushing additional commits (we squash on merge, so you do
   not need to rewrite history for every round). Re-request review when ready.
-- CI must be green: lint, typecheck, unit tests (Node 20 and 22), the end-to-end
+- CI must be green: lint, typecheck, unit tests (Node 22 and 24), the end-to-end
   (Playwright) run, and the Tauri build matrix (ubuntu/windows/macos) are
   required status checks enforced by branch protection on `main` — a PR cannot
   be merged until they pass. Sign-off (see the DCO section) is checked in

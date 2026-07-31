@@ -5,7 +5,7 @@ import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { pushToast } from '@/components/common';
 import { mapWithConcurrency } from '@/core/concurrency';
-import { ensureWorker } from '@/core/pdf/setupWorker';
+import { ensureWorker, pdfWasmUrl } from '@/core/pdf/setupWorker';
 import { exportDocument } from '@/features/export';
 import { useDocumentStore } from '@/state/documentStore';
 
@@ -171,6 +171,19 @@ export async function printDocument(): Promise<void> {
   let root: HTMLDivElement | null = null;
   let renderTask: pdfjsLib.RenderTask | null = null;
   let handedToDialog = false;
+  // PDF.js 6 removed PDFDocumentProxy.destroy(); tearing down the loading task
+  // is what releases the worker now. Held out here, rather than beside the
+  // document it resolves to, so a load that never resolves is still torn down.
+  let loadingTask: pdfjsLib.PDFDocumentLoadingTask | null = null;
+
+  /** Release the throwaway document. Safe to call twice; the second is a no-op. */
+  const destroyDoc = async () => {
+    const task = loadingTask;
+    // Null first: destroy() awaits a worker round-trip, and the normal path and
+    // the outer finally must not both destroy the same task.
+    loadingTask = null;
+    if (task) await task.destroy();
+  };
 
   const cleanup = () => {
     if (root?.parentNode) root.parentNode.removeChild(root);
@@ -203,7 +216,13 @@ export async function printDocument(): Promise<void> {
     const bytes = await exportDocument();
 
     ensureWorker();
-    const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
+    // wasmUrl for the same reason PdfJsEngine passes it: without it the worker
+    // cannot decode JBIG2 or JPEG2000, which is most scanned documents. Print
+    // rasterizes in a throwaway document of its own, so it has to ask for the
+    // decoders separately -- and a scan that printed blank is exactly the
+    // silently-wrong output this whole path exists to avoid.
+    loadingTask = pdfjsLib.getDocument({ data: bytes, wasmUrl: pdfWasmUrl() });
+    const doc = await loadingTask.promise;
     const pageCount = doc.numPages;
     usePrintStore.getState().setTotal(pageCount);
 
@@ -242,10 +261,14 @@ export async function printDocument(): Promise<void> {
         const canvas = document.createElement('canvas');
         canvas.width = Math.floor(viewport.width);
         canvas.height = Math.floor(viewport.height);
-        const context = canvas.getContext('2d');
-        if (!context) throw new Error('Could not acquire a 2D canvas context');
+        // Not used for drawing -- PDF.js v6 takes the canvas and calls
+        // getContext itself. Asked for anyway because a null return is how
+        // Chromium reports exhausted canvas memory, and finding that out here
+        // gives a real error instead of a render that fails somewhere inside
+        // the worker.
+        if (!canvas.getContext('2d')) throw new Error('Could not acquire a 2D canvas context');
 
-        renderTask = page.render({ canvasContext: context, viewport });
+        renderTask = page.render({ canvas, viewport });
         try {
           await renderTask.promise;
         } finally {
@@ -277,7 +300,10 @@ export async function printDocument(): Promise<void> {
         images.push(img);
       }
     } finally {
-      await doc.destroy();
+      // Before the dialog, not after: the rasters are already in blob URLs, so
+      // holding the worker and its decoded pages through print() would double
+      // the peak for a long document and buy nothing.
+      await destroyDoc();
     }
 
     // Cancelling on the last page used to still open the dialog with the whole
@@ -340,6 +366,10 @@ export async function printDocument(): Promise<void> {
   } finally {
     unsubscribe();
     renderTask = null;
+    // A no-op on every path that got as far as rasterizing. It matters when the
+    // load itself threw, where there is a live worker and no document to reach
+    // it through.
+    await destroyDoc();
     inFlight = false;
     // The success path hands cleanup to teardownAfterPrint; running it here
     // too would revoke the blob URLs out from under the preview.

@@ -5,24 +5,32 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Nightly, for the long unseeded fuzz run in the `fuzz` job below. Every other
+  # job opts out of this trigger.
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
 
-# Cancel in-progress runs for the same ref to save CI minutes.
+# Cancel in-progress runs for the same ref to save CI minutes. Keyed on the event
+# too, so the nightly run does not cancel a push build of the same branch.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  # Fast feedback: lint, typecheck, and unit tests on Ubuntu across Node 20 & 22.
+  # Fast feedback: lint, typecheck, and unit tests on Ubuntu across Node 22 & 24.
   quality:
     name: Lint, typecheck & unit tests
     runs-on: ubuntu-latest
+    # The nightly schedule exists for the fuzz job only.
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20, 22]
+        node-version: [22, 24]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,9 +60,11 @@ jobs:
       - name: Unit tests
         run: npm run test
 
-  # Browser end-to-end smoke tests: open, render, fill a form, and digitally sign.
-  e2e:
-    name: End-to-end (Playwright)
+  # Property/fuzz tests over the parsers a hostile document reaches on open.
+  # Two shapes out of the same files (the settings live in src/test/setup.ts):
+  # a short seeded pass that gates every PR, and a long unseeded one nightly.
+  fuzz:
+    name: Property tests (fuzz)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -65,7 +75,43 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fixed seed, low iteration count. A merge gate has to be reproducible and
+      # quick: the same inputs every time, and a failure replays locally with
+      # the same two variables.
+      - name: Fuzz smoke (seeded)
+        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+        run: npm run test:fuzz
+        env:
+          FC_NUM_RUNS: 500
+          FC_SEED: 20260101
+
+      # No seed: the point of the nightly is to reach inputs the seeded pass
+      # never does. FC_NUM_RUNS defaults to 20000 in scripts/run-fuzz.mjs.
+      - name: Fuzz (unseeded, 20k iterations)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: npm run test:fuzz
+
+  # Browser end-to-end smoke tests: open, render, fill a form, and digitally sign.
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -76,6 +122,20 @@ jobs:
 
       - name: Run e2e tests
         run: npm run test:e2e
+
+      # The same suite against `vite preview`, i.e. a real `npm run build`.
+      #
+      # The dev server ships each module roughly as authored, so nothing above
+      # this line exercises the bundler or its minifier. That gap shipped a real
+      # bug: the Vite 8 bump (#62) broke digital signing outright, because
+      # rolldown and esbuild disagree about what a default import of a CommonJS
+      # module means, and it was caught by luck rather than by design.
+      #
+      # Runs even when the step above failed, because the pair is the diagnosis:
+      # dev green + preview red means bundling, both red means the app.
+      - name: Run e2e tests against the production build
+        if: ${{ !cancelled() }}
+        run: npm run test:e2e:preview
 
       # Measure how far a saved copy sits from PDF/UA-1, which Section 508
       # 504.2.2 asks an authoring tool to be capable of exporting.
@@ -120,9 +180,22 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+      # Separate artifact, not a second copy: the two runs write different
+      # reports, and the page snapshot in this one is what makes a bundling
+      # failure legible. The signing bug reached the log only as a download that
+      # never arrived, because the app catches the error into a toast.
+      - name: Upload Playwright report (production build)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report-preview
+          path: playwright-report-preview/
+          retention-days: 7
+
   # Debug Tauri build across all three desktop platforms to catch breakage.
   build:
     name: Tauri debug build (${{ matrix.os }})
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -153,7 +226,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Set up Rust (stable)
