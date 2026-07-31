@@ -1,6 +1,8 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PageViewport, PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 
+import { LruMap } from '@/core/lru';
+
 import type { PageTextItems, PdfEngine } from './PdfEngine';
 import { ensureWorker } from './setupWorker';
 import type {
@@ -58,6 +60,24 @@ export function backingStoreScale(cssWidth: number, cssHeight: number, dpr: numb
   return Math.min(target, cap);
 }
 
+/**
+ * Cache bounds. These were unbounded Maps cleared only when the document
+ * closed, so opening a long document and scrolling through it pinned one entry
+ * per page for the session.
+ *
+ * The page bound must comfortably exceed the live set or evictions thrash: an
+ * evicted page re-renders from a refetched operator list. pdf.js's own viewer
+ * sizes its equivalent at max(10, 2 * visible + 1); this is larger again to
+ * cover the 600px prefetch ring in Page.tsx and the 300px one in Thumbnails.
+ */
+const PAGE_CACHE_LIMIT = 24;
+/** Text items (glyph positions and styles) are much the heaviest of the three,
+ *  and the text-edit layer consumes them one page at a time. */
+const TEXT_ITEMS_CACHE_LIMIT = 24;
+/** Plain per-page strings, a few KB each, but whole-document consumers (search,
+ *  word count, the AI context builder) walk every page, so keep this generous. */
+const TEXT_CACHE_LIMIT = 512;
+
 // PDF.js raw outline items, typed loosely to avoid depending on internals.
 interface RawOutlineItem {
   title: string;
@@ -69,10 +89,22 @@ interface RawOutlineItem {
 export class PdfJsEngine implements PdfEngine {
   private doc: PDFDocumentProxy | null = null;
   private name = '';
-  private sourceBytes: Uint8Array | null = null;
-  private pageCache = new Map<number, PDFPageProxy>();
-  private textCache = new Map<number, string>();
-  private textItemsCache = new Map<number, PageTextItems>();
+  /**
+   * Evicting a page from this map frees nothing on its own: pdf.js memoizes
+   * every page it hands out in its own WorkerTransport cache, which lives until
+   * the document is destroyed, so our entry is only a second reference to
+   * something already pinned. `cleanup()` is the call that actually releases
+   * anything -- it drops the cached operator list and the page's decoded images
+   * and fonts. It leaves the proxy usable (viewport, text, annotations and
+   * render all still work; the next render just refetches), and it is a no-op
+   * returning false while a render is in flight, which is the behaviour we want
+   * for a page that is being evicted precisely because it went off screen.
+   */
+  private pageCache = new LruMap<number, PDFPageProxy>(PAGE_CACHE_LIMIT, (page) => {
+    page.cleanup();
+  });
+  private textCache = new LruMap<number, string>(TEXT_CACHE_LIMIT);
+  private textItemsCache = new LruMap<number, PageTextItems>(TEXT_ITEMS_CACHE_LIMIT);
   private readonly linkService = createLinkService();
 
   get isReady(): boolean {
@@ -83,10 +115,13 @@ export class PdfJsEngine implements PdfEngine {
     ensureWorker();
     await this.closeDocument();
 
-    // Keep an untouched copy of the bytes before PDF.js can transfer/detach the
-    // buffer; signature detection needs the exact original file.
-    this.sourceBytes = source.kind === 'bytes' ? source.data.slice() : null;
-
+    // Note `data` is TRANSFERRED to the worker, not copied: pdf.js passes
+    // [data.buffer] as the transfer list, so the caller's view is detached the
+    // moment this runs. Anything that needs the original bytes has to read them
+    // before calling this, which is what actions.ts does for signature
+    // detection. Keeping a defensive .slice() here instead cost a second full
+    // copy of the file, resident for the whole session, to serve one caller
+    // that wanted three fields out of it.
     const params = source.kind === 'bytes' ? { data: source.data } : { url: source.url };
     this.doc = await pdfjsLib.getDocument(params).promise;
     this.name = source.name ?? 'Untitled.pdf';
@@ -102,15 +137,10 @@ export class PdfJsEngine implements PdfEngine {
     this.pageCache.clear();
     this.textCache.clear();
     this.textItemsCache.clear();
-    this.sourceBytes = null;
     if (this.doc) {
       await this.doc.destroy();
       this.doc = null;
     }
-  }
-
-  getOriginalBytes(): Uint8Array | null {
-    return this.sourceBytes;
   }
 
   async getPageDimensions(pageNumber: number, scale: number): Promise<PageDimensions> {
@@ -122,6 +152,13 @@ export class PdfJsEngine implements PdfEngine {
   async renderPage(pageNumber: number, options: RenderPageOptions): Promise<void> {
     const { scale, canvas, signal, overlayForms = false, invert = false, tint } = options;
     const page = await this.getPage(pageNumber);
+    // Bail before sizing the canvas below, the way the layer renders do after
+    // their own awaits. A page scrolled away mid-fetch has already had its
+    // backing store zeroed by the caller, so resizing it here would re-allocate
+    // the raster for a page nobody is looking at, and nothing would zero it a
+    // second time, so scrolling quickly through a long document leaked a
+    // full-size canvas per page passed.
+    if (signal?.aborted) return;
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Could not acquire a 2D canvas context');
 
