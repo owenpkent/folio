@@ -14,7 +14,8 @@ npm run test           # unit tests (Vitest), single run
 npm run test:watch     # unit tests in watch mode
 npm run test:coverage  # unit tests with a V8 coverage report
 npm run test:fuzz      # property tests at a high iteration count
-npm run test:e2e       # end-to-end tests (Playwright)
+npm run test:e2e       # end-to-end tests (Playwright), against the dev server
+npm run test:e2e:preview  # the same suite against a production build
 ```
 
 The first e2e run needs the browser binary:
@@ -125,6 +126,30 @@ server, not the packaged desktop app. In the browser, `isTauri()` is false, so
 opening a document uses a file input and saving triggers a download, which is
 exactly what the tests drive. `playwright.config.ts` starts `npm run dev` and
 points the tests at `http://localhost:1420`.
+
+### The same suite against a production build
+
+`npm run test:e2e:preview` runs every spec again through
+`playwright.preview.config.ts`, which builds the app and serves `dist/` with
+`vite preview` on port 4173. CI runs both.
+
+The two targets are not interchangeable. The dev server ships each module
+roughly as authored; the build puts everything through rolldown and its
+minifier, so **anything that depends on how modules are bundled is exercised
+only by the second run**. That gap once shipped a real bug: the Vite 8 bump
+([#62](https://github.com/owenpkent/folio/pull/62)) broke digital signing
+outright, because rolldown and esbuild disagree about what a default import of a
+CommonJS module means (see the `__esModule` guard in
+`src/test/buildToolchain.test.ts`). Nothing else could see it — `tsc` reads the
+`.d.ts`, and Vitest runs in Node, whose interop matches esbuild — and the
+dev-server run caught it only by coincidence, because the dep optimizer happened
+to make the same choice as the bundler.
+
+Two details are deliberate. The build is part of the server command, and the
+preview run never reuses a running server: a stale `dist/` would serve last
+week's bytes and pass. And it writes to `test-results-preview/` and
+`playwright-report-preview/`, because Playwright wipes its output directory on
+start and sharing one would delete the exports CI feeds to veraPDF.
 
 `e2e/global-setup.ts` generates the fixtures with pdf-lib and writes them to
 `e2e/fixtures/` (gitignored, regenerated each run). Nothing binary is committed.
@@ -412,9 +437,12 @@ the update prompt. It can't be exercised from a single local build.
 `.github/workflows/ci.yml` runs three jobs on every push and pull request:
 
 - **quality**: lint, typecheck, and unit tests on Ubuntu across Node 20 and 22.
-- **e2e**: installs Chromium and runs the Playwright suite, then measures the
-  exported PDFs against PDF/UA-1 with veraPDF. Uploads both the Playwright report
-  and the `pdfua-report` artifact. The veraPDF step is non-blocking; see
+- **e2e**: installs Chromium and runs the Playwright suite twice, once against
+  the dev server and once against a production build, then measures the exported
+  PDFs against PDF/UA-1 with veraPDF. Uploads a Playwright report per run plus
+  the `pdfua-report` artifact. The second run happens even when the first fails,
+  because the pair is the diagnosis: dev green with preview red means bundling,
+  both red means the app. The veraPDF step is non-blocking; see
   [Measuring PDF/UA](#measuring-pdfua).
 - **build**: a `--no-bundle` Tauri compile across Ubuntu, macOS, and Windows
   (bundling + signing need the release host's EV cert and updater key, so CI

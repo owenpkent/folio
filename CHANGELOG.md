@@ -78,6 +78,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Whatever was thrown is reduced to one line for display, since a throw need not
   be an `Error`, and file paths are stripped out of it: the crash screen is one
   people screenshot into bug reports, and the install path names the account.
+- **The e2e suite now also runs against a production build**
+  (`npm run test:e2e:preview`, and a second CI step). Every spec previously ran
+  only against the dev server, which ships each module roughly as authored, so
+  nothing exercised the bundler or its minifier. The Vite 8 bump
+  ([#62](https://github.com/owenpkent/folio/pull/62)) proved what that costs: it
+  broke digital signing in the built app, and `tsc` could not see it (it reads
+  the `.d.ts`), Vitest could not see it (Node's interop matches esbuild), and the
+  dev-server run caught it only because the dep optimizer happened to agree with
+  the bundler. Verified by reintroducing that bug, which the new run fails on.
+  See [testing.md](docs/testing.md#the-same-suite-against-a-production-build).
 
 ### Changed
 
