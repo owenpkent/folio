@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { fileURLToPath, URL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -46,6 +47,61 @@ describe('build toolchain', () => {
     // up to this package. Vite used to drag esbuild in; now it is ours to hold.
     expect(pkg.devDependencies.esbuild).toBeDefined();
     expect(lock.packages['node_modules/esbuild']).toBeDefined();
+  });
+
+  it('does not default-import a CJS package that hides its default behind __esModule', () => {
+    // Default-importing CommonJS is only unambiguous when the package assigns
+    // `module.exports` outright, the way node-forge does. When it instead marks
+    // `__esModule` and sets `exports.default` (what Babel emits), the two
+    // bundlers disagree: esbuild reads the marker and hands back
+    // `exports.default`, rolldown hands back the whole namespace object.
+    //
+    // @signpdf/signpdf is that shape, and its namespace has no `.sign`, so the
+    // Vite 8 bump broke signing in both the dev server and the built app. What
+    // makes it worth a test rather than a memory: nothing else here can see it.
+    // tsc reads the .d.ts, which describes the esbuild answer, and vitest runs
+    // in Node, whose interop also matches esbuild. Only a browser build breaks,
+    // which is why a full e2e run was the cheapest thing that caught it.
+    const require = createRequire(import.meta.url);
+    const srcDir = fileURLToPath(new URL('../', import.meta.url));
+
+    // Only what ships to the browser. Tests and setup files run under Node.
+    const shipped = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const full = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) return entry.name === 'test' ? [] : shipped(full);
+        if (!/\.tsx?$/.test(entry.name) || /\.test\.tsx?$/.test(entry.name)) return [];
+        return [full];
+      });
+
+    const DEFAULT_IMPORT = /^import\s+([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^}]*\})?\s+from\s+'([^']+)'/gm;
+    const offenders: string[] = [];
+
+    for (const file of shipped(srcDir)) {
+      for (const [, local, specifier] of readFileSync(file, 'utf8').matchAll(DEFAULT_IMPORT)) {
+        // Relative paths, the `@/` alias, node builtins and `?url` assets are
+        // all resolved by Vite, not by this interop rule.
+        if (/^[.@]\/|^node:/.test(specifier) || specifier.includes('?')) continue;
+
+        let entry: string;
+        try {
+          entry = require.resolve(specifier);
+        } catch {
+          continue; // Browser-only or subpath-exported: nothing to read.
+        }
+        if (!/\.(js|cjs)$/.test(entry)) continue; // Resolved to ESM; not the hazard.
+
+        const source = readFileSync(entry, 'utf8');
+        if (source.includes('__esModule') && /exports\.default\s*=/.test(source)) {
+          offenders.push(
+            `${file.slice(srcDir.length)}: \`import ${local} from '${specifier}'\`` +
+              ' — import the named export instead',
+          );
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
   });
 
   it('pins a target and sourcemaps for the Tauri WebView build', () => {
