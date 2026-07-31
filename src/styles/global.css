@@ -1872,3 +1872,57 @@ kbd {
     min-height: 44px;
   }
 }
+
+/* ---- Crash fallback ----
+   Rendered by ErrorBoundary when the app throws while rendering. It replaces the
+   whole tree, so it cannot lean on any layout the app sets up. */
+.folio-crash {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100vh;
+  padding: 24px;
+  background: var(--folio-bg);
+  color: var(--folio-text);
+  text-align: center;
+}
+.folio-crash__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.folio-crash__body {
+  margin: 0;
+  max-width: 52ch;
+  color: var(--folio-text-muted);
+  line-height: 1.5;
+}
+.folio-crash__detail {
+  max-width: min(80ch, 100%);
+  max-height: 40vh;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  background: var(--folio-surface);
+  border: 1px solid var(--folio-border);
+  border-radius: var(--folio-radius);
+  color: var(--folio-danger);
+  font-size: 12px;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.folio-crash__action {
+  padding: 8px 18px;
+  background: var(--folio-accent);
+  border: none;
+  border-radius: var(--folio-radius);
+  color: var(--folio-accent-contrast);
+  font: inherit;
+  cursor: pointer;
+}
+.folio-crash__action:hover {
+  background: var(--folio-accent-hover);
+}
