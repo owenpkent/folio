@@ -1,12 +1,18 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { useContributionStore } from '@/plugins';
 import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
+import { useThemeStore } from '@/theme/themeStore';
 
 import { MenuBar } from './MenuBar';
+
+// The live region writes on the next animation frame, which says nothing about
+// whether the menu asked for an announcement at all; assert the call.
+vi.mock('@/a11y/announcer', () => ({ announce: vi.fn() }));
 
 /** MenuBar reads window.matchMedia (via useMediaQuery) to pick the desktop bar
     or the mobile hamburger. jsdom does not implement it, so stub one. Defaults
@@ -35,6 +41,8 @@ describe('MenuBar', () => {
     stubMatchMedia();
     useDocumentStore.setState({ status: 'empty' });
     useViewerStore.setState({ sidebarOpen: false, handMode: false, autoScroll: false });
+    useThemeStore.setState({ theme: 'light', resolvedTheme: 'light', darkScheme: 'night' });
+    vi.mocked(announce).mockClear();
   });
 
   afterEach(() => {
@@ -117,6 +125,44 @@ describe('MenuBar', () => {
     // Sidebar has no document guard, unlike Hand tool.
     expect(screen.getByRole('menuitemcheckbox', { name: 'Sidebar' })).toBeEnabled();
     expect(screen.getByRole('menuitemcheckbox', { name: 'Hand tool' })).toBeDisabled();
+  });
+
+  it('offers Match system in the View menu, the only surface with the full keyboard pattern', () => {
+    render(<MenuBar />);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
+
+    const matchSystem = screen.getByRole('menuitemcheckbox', { name: 'Match system' });
+    expect(matchSystem).toHaveAttribute('aria-checked', 'false');
+
+    // The light/dark toggle alternates two modes and can never land on the
+    // third, so this row is the only keyboard route to it.
+    fireEvent.click(matchSystem);
+    expect(useThemeStore.getState().theme).toBe('system');
+  });
+
+  it('pins the resolved theme when Match system is switched back off', () => {
+    useThemeStore.setState({ theme: 'system', resolvedTheme: 'dark' });
+    render(<MenuBar />);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
+
+    const matchSystem = screen.getByRole('menuitemcheckbox', { name: 'Match system' });
+    expect(matchSystem).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(matchSystem);
+    expect(useThemeStore.getState().theme).toBe('dark');
+  });
+
+  it('announces a dark reading color picked from the View menu', () => {
+    render(<MenuBar />);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
+
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Amber' }));
+
+    expect(useThemeStore.getState().darkScheme).toBe('amber');
+    // The menu bar is the keyboard surface, so a silent change here is a
+    // change a screen-reader user cannot hear at all. Same wording the
+    // toolbar's appearance menu uses.
+    expect(announce).toHaveBeenCalledWith('Dark reading color Amber');
   });
 
   it('moves the roving tab stop with ArrowRight, sliding the open menu with it', () => {

@@ -1,4 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import { flushSync } from 'react-dom';
 
 import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
@@ -11,22 +12,142 @@ import { useDocumentStore } from '@/state/documentStore';
 import { usePrintStore } from './store';
 
 /**
- * Rasterization scale for print. 2x the PDF's 72dpi user space is 144dpi, which
- * is past the point where a laser printer's halftoning hides the difference and
- * well short of the memory a 300dpi page bitmap would cost on a long document.
+ * Rasterization scale for print when the document is short enough to afford it.
+ * 2x the PDF's 72dpi user space is 144dpi, which is past the point where a
+ * laser printer's halftoning hides the difference and well short of the memory
+ * a 300dpi page bitmap would cost. Longer documents get less; see chooseScale.
  */
 const PRINT_SCALE = 2;
+
+/**
+ * The floor chooseScale is allowed to drop to. 0.75x is 54dpi: visibly soft on
+ * a photograph, still readable as body text, and the point below which shrinking
+ * further buys less memory than it costs legibility. A document that cannot fit
+ * the budget even here is refused rather than printed illegibly.
+ */
+const MIN_PRINT_SCALE = 0.75;
+
+/**
+ * Peak bitmap budget for one print run, in bytes.
+ *
+ * Every page has to be in the DOM and decoded at the moment window.print()
+ * paints the preview: the print engine takes the whole document at once, so
+ * there is no batch that can be released "as it is consumed". Residency, not
+ * decode concurrency, is therefore the number that decides whether the renderer
+ * survives, and the only levers left are how big each bitmap is and how many of
+ * them there are.
+ *
+ * A decoded page costs width x height x 4 bytes of RGBA. A Letter page at
+ * scale 1 is 612 x 792 x 4 = 1.85 MiB, so this budget buys about 104 Letter
+ * pages at the full 2x, 415 at 1x, and 738 at MIN_PRINT_SCALE. 768 MiB leaves
+ * room for the exported bytes, the throwaway PDF.js document and the rest of
+ * the app inside a renderer that in practice falls over well short of 2 GiB.
+ */
+const PRINT_BITMAP_BUDGET_BYTES = 768 * 1024 * 1024;
+
+/**
+ * Ceilings on a single page bitmap. Past a platform limit a browser quietly
+ * refuses to back the canvas: getContext('2d') returns null, or the surface
+ * comes back blank, with no error either way. An A0 sheet is 2384 x 3370 user
+ * units, which at 2x is 4768 x 6740 = 32.1M pixels, so it has to be scaled down
+ * deliberately instead of silently yielding an empty sheet.
+ *
+ * TODO: de-duplicate against PdfJsEngine's MAX_CANVAS_AREA / MAX_CANVAS_DIM
+ * when #68 merges. Two copies of these numbers must not be allowed to drift.
+ */
+const MAX_CANVAS_AREA = 16_777_216; // 4096 x 4096
+const MAX_CANVAS_DIM = 4096;
 
 const PRINT_ROOT_ID = 'folio-print-root';
 
 /**
- * How many page images to decode at once before handing over to the print
- * dialog. Each decoded Letter page at PRINT_SCALE is ~7.4 MiB of RGBA, so
- * decoding the whole array in one `Promise.all` asks the browser for
- * pages x 7.4 MiB simultaneously; a 500-page document alone is ~3.6 GiB. Four
- * keeps the decoders busy on any machine while bounding the peak.
+ * Set on <body> only while a print run is staged. The print stylesheet hides
+ * the whole UI, and it has to key off something that is present for exactly as
+ * long as the print root is: keying off the root's own existence blanked every
+ * print that did not come from here, because that root exists for a few
+ * milliseconds per run and never otherwise.
+ */
+const PRINT_BODY_CLASS = 'folio-printing';
+
+/**
+ * How many page images to decode at once. Each decoded page is several MiB, and
+ * asking for all of them in one Promise.all allocates every bitmap in the same
+ * tick. Four keeps the decoders busy on any machine. Note this bounds the rate,
+ * not the total: what bounds the total is the scale chosen by chooseScale.
  */
 const DECODE_CONCURRENCY = 4;
+
+/**
+ * How long to keep the print DOM alive when `afterprint` never arrives. Long
+ * enough for a slow preview to finish rasterizing, short enough that several
+ * hundred megabytes of bitmap is not stranded for the rest of the session.
+ */
+const PRINT_TEARDOWN_TIMEOUT_MS = 60_000;
+
+/** Bytes a decoded RGBA bitmap of this page costs at `scale`. */
+function bitmapBytes(width: number, height: number, scale: number): number {
+  return Math.floor(width * scale) * Math.floor(height * scale) * 4;
+}
+
+/**
+ * The largest scale at or below PRINT_SCALE whose whole-document bitmap cost
+ * fits PRINT_BITMAP_BUDGET_BYTES, or null when even MIN_PRINT_SCALE does not.
+ *
+ * Cost grows with the square of the scale, so the affordable scale is
+ * sqrt(budget / (pages x bytes-per-page-at-1x)).
+ */
+export function chooseScale(width: number, height: number, pageCount: number): number | null {
+  const perPage = bitmapBytes(width, height, 1);
+  if (perPage <= 0 || pageCount <= 0) return PRINT_SCALE;
+  const affordable = Math.sqrt(PRINT_BITMAP_BUDGET_BYTES / (perPage * pageCount));
+  if (affordable < MIN_PRINT_SCALE) return null;
+  return Math.min(PRINT_SCALE, affordable);
+}
+
+/** `scale` reduced until this page fits both canvas ceilings. */
+export function capScale(width: number, height: number, scale: number): number {
+  if (width <= 0 || height <= 0) return scale;
+  const byDimension = Math.min(MAX_CANVAS_DIM / width, MAX_CANVAS_DIM / height);
+  const byArea = Math.sqrt(MAX_CANVAS_AREA / (width * height));
+  return Math.min(scale, byDimension, byArea);
+}
+
+/**
+ * Tear down once the print job has let go of the images.
+ *
+ * window.print() blocks until the dialog closes on Chromium, but not on every
+ * engine: WebKit can return while the preview is still being generated. Undoing
+ * the DOM and revoking the blob URLs on the next line therefore races the
+ * preview and prints blank sheets. Wait for `afterprint` instead, with a timer
+ * for the engines that never fire it, and let whichever arrives first win.
+ */
+function teardownAfterPrint(cleanup: () => void): void {
+  let done = false;
+  const once = () => {
+    if (done) return;
+    done = true;
+    window.removeEventListener('afterprint', once);
+    clearTimeout(timer);
+    cleanup();
+  };
+  // `once` only ever runs from one of the two lines below, so `timer` is
+  // always initialized by the time it reads it.
+  const timer = setTimeout(once, PRINT_TEARDOWN_TIMEOUT_MS);
+  window.addEventListener('afterprint', once);
+}
+
+/**
+ * True from the moment a run starts until it has handed over to the print
+ * dialog. Two overlapping runs reach appendChild before either calls print(),
+ * so the preview contains the document twice, and the first run's finish()
+ * hides the modal while the second is still rasterizing.
+ *
+ * Held Ctrl+P is no longer how that happens: the shortcut dispatcher swallows
+ * OS key repeat (see REPEATABLE_KEYS in useKeyboardShortcuts). This
+ * guards every other way in, which is most of them: the File menu, the command
+ * registry, and any plugin calling printDocument directly.
+ */
+let inFlight = false;
 
 /**
  * Print the open document, including every unsaved edit.
@@ -43,59 +164,105 @@ const DECODE_CONCURRENCY = 4;
  */
 export async function printDocument(): Promise<void> {
   if (useDocumentStore.getState().status !== 'ready') return;
-
-  const store = usePrintStore.getState();
-  store.start(0);
+  if (inFlight) return;
+  inFlight = true;
 
   const objectUrls: string[] = [];
   let root: HTMLDivElement | null = null;
+  let renderTask: pdfjsLib.RenderTask | null = null;
+  let handedToDialog = false;
 
   const cleanup = () => {
     if (root?.parentNode) root.parentNode.removeChild(root);
     for (const url of objectUrls) URL.revokeObjectURL(url);
     objectUrls.length = 0;
     root = null;
+    document.body.classList.remove(PRINT_BODY_CLASS);
   };
+
+  const cancelled = () => usePrintStore.getState().cancelRequested;
+
+  /** Take the cancel exit if one has been asked for. Safe to call repeatedly. */
+  const stopIfCancelled = (): boolean => {
+    if (!cancelled()) return false;
+    cleanup();
+    usePrintStore.getState().finish();
+    return true;
+  };
+
+  // requestCancel only sets a flag, and the flag can only be read between
+  // pages. That is no help while a single large page is mid-render, so cancel
+  // the pdf.js task too: it is the only thing that stops the page in progress.
+  const unsubscribe = usePrintStore.subscribe((s) => {
+    if (s.cancelRequested) renderTask?.cancel();
+  });
+
+  usePrintStore.getState().start(0);
 
   try {
     const bytes = await exportDocument();
 
     ensureWorker();
     const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
-    usePrintStore.getState().setTotal(doc.numPages);
+    const pageCount = doc.numPages;
+    usePrintStore.getState().setTotal(pageCount);
 
-    root = document.createElement('div');
-    root.id = PRINT_ROOT_ID;
+    const printRoot = document.createElement('div');
+    root = printRoot;
+    printRoot.id = PRINT_ROOT_ID;
     // Hidden from assistive tech and from the on-screen layout; the print
     // stylesheet is the only thing that ever reveals it.
-    root.setAttribute('aria-hidden', 'true');
+    printRoot.setAttribute('aria-hidden', 'true');
 
     const images: HTMLImageElement[] = [];
 
     try {
-      for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
-        if (usePrintStore.getState().cancelRequested) {
-          cleanup();
-          usePrintStore.getState().finish();
-          return;
-        }
+      if (pageCount < 1) throw new Error('This document has no pages to print');
+
+      // Page 1 stands in for the whole document when sizing the run. Pages in a
+      // real PDF are near enough always the same size, and reading every
+      // viewport up front would mean loading every page before rasterizing any.
+      const firstPage = await doc.getPage(1);
+      const unitViewport = firstPage.getViewport({ scale: 1 });
+      const scale = chooseScale(unitViewport.width, unitViewport.height, pageCount);
+      if (scale === null) {
+        throw new Error(
+          `This document is too long to print in one pass (${pageCount} pages). ` +
+            'Save it first, then print in smaller ranges.',
+        );
+      }
+
+      for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+        if (stopIfCancelled()) return;
         usePrintStore.getState().setProgress(pageNumber);
 
-        const page = await doc.getPage(pageNumber);
-        const viewport = page.getViewport({ scale: PRINT_SCALE });
+        const page = pageNumber === 1 ? firstPage : await doc.getPage(pageNumber);
+        const unit = page.getViewport({ scale: 1 });
+        const viewport = page.getViewport({ scale: capScale(unit.width, unit.height, scale) });
         const canvas = document.createElement('canvas');
         canvas.width = Math.floor(viewport.width);
         canvas.height = Math.floor(viewport.height);
         const context = canvas.getContext('2d');
         if (!context) throw new Error('Could not acquire a 2D canvas context');
 
-        await page.render({ canvasContext: context, viewport }).promise;
+        renderTask = page.render({ canvasContext: context, viewport });
+        try {
+          await renderTask.promise;
+        } finally {
+          renderTask = null;
+        }
 
         // A blob URL rather than a data URL: base64 inflates by a third, and a
         // long document holds every page in memory at once.
         const blob = await new Promise<Blob | null>((resolve) =>
           canvas.toBlob(resolve, 'image/png'),
         );
+
+        // Free the bitmap now rather than at the next GC; even a capped page
+        // canvas is several megabytes.
+        canvas.width = 0;
+        canvas.height = 0;
+
         if (!blob) throw new Error(`Could not rasterize page ${pageNumber}`);
         const url = URL.createObjectURL(blob);
         objectUrls.push(url);
@@ -106,43 +273,77 @@ export async function printDocument(): Promise<void> {
         img.src = url;
         img.alt = '';
         holder.appendChild(img);
-        root.appendChild(holder);
+        printRoot.appendChild(holder);
         images.push(img);
-
-        // Free the bitmap now rather than at the next GC; at 144dpi each page
-        // canvas is several megabytes.
-        canvas.width = 0;
-        canvas.height = 0;
       }
     } finally {
       await doc.destroy();
     }
 
-    document.body.appendChild(root);
+    // Cancelling on the last page used to still open the dialog with the whole
+    // document queued: the flag was read inside the loop and nowhere else.
+    if (stopIfCancelled()) return;
+
+    document.body.classList.add(PRINT_BODY_CLASS);
+    document.body.appendChild(printRoot);
+
     // The dialog screenshots the page synchronously, so every image has to have
-    // finished decoding before print() or the preview comes out blank. That
-    // barrier stays; only its width changes. Decoding a few at a time removes
-    // the gratuitous part of the cost -- Promise.all asked the browser to
-    // allocate every page's bitmap in the same tick -- but note it does not
-    // bound the peak on its own: whether the earlier bitmaps are still resident
-    // by the time the last one decodes is the browser's call, and printing does
-    // need them all painted in the end. Rasterizing a long document is
-    // expensive by design; this just stops it being needlessly so.
-    await mapWithConcurrency(images, DECODE_CONCURRENCY, (img) =>
-      img.decode().catch(() => undefined),
+    // finished decoding before print() or the preview comes out blank.
+    const missing = await mapWithConcurrency<HTMLImageElement, number>(
+      images,
+      DECODE_CONCURRENCY,
+      async (img) => {
+        // WebKit rejects decode() for reasons that have nothing to do with the
+        // image being usable, so the rejection is not the signal to act on.
+        // naturalWidth is: it is non-zero once the bytes have been parsed,
+        // whatever decode() said about them.
+        await img.decode().catch(() => undefined);
+        return img.naturalWidth > 0 && img.naturalHeight > 0 ? 0 : 1;
+      },
     );
 
-    // Drop the modal before handing over to the system dialog.
-    usePrintStore.getState().finish();
-    announce(`Printing ${doc.numPages} ${doc.numPages === 1 ? 'page' : 'pages'}`);
+    // Silently printing the pages that did happen to load leaves the user
+    // holding a document with blank sheets in it and no reason given.
+    const failedPages = missing.reduce((total, failed) => total + failed, 0);
+    if (failedPages > 0) {
+      throw new Error(
+        `${failedPages} of ${images.length} pages could not be prepared, so nothing was sent to the printer`,
+      );
+    }
 
-    window.print();
+    if (stopIfCancelled()) return;
+
+    // finish() on its own leaves the modal on screen: React commits when its
+    // scheduler gets round to it and window.print() is synchronous, so the
+    // dialog would capture a page that still has the progress modal and its
+    // focus trap on it. flushSync forces the commit before we hand over.
+    flushSync(() => usePrintStore.getState().finish());
+    announce(`Printing ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}`);
+
+    handedToDialog = true;
+    try {
+      window.print();
+    } finally {
+      teardownAfterPrint(cleanup);
+    }
   } catch (error) {
+    // A cancel arrives here as a pdf.js RenderingCancelledException. That is a
+    // user action, not a failure, and must not raise an error toast.
+    if (cancelled()) {
+      cleanup();
+      usePrintStore.getState().finish();
+      return;
+    }
     const message = error instanceof Error ? error.message : String(error);
     usePrintStore.getState().fail(message);
     pushToast('Could not prepare the document for printing', 'error');
   } finally {
-    cleanup();
+    unsubscribe();
+    renderTask = null;
+    inFlight = false;
+    // The success path hands cleanup to teardownAfterPrint; running it here
+    // too would revoke the blob URLs out from under the preview.
+    if (!handedToDialog) cleanup();
   }
 }
 

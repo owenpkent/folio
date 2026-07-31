@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { IconButton } from '@/components/common';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -9,6 +10,7 @@ import { AUTO_SCROLL_MAX, AUTO_SCROLL_MIN, useViewerStore } from '@/state/viewer
 import { COMPACT_VIEWPORT_QUERY, NARROW_VIEWPORT_QUERY } from '@/theme/breakpoints';
 import {
   DARK_SCHEME_LABELS,
+  THEME_LABELS,
   useThemeStore,
   type DarkScheme,
   type UiTheme,
@@ -24,11 +26,6 @@ const run = (id: string) => commandRegistry.execute(id);
 // offers the same schemes as a dropdown, which a flat menu row can't host).
 const SCHEME_ORDER: DarkScheme[] = ['night', 'green', 'amber'];
 const THEME_ORDER: UiTheme[] = ['light', 'dark', 'system'];
-const THEME_LABELS: Record<UiTheme, string> = {
-  light: 'Light',
-  dark: 'Dark',
-  system: 'Match system',
-};
 
 // The auto-scroll slider is geometric, not linear: equal slider travel is equal
 // *ratio* of speed change, so the slow end (where fine control matters) gets as
@@ -148,10 +145,14 @@ export function Toolbar() {
           icon: 'contrast',
           label: `Dark reading color: ${DARK_SCHEME_LABELS[darkScheme]} (tap to change)`,
           menuLabel: `Dark color: ${DARK_SCHEME_LABELS[darkScheme]}`,
-          onClick: () =>
-            setDarkScheme(
-              SCHEME_ORDER[(SCHEME_ORDER.indexOf(darkScheme) + 1) % SCHEME_ORDER.length],
-            ),
+          onClick: () => {
+            const next = SCHEME_ORDER[(SCHEME_ORDER.indexOf(darkScheme) + 1) % SCHEME_ORDER.length];
+            setDarkScheme(next);
+            // The row's own label only updates behind the now-closed menu, so
+            // the announcement is the only feedback a screen reader gets. Same
+            // wording as the appearance menu on wider viewports.
+            announce(`Dark reading color ${DARK_SCHEME_LABELS[next]}`);
+          },
         },
         {
           // The pinned AppearanceMenu folds away at this width, so the mode it
@@ -161,8 +162,11 @@ export function Toolbar() {
           icon: resolvedTheme === 'dark' ? 'moon' : 'sun',
           label: `Viewing mode: ${THEME_LABELS[theme]} (tap to change)`,
           menuLabel: `Mode: ${THEME_LABELS[theme]}`,
-          onClick: () =>
-            setTheme(THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length]),
+          onClick: () => {
+            const next = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length];
+            setTheme(next);
+            announce(`Viewing mode ${THEME_LABELS[next]}`);
+          },
         },
         {
           id: 'about',

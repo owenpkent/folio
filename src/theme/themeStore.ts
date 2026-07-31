@@ -28,6 +28,17 @@ export const DARK_SCHEME_LABELS: Record<DarkScheme, string> = {
   amber: 'Amber',
 };
 
+/** Display names for the viewing mode. Shared rather than repeated per control
+    because three surfaces (the toolbar's appearance menu, the More menu's
+    cycling row, the View menu) both label and announce the same change, and a
+    screen-reader user hearing two different sentences for it would have no way
+    to tell they are the same setting. */
+export const THEME_LABELS: Record<UiTheme, string> = {
+  light: 'Light',
+  dark: 'Dark',
+  system: 'Match system',
+};
+
 function readStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
     const value = localStorage.getItem(key);

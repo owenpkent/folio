@@ -57,6 +57,7 @@ Folio rendering a two-page form PDF, in light and dark:
 **Dark mode and reading comfort**
 - Native light / dark / system theming via CSS custom properties, unified across the UI chrome and the rendered page: toggling dark darkens the whole app and inverts the page together, rendered at full resolution for crisp text
 - Selectable dark reading schemes (Acrobat-style): Night (white-on-black), Green, and Amber
+- One appearance button in the toolbar opens the whole viewing mode: Light / Dark / Match system above, the dark reading colors below; the View menu carries the same settings for keyboard users
 - Responsive down to phone widths: on narrow windows the sidebar becomes an
   overlay drawer, the menu bar folds into a hamburger menu, toolbar tools fold
   into the More menu (everything stays reachable), and touch screens get
@@ -191,7 +192,7 @@ npm run typecheck    # tsc --noEmit
 | Toggle sidebar    | `Ctrl/Cmd + B`              |
 | Highlight text    | `Ctrl/Cmd + Shift + H`      |
 | Add sticky note   | `Ctrl/Cmd + Shift + M`      |
-| Toggle dark mode  | `Ctrl/Cmd + Shift + L`      |
+| Toggle light / dark | `Ctrl/Cmd + Shift + L`    |
 
 The complete list, plus the accessibility model, is in
 [docs/accessibility.md](docs/accessibility.md).

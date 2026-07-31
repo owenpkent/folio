@@ -1887,9 +1887,19 @@ kbd {
 }
 
 /* ---- Print ----
-   printDocument() rasterizes the baked PDF into #folio-print-root and appends
-   it to <body> only for the duration of the print call. On screen it is never
-   visible; when printing, it is the only thing that is. */
+   printDocument() rasterizes the baked PDF into #folio-print-root, appends it
+   to <body>, and puts .folio-printing on <body> for the duration of the print
+   call. On screen the root is never visible; when printing, it is the only
+   thing that is.
+
+   Everything below is gated on .folio-printing, not on the root's existence.
+   The root is in the DOM for a few milliseconds per run and never otherwise, so
+   a rule that only asked ":not(#folio-print-root)" hid the entire UI from every
+   print that did not come from printDocument() (Ctrl+P from a text field, the
+   browser's own File > Print, the Chrome-extension and VS Code webview builds
+   that load this stylesheet) and handed back a blank sheet with no error. A
+   plain class on <body> is used rather than :has(), which WebKitGTK did not
+   support until 2.42 and which the webview targets cannot be assumed to have. */
 #folio-print-root {
   display: none;
 }
@@ -1897,11 +1907,11 @@ kbd {
 @media print {
   /* Everything the app draws — toolbar, sidebar, canvas, modals, toasts — is a
      body child, so one rule hides the whole UI without enumerating it. */
-  body > *:not(#folio-print-root) {
+  body.folio-printing > *:not(#folio-print-root) {
     display: none !important;
   }
 
-  #folio-print-root {
+  body.folio-printing #folio-print-root {
     display: block;
   }
 

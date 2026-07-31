@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { mapWithConcurrency } from './concurrency';
 
@@ -53,10 +53,19 @@ describe('mapWithConcurrency', () => {
     expect(await all).toEqual([0, 1, 2]);
   });
 
-  it('handles an empty list and a nonsense limit without spinning', async () => {
+  it('handles an empty list without spinning', async () => {
     expect(await mapWithConcurrency([], 8, async () => 1)).toEqual([]);
-    expect(await mapWithConcurrency([1, 2], 0, async (n) => n)).toEqual([1, 2]);
-    expect(await mapWithConcurrency([1, 2], -5, async (n) => n)).toEqual([1, 2]);
+  });
+
+  it('rejects a limit it cannot honour rather than running nothing', async () => {
+    const task = vi.fn(async (n: number) => n);
+
+    // NaN was the dangerous one: it used to survive the clamp, produce zero
+    // workers, and resolve with an array of holes having run no task at all.
+    for (const limit of [Number.NaN, 0, -5, Number.POSITIVE_INFINITY]) {
+      await expect(mapWithConcurrency([1, 2], limit, task)).rejects.toThrow(RangeError);
+    }
+    expect(task).not.toHaveBeenCalled();
   });
 
   it('rejects with the first failure', async () => {
@@ -66,5 +75,26 @@ describe('mapWithConcurrency', () => {
         return n;
       }),
     ).rejects.toThrow('boom');
+  });
+
+  it('abandons queued tasks once one has failed', async () => {
+    const started: number[] = [];
+
+    await expect(
+      mapWithConcurrency([0, 1, 2, 3, 4, 5], 2, async (index) => {
+        started.push(index);
+        await Promise.resolve();
+        if (index === 0) throw new Error('boom');
+        return index;
+      }),
+    ).rejects.toThrow('boom');
+
+    // Let any worker that wrongly kept draining the cursor get its turn.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Only the two that were already in flight ever ran. Before the failure
+    // flag both workers drained the cursor to the end, so all six started even
+    // though the caller had been rejected on the first.
+    expect(started).toEqual([0, 1]);
   });
 });

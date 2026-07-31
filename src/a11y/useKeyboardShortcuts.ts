@@ -41,9 +41,35 @@ function normalizeBinding(binding: string): string {
 }
 
 /**
+ * Keys whose commands are meant to fire again while the key is held: scrolling
+ * and paging through a document. Every other command is a one-shot action, and
+ * OS key repeat on a held chord dispatches it about thirty times a second.
+ */
+const REPEATABLE_KEYS = new Set([
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'PageUp',
+  'PageDown',
+  'Home',
+  'End',
+]);
+
+/**
+ * Chords that keep working while the caret is in a text field, in normalized
+ * form. Print is here because falling through to the browser's own Ctrl+P
+ * prints the app's DOM instead of the document, which is never what the
+ * shortcut means in a PDF viewer: clicking the page-number or find box and
+ * pressing Ctrl+P used to do exactly that. Escape is handled separately.
+ */
+const CHORDS_ACTIVE_WHILE_TYPING = new Set(['Mod+p']);
+
+/**
  * Global keyboard handler that dispatches to the command registry. Bindings are
  * declared on commands, so plugins that register a command with a keybinding get
- * a shortcut for free. Typing in inputs is never hijacked (except Escape).
+ * a shortcut for free. Typing in inputs is never hijacked (except Escape and the
+ * chords in CHORDS_ACTIVE_WHILE_TYPING).
  */
 export function useKeyboardShortcuts(): void {
   useEffect(() => {
@@ -54,10 +80,18 @@ export function useKeyboardShortcuts(): void {
 
       for (const command of commandRegistry.all()) {
         if (!command.keybinding) continue;
-        if (normalizeBinding(command.keybinding) !== chord) continue;
-        // Don't steal keystrokes while the user is typing, apart from Escape.
-        if (editable && e.key !== 'Escape') return;
+        const binding = normalizeBinding(command.keybinding);
+        if (binding !== chord) continue;
+        // Don't steal keystrokes while the user is typing, apart from Escape and
+        // the few chords that mean the same thing wherever the caret is.
+        if (editable && e.key !== 'Escape' && !CHORDS_ACTIVE_WHILE_TYPING.has(binding)) return;
         if (command.when && !command.when()) continue;
+        // Swallow a held key rather than letting it fall through: the browser
+        // acting on a repeated Ctrl+P is the native dialog we are replacing.
+        if (e.repeat && !REPEATABLE_KEYS.has(e.key)) {
+          e.preventDefault();
+          return;
+        }
         e.preventDefault();
         void commandRegistry.execute(command.id);
         return;
