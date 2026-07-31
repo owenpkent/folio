@@ -24,7 +24,7 @@
     "dark-mode"
   ],
   "engines": {
-    "node": ">=20"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
     "dev": "vite",
@@ -88,7 +88,7 @@
     "eslint-plugin-react-refresh": "^0.5.3",
     "fast-check": "^4.9.0",
     "globals": "^15.14.0",
-    "jsdom": "^25.0.1",
+    "jsdom": "^30.0.0",
     "prettier": "^3.9.6",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.65.0",

@@ -109,6 +109,14 @@ describe('saveDocumentInPlace', () => {
     useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/docs/report.pdf' });
     // jsdom lacks blob URLs and navigation; stub both so the browser
     // download fallback runs without jsdom's not-implemented noise.
+    //
+    // Keep this stub even if the not-implemented noise stops being a problem.
+    // jsdom 30 renamed BlobImpl's internal `_buffer` to `_bytes`, and vitest's
+    // jsdom environment still reads `_buffer` when it converts a jsdom Blob for
+    // Node, so a real URL.createObjectURL here hands back a 9-byte blob holding
+    // the string "undefined" instead of the PDF. Nothing observes that today
+    // because we only assert the call happened, but a test that reads the bytes
+    // back would pass against the wrong payload rather than fail.
     const createObjectURL = vi.fn(() => 'blob:folio');
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});

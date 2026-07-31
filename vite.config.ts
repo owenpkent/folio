@@ -141,5 +141,26 @@ export default defineConfig({
     // timeout that read like a property failure. Nothing here legitimately
     // takes this long: a 20,000-iteration fuzz pass is a few seconds.
     testTimeout: 60_000,
+    server: {
+      deps: {
+        // Let Node require undici itself instead of routing it through Vitest's
+        // module runner. jsdom 30 pulls undici 8, whose webidl module binds
+        // `const { markAsUncloneable } = require('node:worker_threads')` at load
+        // and calls it while building `caches` (index.js constructs a
+        // CacheStorage at module scope). Transformed, that named import comes
+        // back `undefined` -- `import * as` and `createRequire` both hand back
+        // the real function in the same worker, so it is the named-import
+        // interop for node: builtins that is wrong, not the Node build.
+        //
+        // undici 7 survived this by accident: it guarded the binding with
+        // `runtimeFeatures.has('markAsUncloneable') ? ... : () => {}`. 8.9.0
+        // assigns it unguarded, so the undefined is called and throws, taking
+        // out every jsdom-environment file before a single test runs (38 of 46
+        // here). Nothing in that error names undici, jsdom or this config.
+        //
+        // No guard test needed: drop this and the suite fails loudly.
+        external: [/undici/],
+      },
+    },
   },
 });
