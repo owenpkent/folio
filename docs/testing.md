@@ -434,9 +434,14 @@ the update prompt. It can't be exercised from a single local build.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs three jobs on every push and pull request:
+`.github/workflows/ci.yml` runs four jobs on every push and pull request:
 
 - **quality**: lint, typecheck, and unit tests on Ubuntu across Node 22 and 24.
+- **fuzz**: the property tests, seeded and capped at 500 iterations so the merge
+  gate stays reproducible and quick. The same job runs unseeded at 20,000
+  iterations on the nightly schedule, which is the only thing that trigger exists
+  for; every other job opts out of it. See
+  [Seeds and reproducing a failure](#seeds-and-reproducing-a-failure).
 - **e2e**: installs Chromium and runs the Playwright suite twice, once against
   the dev server and once against a production build, then measures the exported
   PDFs against PDF/UA-1 with veraPDF. Uploads a Playwright report per run plus
