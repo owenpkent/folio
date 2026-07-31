@@ -13,7 +13,9 @@ Folio is tested at two layers:
 npm run test           # unit tests (Vitest), single run
 npm run test:watch     # unit tests in watch mode
 npm run test:coverage  # unit tests with a V8 coverage report
-npm run test:e2e       # end-to-end tests (Playwright)
+npm run test:fuzz      # property tests at a high iteration count
+npm run test:e2e       # end-to-end tests (Playwright), against the dev server
+npm run test:e2e:preview  # the same suite against a production build
 ```
 
 The first e2e run needs the browser binary:
@@ -67,6 +69,56 @@ PDF rendering are exercised by the end-to-end suite rather than in unit tests.
 Create `thing.test.ts` beside `thing.ts`, import from `vitest`, and reset any
 shared store state in `beforeEach`. Keep tests deterministic and fast.
 
+## Property and fuzz tests (fast-check)
+
+Files named `*.fuzz.test.ts` use [fast-check](https://fast-check.dev) through
+`@fast-check/vitest`. They run as part of `npm test` like any other spec, so the
+normal suite stays a gate rather than a lottery; `npm run test:fuzz` re-runs just
+those files at a much higher iteration count.
+
+They exist for the code that reads bytes straight out of a PDF. Every offset such
+a parser reports is attacker-influenced, and most of them are later used as slice
+bounds or array indices, so the invariants worth asserting are things an
+example-based test tends not to reach: the function is total, its results stay in
+bounds, and it cannot be made to do unbounded work.
+
+Current targets:
+
+| File | What it pins |
+| --- | --- |
+| `features/signing/verify.fuzz.test.ts` | `detectSignatures`, the only PDF parser a hostile document reaches with no user action. A signature may only be reported as covering the whole document when the range it names ends inside the file, and the caps that stop a hostile document stalling the UI thread hold: the scan gives up after a fixed number of candidate `/ByteRange` sites and a fixed total decoding budget. Both are pinned through what the cap causes (a signature parked behind the decoys goes unreported; the scan stops short of the result cap) rather than through a wall clock, which on a document small enough to build in a test measures nothing. |
+| `features/textedit/contentStream.fuzz.test.ts` | The content-stream tokenizer and the splice primitives: reported runs are always in range and spliceable, an operator splice never glues two tokens together, and a hostile form resolver cannot cause unbounded descent. |
+
+### Seeds and reproducing a failure
+
+`src/test/setup.ts` reads two environment variables:
+
+- `FC_NUM_RUNS`: iterations per property (default 100; `npm run test:fuzz`
+  raises it to 20,000).
+- `FC_SEED`: pins the generator so a run is byte-for-byte reproducible.
+
+A malformed value for either is an error rather than a silent fall back to the
+default. `FC_NUM_RUNS=20k` is `NaN`, and `NaN` runs is zero runs, which every
+property in the suite passes without executing a single case.
+
+A failure prints both a seed and a shrink path, and names the smallest input it
+could find. Replay it exactly by putting them on the property:
+
+```ts
+test.prop([arb], { seed: -1018431547, path: '0:0:0:1', endOnFailure: true })(...)
+```
+
+Once fixed, keep the minimal input as an entry in the property's `examples`
+array so it is checked on every run from then on, seed or no seed.
+
+### Adding a fuzz test
+
+Write generators that produce *structurally plausible* input. A parser keyed on a
+literal like `/ByteRange` will essentially never see it in random bytes, so an
+unstructured `fc.uint8Array()` would spend every iteration on the not-found path
+and prove nothing. Build the shape and fuzz the parts an attacker controls: the
+offsets, the lengths, the spacing, what follows the end.
+
 ## End-to-end tests (Playwright)
 
 The e2e suite (`e2e/`) runs against the **browser build** served by the Vite dev
@@ -74,6 +126,30 @@ server, not the packaged desktop app. In the browser, `isTauri()` is false, so
 opening a document uses a file input and saving triggers a download, which is
 exactly what the tests drive. `playwright.config.ts` starts `npm run dev` and
 points the tests at `http://localhost:1420`.
+
+### The same suite against a production build
+
+`npm run test:e2e:preview` runs every spec again through
+`playwright.preview.config.ts`, which builds the app and serves `dist/` with
+`vite preview` on port 4173. CI runs both.
+
+The two targets are not interchangeable. The dev server ships each module
+roughly as authored; the build puts everything through rolldown and its
+minifier, so **anything that depends on how modules are bundled is exercised
+only by the second run**. That gap once shipped a real bug: the Vite 8 bump
+([#62](https://github.com/owenpkent/folio/pull/62)) broke digital signing
+outright, because rolldown and esbuild disagree about what a default import of a
+CommonJS module means (see the `__esModule` guard in
+`src/test/buildToolchain.test.ts`). Nothing else could see it — `tsc` reads the
+`.d.ts`, and Vitest runs in Node, whose interop matches esbuild — and the
+dev-server run caught it only by coincidence, because the dep optimizer happened
+to make the same choice as the bundler.
+
+Two details are deliberate. The build is part of the server command, and the
+preview run never reuses a running server: a stale `dist/` would serve last
+week's bytes and pass. And it writes to `test-results-preview/` and
+`playwright-report-preview/`, because Playwright wipes its output directory on
+start and sharing one would delete the exports CI feeds to veraPDF.
 
 `e2e/global-setup.ts` generates the fixtures with pdf-lib and writes them to
 `e2e/fixtures/` (gitignored, regenerated each run). Nothing binary is committed.
@@ -358,12 +434,20 @@ the update prompt. It can't be exercised from a single local build.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs three jobs on every push and pull request:
+`.github/workflows/ci.yml` runs four jobs on every push and pull request:
 
-- **quality**: lint, typecheck, and unit tests on Ubuntu across Node 20 and 22.
-- **e2e**: installs Chromium and runs the Playwright suite, then measures the
-  exported PDFs against PDF/UA-1 with veraPDF. Uploads both the Playwright report
-  and the `pdfua-report` artifact. The veraPDF step is non-blocking; see
+- **quality**: lint, typecheck, and unit tests on Ubuntu across Node 22 and 24.
+- **fuzz**: the property tests, seeded and capped at 500 iterations so the merge
+  gate stays reproducible and quick. The same job runs unseeded at 20,000
+  iterations on the nightly schedule, which is the only thing that trigger exists
+  for; every other job opts out of it. See
+  [Seeds and reproducing a failure](#seeds-and-reproducing-a-failure).
+- **e2e**: installs Chromium and runs the Playwright suite twice, once against
+  the dev server and once against a production build, then measures the exported
+  PDFs against PDF/UA-1 with veraPDF. Uploads a Playwright report per run plus
+  the `pdfua-report` artifact. The second run happens even when the first fails,
+  because the pair is the diagnosis: dev green with preview red means bundling,
+  both red means the app. The veraPDF step is non-blocking; see
   [Measuring PDF/UA](#measuring-pdfua).
 - **build**: a `--no-bundle` Tauri compile across Ubuntu, macOS, and Windows
   (bundling + signing need the release host's EV cert and updater key, so CI

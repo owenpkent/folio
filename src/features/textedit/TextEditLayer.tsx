@@ -1,7 +1,7 @@
 import { useEffect, useRef, type MouseEvent } from 'react';
 
 import { pushToast } from '@/components/common';
-import { getEngine, type PageTextItems } from '@/core/pdf';
+import { convertToViewportRectangle, getEngine, type PageTextItems } from '@/core/pdf';
 import { reloadEditedBytes } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
 import { formWidgetAt } from '@/state/formsLayer';
@@ -110,12 +110,7 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
     }
 
     const [x0, y0, x1, y1] = itemBox(item);
-    const vr = viewport.convertToViewportRectangle([x0, y0, x1, y1]) as [
-      number,
-      number,
-      number,
-      number,
-    ];
+    const vr = convertToViewportRectangle(viewport, [x0, y0, x1, y1]);
     const cssRect = {
       x: Math.min(vr[0], vr[2]),
       y: Math.min(vr[1], vr[3]),

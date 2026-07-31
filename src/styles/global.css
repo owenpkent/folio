@@ -575,6 +575,13 @@ kbd {
   background: var(--folio-page-bg);
   box-shadow: var(--folio-page-shadow);
   overflow: hidden;
+  /* The frame owns the layout box, not the canvas inside it: every thumbnail is
+     this wide, and Thumbnails.tsx writes the ratio of the page it stands for
+     (US Letter until a size is known). A thumbnail that gives its backing store
+     back therefore frees the memory without changing size, so the sidebar's
+     scroll position stays where the user left it. */
+  width: 132px;
+  aspect-ratio: 17 / 22;
 }
 .folio-thumb.is-active .folio-thumb__frame {
   border-color: var(--folio-accent);
@@ -584,6 +591,13 @@ kbd {
 }
 .folio-thumb__canvas {
   display: block;
+  /* !important beats the inline width/height the renderer writes on the canvas
+     for devicePixelRatio (see PdfJsEngine.renderPage), which would otherwise
+     size the element from the backing store again and undo the reservation
+     above. The backing store keeps the page's own ratio, so filling the frame
+     scales rather than distorts. */
+  width: 100% !important;
+  height: 100% !important;
 }
 .folio-thumb__num {
   font-variant-numeric: tabular-nums;
@@ -1871,4 +1885,58 @@ kbd {
   .folio-menubar__mobile-menu .folio-dropdown__item {
     min-height: 44px;
   }
+}
+
+/* ---- Crash fallback ----
+   Rendered by ErrorBoundary when the app throws while rendering. It replaces the
+   whole tree, so it cannot lean on any layout the app sets up. */
+.folio-crash {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100vh;
+  padding: 24px;
+  background: var(--folio-bg);
+  color: var(--folio-text);
+  text-align: center;
+}
+.folio-crash__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.folio-crash__body {
+  margin: 0;
+  max-width: 52ch;
+  color: var(--folio-text-muted);
+  line-height: 1.5;
+}
+.folio-crash__detail {
+  max-width: min(80ch, 100%);
+  max-height: 40vh;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  background: var(--folio-surface);
+  border: 1px solid var(--folio-border);
+  border-radius: var(--folio-radius);
+  color: var(--folio-danger);
+  font-size: 12px;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.folio-crash__action {
+  padding: 8px 18px;
+  background: var(--folio-accent);
+  border: none;
+  border-radius: var(--folio-radius);
+  color: var(--folio-accent-contrast);
+  font: inherit;
+  cursor: pointer;
+}
+.folio-crash__action:hover {
+  background: var(--folio-accent-hover);
 }

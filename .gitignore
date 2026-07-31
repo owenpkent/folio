@@ -41,7 +41,9 @@ Thumbs.db
 # Test + coverage output
 coverage/
 playwright-report/
+playwright-report-preview/
 test-results/
+test-results-preview/
 e2e/fixtures/
 
 # Python (run.py)

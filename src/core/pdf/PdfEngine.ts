@@ -96,16 +96,13 @@ export interface PdfEngine {
   /** Export the current document, with filled form values, as PDF bytes. */
   saveDocument(): Promise<Uint8Array>;
 
-  /** The original bytes the document was loaded from (for signature detection). */
-  getOriginalBytes(): Uint8Array | null;
-
   /** Extracted plain text for a page (used by search and the AI layer). */
   getPageText(pageNumber: number): Promise<string>;
 
   /**
    * The page's viewport at `scale`, for converting between screen (CSS pixel)
-   * and PDF user-space coordinates via its `convertToPdfPoint` /
-   * `convertToViewportRectangle` helpers.
+   * and PDF user-space coordinates via its own `convertToPdfPoint` and the
+   * barrel's `convertToViewportRectangle` (which PDF.js 6 dropped).
    */
   getPageViewport(pageNumber: number, scale: number): Promise<PageViewport>;
 

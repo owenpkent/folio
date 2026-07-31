@@ -1,8 +1,17 @@
-import * as pdfjsLib from 'pdfjs-dist';
-import type { PageViewport, PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
+// The legacy bundle, for the reason setupWorker.ts spells out. Types still come
+// from the package root: `legacy/build/pdf.d.mts` is a bare re-export of them.
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import type {
+  PageViewport,
+  PDFDocumentLoadingTask,
+  PDFDocumentProxy,
+  PDFPageProxy,
+} from 'pdfjs-dist';
+
+import { LruMap } from '@/core/lru';
 
 import type { PageTextItems, PdfEngine } from './PdfEngine';
-import { ensureWorker } from './setupWorker';
+import { ensureWorker, pdfWasmUrl } from './setupWorker';
 import type {
   DocumentSource,
   OutlineNode,
@@ -58,6 +67,24 @@ export function backingStoreScale(cssWidth: number, cssHeight: number, dpr: numb
   return Math.min(target, cap);
 }
 
+/**
+ * Cache bounds. These were unbounded Maps cleared only when the document
+ * closed, so opening a long document and scrolling through it pinned one entry
+ * per page for the session.
+ *
+ * The page bound must comfortably exceed the live set or evictions thrash: an
+ * evicted page re-renders from a refetched operator list. pdf.js's own viewer
+ * sizes its equivalent at max(10, 2 * visible + 1); this is larger again to
+ * cover the 600px prefetch ring in Page.tsx and the 300px one in Thumbnails.
+ */
+const PAGE_CACHE_LIMIT = 24;
+/** Text items (glyph positions and styles) are much the heaviest of the three,
+ *  and the text-edit layer consumes them one page at a time. */
+const TEXT_ITEMS_CACHE_LIMIT = 24;
+/** Plain per-page strings, a few KB each, but whole-document consumers (search,
+ *  word count, the AI context builder) walk every page, so keep this generous. */
+const TEXT_CACHE_LIMIT = 512;
+
 // PDF.js raw outline items, typed loosely to avoid depending on internals.
 interface RawOutlineItem {
   title: string;
@@ -68,11 +95,27 @@ interface RawOutlineItem {
 /** The PDF.js-backed {@link PdfEngine}. */
 export class PdfJsEngine implements PdfEngine {
   private doc: PDFDocumentProxy | null = null;
+  // Held because PDF.js 6 removed `PDFDocumentProxy.destroy()`; tearing down the
+  // loading task is what releases the worker and the transport now. Kept
+  // separately from `doc` so a document that failed to load is still torn down.
+  private loadingTask: PDFDocumentLoadingTask | null = null;
   private name = '';
-  private sourceBytes: Uint8Array | null = null;
-  private pageCache = new Map<number, PDFPageProxy>();
-  private textCache = new Map<number, string>();
-  private textItemsCache = new Map<number, PageTextItems>();
+  /**
+   * Evicting a page from this map frees nothing on its own: pdf.js memoizes
+   * every page it hands out in its own WorkerTransport cache, which lives until
+   * the document is destroyed, so our entry is only a second reference to
+   * something already pinned. `cleanup()` is the call that actually releases
+   * anything -- it drops the cached operator list and the page's decoded images
+   * and fonts. It leaves the proxy usable (viewport, text, annotations and
+   * render all still work; the next render just refetches), and it is a no-op
+   * returning false while a render is in flight, which is the behaviour we want
+   * for a page that is being evicted precisely because it went off screen.
+   */
+  private pageCache = new LruMap<number, PDFPageProxy>(PAGE_CACHE_LIMIT, (page) => {
+    page.cleanup();
+  });
+  private textCache = new LruMap<number, string>(TEXT_CACHE_LIMIT);
+  private textItemsCache = new LruMap<number, PageTextItems>(TEXT_ITEMS_CACHE_LIMIT);
   private readonly linkService = createLinkService();
 
   get isReady(): boolean {
@@ -83,12 +126,18 @@ export class PdfJsEngine implements PdfEngine {
     ensureWorker();
     await this.closeDocument();
 
-    // Keep an untouched copy of the bytes before PDF.js can transfer/detach the
-    // buffer; signature detection needs the exact original file.
-    this.sourceBytes = source.kind === 'bytes' ? source.data.slice() : null;
-
+    // Note `data` is TRANSFERRED to the worker, not copied: pdf.js passes
+    // [data.buffer] as the transfer list, so the caller's view is detached the
+    // moment this runs. Anything that needs the original bytes has to read them
+    // before calling this, which is what actions.ts does for signature
+    // detection. Keeping a defensive .slice() here instead cost a second full
+    // copy of the file, resident for the whole session, to serve one caller
+    // that wanted three fields out of it.
     const params = source.kind === 'bytes' ? { data: source.data } : { url: source.url };
-    this.doc = await pdfjsLib.getDocument(params).promise;
+    // wasmUrl is what lets the worker decode JBIG2 and JPEG2000 images, i.e.
+    // most scanned documents; see setupWorker.ts for where the files come from.
+    this.loadingTask = pdfjsLib.getDocument({ ...params, wasmUrl: pdfWasmUrl() });
+    this.doc = await this.loadingTask.promise;
     this.name = source.name ?? 'Untitled.pdf';
 
     return {
@@ -102,15 +151,14 @@ export class PdfJsEngine implements PdfEngine {
     this.pageCache.clear();
     this.textCache.clear();
     this.textItemsCache.clear();
-    this.sourceBytes = null;
-    if (this.doc) {
-      await this.doc.destroy();
-      this.doc = null;
+    this.doc = null;
+    if (this.loadingTask) {
+      // Null the field first: destroy() awaits the worker round-trip, and a
+      // second close (or a reload) arriving meanwhile must not destroy it twice.
+      const task = this.loadingTask;
+      this.loadingTask = null;
+      await task.destroy();
     }
-  }
-
-  getOriginalBytes(): Uint8Array | null {
-    return this.sourceBytes;
   }
 
   async getPageDimensions(pageNumber: number, scale: number): Promise<PageDimensions> {
@@ -122,6 +170,13 @@ export class PdfJsEngine implements PdfEngine {
   async renderPage(pageNumber: number, options: RenderPageOptions): Promise<void> {
     const { scale, canvas, signal, overlayForms = false, invert = false, tint } = options;
     const page = await this.getPage(pageNumber);
+    // Bail before sizing the canvas below, the way the layer renders do after
+    // their own awaits. A page scrolled away mid-fetch has already had its
+    // backing store zeroed by the caller, so resizing it here would re-allocate
+    // the raster for a page nobody is looking at, and nothing would zero it a
+    // second time, so scrolling quickly through a long document leaked a
+    // full-size canvas per page passed.
+    if (signal?.aborted) return;
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Could not acquire a 2D canvas context');
 
@@ -147,7 +202,12 @@ export class PdfJsEngine implements PdfEngine {
 
     const transform = [outputScale, 0, 0, outputScale, 0, 0];
     const task = page.render({
-      canvasContext: context,
+      // v6 takes the canvas, not the context (`canvasContext` is the
+      // back-compat path now and is ignored whenever `canvas` is set). PDF.js
+      // calls getContext('2d') itself; because we already did, above, it gets
+      // handed back the very same context object the invert pass below writes
+      // to, with the attributes of that first call.
+      canvas,
       viewport,
       transform,
       // ENABLE_FORMS is what makes PDF.js skip the widgets it expects the
@@ -207,10 +267,8 @@ export class PdfJsEngine implements PdfEngine {
     const canvas = document.createElement('canvas');
     canvas.width = Math.floor(viewport.width);
     canvas.height = Math.floor(viewport.height);
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('Could not acquire a 2D canvas context');
 
-    await page.render({ canvasContext: context, viewport }).promise;
+    await page.render({ canvas, viewport }).promise;
     return { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
   }
 
@@ -227,8 +285,7 @@ export class PdfJsEngine implements PdfEngine {
       if (signal?.aborted) return;
 
       container.replaceChildren();
-      // PDF.js positions text-layer spans relative to this custom property.
-      container.style.setProperty('--scale-factor', String(scale));
+      setLayerScale(container, viewport);
 
       const textLayer = new pdfjsLib.TextLayer({ textContentSource, container, viewport });
       await textLayer.render();
@@ -251,8 +308,9 @@ export class PdfJsEngine implements PdfEngine {
       // interleave and leave duplicate widgets behind.
       if (signal?.aborted) return;
 
+      const flipped = viewport.clone({ dontFlip: true });
       container.replaceChildren();
-      container.style.setProperty('--scale-factor', String(scale));
+      setLayerScale(container, flipped);
 
       const layer = new pdfjsLib.AnnotationLayer({
         div: container as HTMLDivElement,
@@ -260,17 +318,26 @@ export class PdfJsEngine implements PdfEngine {
         annotationCanvasMap: null,
         annotationEditorUIManager: null,
         page,
-        viewport: viewport.clone({ dontFlip: true }),
+        viewport: flipped,
         structTreeLayer: null,
-      });
-
-      await layer.render({
-        annotations,
-        div: container as HTMLDivElement,
-        page,
-        viewport: viewport.clone({ dontFlip: true }),
+        // v6 moved these three off render() and onto the constructor. The last
+        // two only look optional. Without a link service the first Link
+        // annotation throws on getDestinationHash and rejects the whole pass,
+        // taking every AcroForm widget on the page down with it. Without the
+        // document's own storage the layer quietly allocates a private
+        // AnnotationStorage, so typing in a field never reaches
+        // doc.annotationStorage: getPendingEditCount() stays at 0 and
+        // saveDocument() writes the field back out empty.
+        commentManager: null,
         linkService: this.linkService,
         annotationStorage: doc.annotationStorage,
+      });
+
+      // render() now reads div / page / viewport / linkService / storage off the
+      // instance, so only the per-pass options are left here. Still cast: the
+      // published type keeps describing the v4 parameter object.
+      await layer.render({
+        annotations,
         renderForms: true,
         enableScripting: false,
         hasJSActions: false,
@@ -391,6 +458,32 @@ export class PdfJsEngine implements PdfEngine {
     this.pageCache.set(pageNumber, page);
     return page;
   }
+}
+
+/**
+ * Declare the scale the layer CSS positions itself against.
+ *
+ * PDF.js's stylesheet keys everything off `--total-scale-factor` as of v6 (v4
+ * used `--scale-factor` directly): text-layer spans take their font size from
+ * it, and `setLayerDimensions` -- which both TextLayer and AnnotationLayer call
+ * on the container -- sizes the layer box with
+ * `round(down, var(--total-scale-factor) * Npx, var(--scale-round-x))`, which
+ * computes to nothing at all if either property is missing. PDF.js's own viewer
+ * declares them on its `.pdfViewer .page` wrapper; Folio mounts the layers on
+ * its own page element, so they have to be set here.
+ *
+ * The total is scale x the page's /UserUnit, matching what PageViewport itself
+ * multiplied the page box by, so the CSS box lines up with the canvas.
+ */
+function setLayerScale(container: HTMLElement, viewport: PageViewport): void {
+  const { style } = container;
+  style.setProperty('--scale-factor', String(viewport.scale));
+  style.setProperty('--user-unit', String(viewport.userUnit));
+  style.setProperty('--total-scale-factor', String(viewport.scale * viewport.userUnit));
+  // Device-pixel snapping, which the viewer recomputes per page; Folio does not
+  // snap, so 1px (a no-op round) keeps the expression valid.
+  style.setProperty('--scale-round-x', '1px');
+  style.setProperty('--scale-round-y', '1px');
 }
 
 /** The subset of PDF.js's annotation data this file relies on. */

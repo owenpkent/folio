@@ -25,7 +25,7 @@ vi.mock('@/core/pdf', async (orig) => {
     getEngine: () => ({
       getPageViewport: async () => ({
         convertToPdfPoint: (x: number, y: number) => [x, y],
-        convertToViewportRectangle: (rect: number[]) => rect,
+        convertToViewportPoint: (x: number, y: number) => [x, y],
       }),
       saveDocument: async () => new Uint8Array(),
     }),

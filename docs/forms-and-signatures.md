@@ -154,11 +154,40 @@ rather than modifying the open one.
 ### Verifying signatures
 
 When you open a signed PDF, the Signatures panel lists each digital signature
-with the signer's name (from the certificate), the signing time, and whether the
-document changed after signing. That last check is a reliable tamper signal: it
-is derived from the signed byte range, so appended edits are detected. Full
-certificate-chain trust validation and CMS digest verification are not yet
-performed (see Limitations).
+with the signer's name (from the certificate), the signing time, and a badge:
+**No changes after signing** when nothing follows the signed byte range, and
+**Changed after signing** when something does.
+
+That badge is structural, not cryptographic, and it is worth being precise
+about what it proves. It compares the signature's declared byte range against the
+file: the verdict is clean only when the file ends where the range says the
+signed content ends, with nothing but whitespace after it. So it catches content
+appended after signing, which is what an incremental edit to a signed PDF looks
+like. It does not catch a change made *inside* the signed range, because the CMS
+digest is never computed: edit signed bytes in place and the range, the file
+length, and the verdict are all unchanged. Read the clean verdict as "nothing was
+added after the signature", not as "the signed content is intact". Full
+certificate-chain trust validation and CMS digest verification, which are what
+would close that gap, are not yet performed (see Limitations).
+
+The scanner reads the byte ranges out of the file, so it treats them as hostile
+input rather than as facts. Two rules matter for that verdict:
+
+- **A range that ends past the end of the file is not a pass.** It describes
+  bytes that do not exist, so there is nothing after it to inspect and the check
+  would otherwise come back clean by default. A `/ByteRange` claiming to sign
+  more than the file contains earns the *changed* verdict, not the clean one.
+- **The scan is bounded.** It reads only small windows around each signature
+  dictionary and caps how many candidate sites it will examine, because it runs
+  on the main thread while the document is opening. A file made of nothing but
+  repeated signature markers cannot use that to stall the UI. The cost of the cap
+  is that a signature hidden behind hundreds of decoy markers goes unreported,
+  which is the right way round: detection here is advisory, so failing to report
+  is safe where freezing the app is not.
+
+Detection runs on the bytes *before* they are handed to the PDF.js worker, since
+that transfer detaches the array on the main thread. That ordering is why the
+engine no longer keeps a second full copy of every open file.
 
 ### Where the crypto runs, and security
 
@@ -182,7 +211,8 @@ app.
 - Cryptographic signing uses PKCS#7 detached signatures. Certificate-chain trust
   validation, full CMS digest verification, PAdES-specific profiles, and embedded
   timestamps (RFC 3161) are not yet implemented; verification reports the signer,
-  signing time, and whether the file changed after signing.
+  signing time, and whether anything was appended after signing. Without the CMS
+  digest it cannot tell you that the signed content itself is unmodified.
 - Signing runs in the WebView today; a Rust/OS-keychain backend is planned.
 - Visual-signature stamping assumes unrotated pages (rotation support is planned).
 
