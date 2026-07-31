@@ -3,10 +3,19 @@ import forge from 'node-forge';
 /**
  * Best-effort information about a digital signature found in a PDF.
  *
- * `coversWholeDocument` is a reliable integrity signal: it is false when content
- * was appended after signing (a later revision or tampering). Full CMS digest
- * verification and certificate-chain trust validation are not yet performed;
- * see docs/forms-and-signatures.md.
+ * `coversWholeDocument` is a structural check, not a cryptographic one. All it
+ * establishes is that the file ends where the signature's `/ByteRange` says the
+ * signed content ends, with nothing but whitespace after it, and that the range
+ * does not claim more bytes than the file holds. So it is false when content was
+ * appended after signing (a later revision or a naive tamper), and false when
+ * the range is out of bounds.
+ *
+ * It says nothing about the bytes *inside* the range, because the CMS digest is
+ * never computed. Edit signed content in place and the byte range, the file
+ * length and this verdict are all unchanged, so a modified document still reads
+ * as covered. Read it as "nothing was added after the signature", not as "the
+ * signed content is intact". Full CMS digest verification and certificate-chain
+ * trust validation are not yet performed; see docs/forms-and-signatures.md.
  */
 export interface DetectedSignature {
   signerName: string | null;
@@ -158,7 +167,7 @@ export function detectSignatures(bytes: Uint8Array): DetectedSignature[] {
         // `c` and `d` come straight out of the file. A range ending past EOF
         // describes bytes that do not exist, and the scan below would find
         // nothing to object to and return true vacuously -- which the panel
-        // renders as a green "no changes after signing" badge. So a hostile
+        // renders as its green "No changes after signing" badge. So a hostile
         // `/ByteRange [0 1 999999999 1]` plus appended content earned a clean
         // bill of health. Out of range is not a pass.
         coversWholeDocument: c + d <= bytes.length && onlySpaceAfter(bytes, c + d),

@@ -7,12 +7,12 @@ import { getEngine } from '@/core/pdf';
 import { getIntrinsicSize, measurePage, subscribePageSizes } from '@/core/pdf/pageSizes';
 import { useNearViewport } from '@/hooks/useNearViewport';
 import { AnnotationLayer, NotesLayer } from '@/features/annotations';
-import { EditLayer } from '@/features/editing';
+import { EditLayer, useEditStore } from '@/features/editing';
 import { ImageEditLayer } from '@/features/imageedit';
 import { OcrTextLayer } from '@/features/ocr';
 import { PlacementLayer } from '@/features/placement';
 import { SignatureLayer } from '@/features/signatures';
-import { TextEditLayer } from '@/features/textedit';
+import { TextEditLayer, useTextEditStore } from '@/features/textedit';
 import { pluginHost } from '@/plugins';
 import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
@@ -56,11 +56,34 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
   // page in the document is stacked a gap apart and dozens of them sit inside
   // the ring at once. Rasterising on that reading would fire a burst of
   // full-page renders for pages that are nowhere near the viewport.
-  const inRasterRing = useNearViewport(wrapperRef, '600px 0px');
+  //
+  // Both rings name .folio-viewer (the element PdfViewer scrolls) as the root:
+  // rootMargin only grows the root's own rect, and an element root is still
+  // intersected with every clipping ancestor between it and the target
+  // unexpanded. Left at the implicit viewport root, the scroller's own overflow
+  // clips both rings away, so a page 600px or 2400px down the document reads as
+  // not intersecting either way and the two rings fire at the same instant.
+  const inRasterRing = useNearViewport(wrapperRef, '600px 0px', '.folio-viewer');
   const visible = inRasterRing && dims !== null;
   // `near` is deliberately much wider, and gates the things that should already
   // be in place by the time a page is painted: its true size, and its overlays.
-  const near = useNearViewport(wrapperRef, '2400px 0px');
+  const near = useNearViewport(wrapperRef, '2400px 0px', '.folio-viewer');
+
+  // A page must not leave the ring while it holds live editing state. Wheel and
+  // keyboard scrolling never blur, and no browser fires blur when the focused
+  // node is removed, so unmounting the overlays under a caret drops whatever is
+  // still uncommitted in the contentEditable: EditLayer rewrites the element
+  // from the stored item when it comes back, i.e. to the pre-edit text. Pinning
+  // the page is what keeps commit-on-blur (and the edit history it feeds) as it
+  // is, where committing on every keystroke would not. Both selectors bail on a
+  // null id before touching the item list, so a document with nothing being
+  // edited (the usual case) pays a comparison per page per store change.
+  const holdsEdit = useEditStore((s) => {
+    const liveId = s.focusId ?? s.selectedId;
+    return liveId != null && s.edits.some((e) => e.id === liveId && e.pageNumber === pageNumber);
+  });
+  const holdsTextEdit = useTextEditStore((s) => s.session?.pageIndex === pageNumber - 1);
+  const overlays = near || holdsEdit || holdsTextEdit;
 
   // Measure only pages the user is actually approaching. Measuring on mount
   // instead meant one worker round-trip per page in the document at open, all
@@ -150,8 +173,9 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
           page on the heap. The ring is much wider than the raster one so a
           layer is always in place well before its page is painted, and it
           always covers the current page, which is what the catchers inside
-          EditLayer and ImageEditLayer key off. */}
-      {near && (
+          EditLayer and ImageEditLayer key off. A page holding live editing
+          state stays mounted whether or not it is in the ring (see above). */}
+      {overlays && (
         <>
           <OcrTextLayer pageNumber={pageNumber} />
           <AnnotationLayer pageNumber={pageNumber} />

@@ -22,8 +22,17 @@ const DEFAULT_RUNS = '20000';
 
 const args = process.argv.slice(2);
 // Vitest's positional arguments are substring filters against the test file
-// path, not globs, so this selects every *.fuzz.test.ts without one.
-const target = args.length > 0 ? args : ['.fuzz.test.'];
+// path, not globs, so this selects every *.fuzz.test.ts.
+//
+// Only a path-shaped argument replaces it. Handing everything over as soon as
+// any argument appeared meant `-- --reporter=verbose` silently dropped the
+// filter and ran the whole unit suite at 20,000 iterations. A flag is not a
+// filter, and neither is the value of a space-separated one
+// (`--reporter verbose`), which is why a bare word does not count: keeping the
+// filter is the safe way to be wrong about an argument.
+const looksLikePath = (a) => /[\\/]/.test(a) || /\.(test|spec)\./.test(a) || a.endsWith('.ts');
+const hasFilter = args.some((a) => !a.startsWith('-') && looksLikePath(a));
+const target = hasFilter ? args : [...args, '.fuzz.test.'];
 
 // Run vitest's own entry point with this node binary rather than going through
 // `npx` under a shell: passing an argument array with `shell: true`

@@ -575,6 +575,13 @@ kbd {
   background: var(--folio-page-bg);
   box-shadow: var(--folio-page-shadow);
   overflow: hidden;
+  /* The frame owns the layout box, not the canvas inside it: every thumbnail is
+     this wide, and Thumbnails.tsx writes the ratio of the page it stands for
+     (US Letter until a size is known). A thumbnail that gives its backing store
+     back therefore frees the memory without changing size, so the sidebar's
+     scroll position stays where the user left it. */
+  width: 132px;
+  aspect-ratio: 17 / 22;
 }
 .folio-thumb.is-active .folio-thumb__frame {
   border-color: var(--folio-accent);
@@ -584,6 +591,13 @@ kbd {
 }
 .folio-thumb__canvas {
   display: block;
+  /* !important beats the inline width/height the renderer writes on the canvas
+     for devicePixelRatio (see PdfJsEngine.renderPage), which would otherwise
+     size the element from the backing store again and undo the reservation
+     above. The backing store keeps the page's own ratio, so filling the frame
+     scales rather than distorts. */
+  width: 100% !important;
+  height: 100% !important;
 }
 .folio-thumb__num {
   font-variant-numeric: tabular-nums;

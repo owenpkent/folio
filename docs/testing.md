@@ -85,7 +85,7 @@ Current targets:
 
 | File | What it pins |
 | --- | --- |
-| `features/signing/verify.fuzz.test.ts` | `detectSignatures`, the only PDF parser a hostile document reaches with no user action. A signature may only be reported as covering the whole document when the range it names ends inside the file, and a document made of nothing but signature markers must not stall the UI thread. |
+| `features/signing/verify.fuzz.test.ts` | `detectSignatures`, the only PDF parser a hostile document reaches with no user action. A signature may only be reported as covering the whole document when the range it names ends inside the file, and the caps that stop a hostile document stalling the UI thread hold: the scan gives up after a fixed number of candidate `/ByteRange` sites and a fixed total decoding budget. Both are pinned through what the cap causes (a signature parked behind the decoys goes unreported; the scan stops short of the result cap) rather than through a wall clock, which on a document small enough to build in a test measures nothing. |
 | `features/textedit/contentStream.fuzz.test.ts` | The content-stream tokenizer and the splice primitives: reported runs are always in range and spliceable, an operator splice never glues two tokens together, and a hostile form resolver cannot cause unbounded descent. |
 
 ### Seeds and reproducing a failure
@@ -95,6 +95,10 @@ Current targets:
 - `FC_NUM_RUNS`: iterations per property (default 100; `npm run test:fuzz`
   raises it to 20,000).
 - `FC_SEED`: pins the generator so a run is byte-for-byte reproducible.
+
+A malformed value for either is an error rather than a silent fall back to the
+default. `FC_NUM_RUNS=20k` is `NaN`, and `NaN` runs is zero runs, which every
+property in the suite passes without executing a single case.
 
 A failure prints both a seed and a shrink path, and names the smallest input it
 could find. Replay it exactly by putting them on the property:

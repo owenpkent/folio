@@ -16,6 +16,12 @@ function announceSpeed(): void {
   announce(`Auto-scroll speed ${useViewerStore.getState().autoScrollSpeed} pixels per second`);
 }
 
+// How long a scroll-to-page request keeps re-aiming at its target. Closed on a
+// timer rather than on a scroll-settled signal because `scrollend` is not in
+// every webview this ships in, and measurements for a deep jump keep landing
+// for a moment after the animation itself has stopped.
+const RE_AIM_WINDOW_MS = 4000;
+
 /** The scrollable document surface: fit/zoom, lazy pages, current-page tracking. */
 export function PdfViewer() {
   const status = useDocumentStore((s) => s.status);
@@ -27,7 +33,6 @@ export function PdfViewer() {
   const fitMode = useViewerStore((s) => s.fitMode);
   const handMode = useViewerStore((s) => s.handMode);
   const autoScroll = useViewerStore((s) => s.autoScroll);
-  const pendingScrollPage = useViewerStore((s) => s.pendingScrollPage);
   const openContextMenu = useContextMenu((s) => s.openMenu);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -163,50 +168,75 @@ export function PdfViewer() {
   // it brackets the ratio with a range query rather than testing it for equality
   // (an equality query built from a fractional ratio may never match, which is
   // exactly the fractional-scaling case the feature exists for).
-  useEffect(
-    () => watchDevicePixelRatio(() => useViewerStore.getState().bumpRenderNonce()),
-    [],
-  );
+  useEffect(() => watchDevicePixelRatio(() => useViewerStore.getState().bumpRenderNonce()), []);
 
   // Honor scroll-to-page requests (outline clicks, page box, next/prev).
+  //
+  // Requests are taken off the store by hand rather than through a rendered
+  // selector: taking one clears pendingScrollPage, so an effect keyed on that
+  // value re-ran on its own clear and its cleanup tore the re-aim subscription
+  // below down before a single measurement could arrive, which left every jump
+  // sitting at the estimated offset. Keyed on `status` for the same reason as
+  // the effects above: the container exists only outside the empty state.
   useEffect(() => {
-    if (pendingScrollPage == null) return;
-    const container = containerRef.current;
-    const el = container?.querySelector<HTMLElement>(
-      `.folio-page[data-page-number="${pendingScrollPage}"]`,
-    );
-    useViewerStore.getState().clearPendingScroll();
-    if (!container || !el) return;
+    // Teardown for the request still re-aiming, if there is one.
+    let endReAim: (() => void) | null = null;
 
-    const targetTop = () => Math.max(0, el.offsetTop - 16);
-    let aimedAt = targetTop();
-    container.scrollTo({ top: aimedAt, behavior: 'smooth' });
+    const run = (page: number) => {
+      // A newer request supersedes whatever the last one was still chasing.
+      endReAim?.();
+      const container = containerRef.current;
+      const el = container?.querySelector<HTMLElement>(`.folio-page[data-page-number="${page}"]`);
+      useViewerStore.getState().clearPendingScroll();
+      if (!container || !el) return;
 
-    // Pages the user has never been near are laid out at an estimated height
-    // until they measure themselves, so a jump deep into a long document aims
-    // at where the target is currently believed to be. As those measurements
-    // land the pages above it resize and the target moves, so re-aim whenever
-    // it does. Reading offsetTop is deferred to the next frame because the
-    // notification fires before React has committed the new heights, and
-    // re-issuing a smooth scroll retargets the running animation rather than
-    // restarting it.
-    let raf = 0;
-    const stop = subscribePageSizes(() => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        const want = targetTop();
-        if (want === aimedAt) return;
-        aimedAt = want;
-        container.scrollTo({ top: want, behavior: 'smooth' });
+      const targetTop = () => Math.max(0, el.offsetTop - 16);
+      let aimedAt = targetTop();
+      container.scrollTo({ top: aimedAt, behavior: 'smooth' });
+
+      // Pages the user has never been near are laid out at an estimated height
+      // until they measure themselves, so a jump deep into a long document aims
+      // at where the target is currently believed to be. As those measurements
+      // land the pages above it resize and the target moves, so re-aim whenever
+      // it does. Reading offsetTop is deferred to the next frame because the
+      // notification fires before React has committed the new heights, and
+      // re-issuing a smooth scroll retargets the running animation rather than
+      // restarting it.
+      let raf = 0;
+      const stop = subscribePageSizes(() => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          const want = targetTop();
+          if (want === aimedAt) return;
+          aimedAt = want;
+          container.scrollTo({ top: want, behavior: 'smooth' });
+        });
       });
+      const timer = window.setTimeout(() => endReAim?.(), RE_AIM_WINDOW_MS);
+      endReAim = () => {
+        endReAim = null;
+        stop();
+        window.clearTimeout(timer);
+        if (raf) cancelAnimationFrame(raf);
+      };
+    };
+
+    // A request can be issued before this effect attaches (opening a document
+    // straight to a page), so take whatever is already pending.
+    const pending = useViewerStore.getState().pendingScrollPage;
+    if (pending != null) run(pending);
+
+    const unsubscribe = useViewerStore.subscribe((state, previous) => {
+      if (state.pendingScrollPage != null && state.pendingScrollPage !== previous.pendingScrollPage)
+        run(state.pendingScrollPage);
     });
 
     return () => {
-      stop();
-      if (raf) cancelAnimationFrame(raf);
+      unsubscribe();
+      endReAim?.();
     };
-  }, [pendingScrollPage]);
+  }, [status]);
 
   // Auto-scroll (teleprompter): glide the page down while active. A floating
   // point position is advanced every frame and written straight to scrollTop —

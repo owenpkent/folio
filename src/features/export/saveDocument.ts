@@ -170,10 +170,54 @@ async function writeDocument(path: string, bytes: Uint8Array): Promise<void> {
   });
 }
 
+/**
+ * The smallest payload that could plausibly be a PDF.
+ *
+ * A file needs the header, a catalog, a page tree, at least one page object, a
+ * cross-reference table and the trailer before it is openable at all; the
+ * smallest hand-built valid PDFs are several hundred bytes, and anything this
+ * app produces (pdf.js's save, or pdf-lib after stamping) is far larger. The
+ * floor only has to separate "a real document" from "a bug produced nothing",
+ * so it sits well under any genuine export.
+ */
+const MIN_PDF_BYTES = 256;
+
+/** ASCII `%PDF-`, the header every PDF this app writes starts with. */
+const PDF_HEADER = [0x25, 0x50, 0x44, 0x46, 0x2d];
+
+/**
+ * Reject bytes that cannot be a document before they are written anywhere.
+ *
+ * Saving in place is an atomic rename swap on the Rust side, so the write does
+ * not leave a partial file behind, but it does leave *these* bytes as the only
+ * copy: an empty or truncated payload replaces the user's document and there is
+ * nothing to recover from. Nothing upstream guarantees a non-empty result -- a
+ * stamping bug, an engine that returns before it has anything, or a future
+ * refactor that swallows an error can all hand back zero bytes -- so this is
+ * checked here rather than assumed.
+ *
+ * The header check is deliberately strict about offset 0. Readers tolerate junk
+ * before `%PDF-`, but this is validating our own output, not a file someone
+ * else wrote, and everything we write puts the header first.
+ */
+function isPlausiblePdf(bytes: Uint8Array): boolean {
+  if (bytes.length < MIN_PDF_BYTES) return false;
+  return PDF_HEADER.every((byte, i) => bytes[i] === byte);
+}
+
+/** The message shown (and announced) when a save is refused as unsafe. */
+const NOT_A_PDF =
+  'the export produced no usable PDF data, so nothing was written. Your document is unchanged.';
+
 /** Run {@link exportDocument}, surfacing failures as a toast; null on failure. */
 async function exportForSave(): Promise<Uint8Array | null> {
   try {
-    return await exportDocument();
+    const bytes = await exportDocument();
+    // Throwing rather than returning null keeps the reporting in one place:
+    // the user gets the same visible toast and announcement a failed export
+    // gets, instead of Save appearing to do nothing at all.
+    if (!isPlausiblePdf(bytes)) throw new Error(NOT_A_PDF);
+    return bytes;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Export failed';
     announce(`Could not prepare the document: ${message}`, true);
@@ -184,6 +228,15 @@ async function exportForSave(): Promise<Uint8Array | null> {
 
 /** Save raw PDF bytes via a native dialog (desktop) or a download (browser). */
 export async function saveBytes(bytes: Uint8Array, suggested: string): Promise<boolean> {
+  // Repeated from exportForSave because this is the last gate before a write
+  // and not every caller comes through there: the signing flow hands over
+  // bytes that went out to @signpdf and back.
+  if (!isPlausiblePdf(bytes)) {
+    announce(`Could not save the document: ${NOT_A_PDF}`, true);
+    pushToast('Could not save the document', 'error');
+    return false;
+  }
+
   try {
     if (isTauri()) {
       const path = await save({

@@ -26,25 +26,38 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `renderPage` sized the canvas *after* awaiting the page, so a render aborted
   mid-flight re-allocated the backing store for a page the viewer had already
   zeroed and scrolled past, and nothing zeroed it a second time.
+- **Save refuses a payload that is not a document.** Saving in place replaces the
+  open file with the exported bytes, so an export that came back empty or
+  truncated would take the only copy with it, and nothing checked. Both save
+  paths now require the `%PDF-` header and a plausible length before anything is
+  written, and refusing says so instead of returning silently, which is
+  indistinguishable from a save that worked.
 
 ### Security
 
-- **A tampered document can no longer earn a clean "no changes after signing"
-  badge.** `coversWholeDocument` was computed by scanning from the end of the
+- **A `/ByteRange` that runs past the end of the file no longer verifies as
+  clean.** `coversWholeDocument` was computed by scanning from the end of the
   signed byte range, but that offset is read straight out of the file: when it
   pointed past the end, the scan had nothing to iterate and returned true
   *vacuously*. A `/ByteRange` naming a range longer than the file, plus arbitrary
-  appended content, verified as untampered. A range that ends past EOF is now
-  treated as a failure, not a pass.
-- **Signature detection is bounded so a hostile file cannot stall the open.** It
-  runs synchronously on the main thread over the whole document. The result cap
-  bounded successful matches but not *candidate* sites, so a file repeating the
-  literal `/ByteRange` cost ~290ms per megabyte of pure scanning; and the
-  per-window cap did not bound its product with the result cap, allowing ~400MB
-  of transient strings. Both are now capped, and the scanner no longer builds a
-  string copy of the entire file (which above V8's ~512MB string limit threw
-  outright, and below it pushed the renderer toward the OOM it was trying to
-  avoid).
+  appended content, earned the green badge. A range that ends past EOF is now
+  treated as a failure, not a pass. Note the scope of that badge, which the
+  docstring and the signatures documentation had overstated and now describe
+  accurately: the check is structural, so it establishes that nothing was
+  appended after the signature, not that the signed content is unmodified. The
+  CMS digest is still not computed, so an in-place edit inside the signed range
+  is not detected.
+- **Signature detection no longer builds a string copy of the whole document.**
+  It runs synchronously on the main thread as a document opens, and it used to
+  latin-1 decode the entire file (which the first regex then flattened into a
+  second full-size copy) before looking for anything. Above V8's ~512MB string
+  limit that threw outright; below it, it pushed the renderer toward the same
+  out-of-memory condition the rest of this release is about. It now scans the raw
+  bytes and decodes only small windows around each signature dictionary. The byte
+  scan is bounded as well, at 200 candidate `/ByteRange` sites and 16MB of total
+  decoding per pass: those caps caught a cost introduced by this rewrite rather
+  than a pre-existing one, since a file made of nothing but repeated `/ByteRange`
+  markers measured ~290ms of scanning per megabyte before they were added.
 
 ### Added
 
@@ -59,8 +72,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   [testing.md](docs/testing.md#property-and-fuzz-tests-fast-check).
 - **A root `ErrorBoundary`.** A render-phase throw previously unmounted the whole
   tree and left a blank window, which is indistinguishable from the crash above
-  and equally unreportable. It now shows a message and the failing component
-  stack.
+  and equally unreportable. It now shows a message and a way out, moves focus to
+  it so it is not a screen the user is never told about, announces itself as an
+  alert, and logs the raw throw with the failing component stack to the console.
+  Whatever was thrown is reduced to one line for display, since a throw need not
+  be an `Error`, and file paths are stripped out of it: the crash screen is one
+  people screenshot into bug reports, and the install path names the account.
 
 ### Changed
 

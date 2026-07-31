@@ -118,6 +118,7 @@ Focus is deliberate, visible, and never lost. Rules enforced by `src/a11y` focus
 - **The skip link targets the scroller itself**, not its `<main>` wrapper. The browser scrolls the focused element's nearest scrollable *ancestor*, and `<main>` is a non-scrolling parent of the viewer, so skipping to it would land focus somewhere the scroll keys are dead.
 - **No keyboard traps in content.** The page viewport is a single focus stop; you can always `Tab` past it. Within a page you navigate text with normal caret/selection keys, not by tabbing through every word.
 - **Skip to content.** A visually-hidden "Skip to document" link is the first focus stop, letting keyboard and screen-reader users bypass the toolbar.
+- **The crash screen takes focus.** When the root `ErrorBoundary` replaces the app, focus is on an element React has just unmounted, so the next `Tab` starts from nowhere and a screen-reader user is free to keep navigating a tree that is gone. `role="alert"` announces the text but does not move anyone. The fallback's heading takes focus instead (`tabIndex={-1}`), so reading starts at the top of the message and reaches the **Reload Folio** button in order.
 
 ## ARIA landmarks and roles
 

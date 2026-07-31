@@ -68,5 +68,11 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     css: false,
+    // Comfortably above the 30s `interruptAfterTimeLimit` the fast-check setup
+    // uses as its DoS backstop. At vitest's 5s default the test was killed
+    // first, so the interrupt never fired and a long fuzz run reported a
+    // timeout that read like a property failure. Nothing here legitimately
+    // takes this long: a 20,000-iteration fuzz pass is a few seconds.
+    testTimeout: 60_000,
   },
 });

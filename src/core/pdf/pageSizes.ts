@@ -26,6 +26,11 @@ const sizes = new Map<number, PageDimensions>();
 const inFlight = new Set<number>();
 const listeners = new Set<() => void>();
 let fallback: PageDimensions | null = null;
+/**
+ * Which document the numbers in `sizes` describe. Bumped by
+ * {@link resetPageSizes}; see the check in {@link measurePage}.
+ */
+let generation = 0;
 
 function emit(): void {
   for (const listener of listeners) listener();
@@ -60,10 +65,23 @@ export function primePageSizeEstimate(dimensions: PageDimensions): void {
 export function measurePage(pageNumber: number): void {
   if (sizes.has(pageNumber) || inFlight.has(pageNumber)) return;
   inFlight.add(pageNumber);
+  // The document these dimensions will describe. A measurement is a worker
+  // round-trip, so on a large document there is a real window in which the
+  // user can close or switch documents before it lands.
+  const measuredFor = generation;
 
   void getEngine()
     .getPageDimensions(pageNumber, 1)
     .then((dimensions) => {
+      // A measurement that started before the last reset describes the
+      // previous document. Nothing else would catch it: the reset cleared
+      // inFlight and sizes, so this write would land in the new document's
+      // map and stay there, and page N would lay out at the old document's
+      // size for as long as it stays open. Dropping the inFlight entry is
+      // guarded too, because the new document may already have a measurement
+      // of its own in flight for this page and this stale one must not clear
+      // its marker.
+      if (measuredFor !== generation) return;
       inFlight.delete(pageNumber);
       const previous = sizes.get(pageNumber) ?? fallback;
       sizes.set(pageNumber, dimensions);
@@ -79,12 +97,14 @@ export function measurePage(pageNumber: number): void {
       }
     })
     .catch(() => {
+      if (measuredFor !== generation) return;
       inFlight.delete(pageNumber);
     });
 }
 
 /** Drop everything. Call when the open document changes. */
 export function resetPageSizes(): void {
+  generation += 1;
   sizes.clear();
   inFlight.clear();
   fallback = null;

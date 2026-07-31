@@ -44,8 +44,23 @@ export class LruMap<K, V> {
   }
 
   set(key: K, value: V): void {
+    const replaced = this.map.get(key);
+    // `has` rather than `replaced !== undefined`: V may legitimately include
+    // undefined, and a missing key must not be reported as a replacement.
+    const wasPresent = this.map.has(key);
     this.map.delete(key);
     this.map.set(key, value);
+
+    // Overwriting a key drops the old value exactly as eviction does, and the
+    // old value owns the same resource the collector cannot reclaim, so it
+    // needs the same release. Without this the cache leaks the one thing it
+    // exists to bound: a re-rendered page replaces its entry and the previous
+    // PDFPageProxy is never cleaned up. Re-setting a key to the value it
+    // already holds is not a replacement, though, and releasing there would
+    // destroy what the cache is about to hand back out.
+    if (wasPresent && replaced !== value) {
+      this.onEvict?.(replaced as V, key);
+    }
 
     while (this.map.size > this.limit) {
       const oldest = this.map.keys().next();

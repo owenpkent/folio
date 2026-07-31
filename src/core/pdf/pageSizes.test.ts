@@ -126,6 +126,80 @@ describe('pageSizes', () => {
     expect(getPageDimensions).toHaveBeenCalledTimes(2);
   });
 
+  it('discards a measurement that lands after the document changed', async () => {
+    // A measurement is a worker round-trip, so on a large document the user
+    // can switch documents while one is still in flight.
+    let landPreviousDocument!: (dimensions: { width: number; height: number }) => void;
+    getPageDimensions.mockReturnValueOnce(
+      new Promise((resolve) => {
+        landPreviousDocument = resolve;
+      }),
+    );
+    measurePage(1);
+
+    resetPageSizes();
+    primePageSizeEstimate({ width: 300, height: 300 }); // the new document
+
+    landPreviousDocument({ width: 2000, height: 3000 });
+    await settle();
+
+    // The old document's dimensions must not end up in the new document's map,
+    // where nothing would ever correct them.
+    expect(getIntrinsicSize(1)).toEqual({ width: 300, height: 300 });
+  });
+
+  it('a late reply from the previous document does not overwrite a fresh measurement', async () => {
+    let landPreviousDocument!: (dimensions: { width: number; height: number }) => void;
+    getPageDimensions.mockReturnValueOnce(
+      new Promise((resolve) => {
+        landPreviousDocument = resolve;
+      }),
+    );
+    measurePage(1);
+
+    resetPageSizes();
+    // The new document measures the same page, and only then does the previous
+    // document's reply arrive.
+    getPageDimensions.mockResolvedValue({ width: 400, height: 500 });
+    measurePage(1);
+    landPreviousDocument({ width: 2000, height: 3000 });
+    await settle();
+
+    expect(getIntrinsicSize(1)).toEqual({ width: 400, height: 500 });
+  });
+
+  it('a stale failure does not clear the new document in-flight marker', async () => {
+    let failPreviousDocument!: (error: Error) => void;
+    getPageDimensions.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        failPreviousDocument = reject;
+      }),
+    );
+    measurePage(1);
+
+    resetPageSizes();
+    let landNewDocument!: (dimensions: { width: number; height: number }) => void;
+    getPageDimensions.mockReturnValueOnce(
+      new Promise((resolve) => {
+        landNewDocument = resolve;
+      }),
+    );
+    measurePage(1);
+    failPreviousDocument(new Error('worker died with the old document'));
+    await settle();
+
+    // The new document's measurement is still in flight, so asking again is a
+    // no-op. A stale failure that cleared the marker would let this fire a
+    // duplicate round-trip for a page already being measured.
+    measurePage(1);
+    await settle();
+    expect(getPageDimensions).toHaveBeenCalledTimes(2);
+
+    landNewDocument({ width: 400, height: 500 });
+    await settle();
+    expect(getIntrinsicSize(1)).toEqual({ width: 400, height: 500 });
+  });
+
   it('reset notifies subscribers so the viewer re-lays out', () => {
     const listener = vi.fn();
     subscribePageSizes(listener);

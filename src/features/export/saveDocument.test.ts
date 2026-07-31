@@ -4,15 +4,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as PdfCore from '@/core/pdf';
 import type { PdfDocumentInfo } from '@/core/pdf';
 
-const { invoke, saveDialog, mockSaveDocument } = vi.hoisted(() => ({
-  invoke: vi.fn(),
-  saveDialog: vi.fn(),
-  // Explicit return type widens this to plain `Uint8Array` (not the narrower
-  // `Uint8Array<ArrayBuffer>` TS infers for an array literal): pdf-lib's own
-  // `.save()` returns the wider type, and mockResolvedValueOnce below needs to
-  // accept its output.
-  mockSaveDocument: vi.fn(async (): Promise<Uint8Array> => new Uint8Array([1, 2, 3])),
-}));
+const { invoke, saveDialog, mockSaveDocument, exported } = vi.hoisted(() => {
+  // Stand-in export output. It has to look enough like a PDF to clear the
+  // "would this destroy the user's document" gate in saveDocument.ts: the
+  // header at offset 0 and a length no real document could be under.
+  const exportedBytes = new Uint8Array(400);
+  exportedBytes.set(new TextEncoder().encode('%PDF-1.7\n'), 0);
+  return {
+    invoke: vi.fn(),
+    saveDialog: vi.fn(),
+    exported: exportedBytes,
+    // Explicit return type widens this to plain `Uint8Array` (not the narrower
+    // `Uint8Array<ArrayBuffer>` TS infers for an array literal): pdf-lib's own
+    // `.save()` returns the wider type, and mockResolvedValueOnce below needs
+    // to accept its output.
+    mockSaveDocument: vi.fn(async (): Promise<Uint8Array> => exportedBytes),
+  };
+});
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ save: saveDialog }));
@@ -29,7 +37,7 @@ import { useToastStore } from '@/components/common';
 import { useSignatureStore } from '@/features/signatures';
 import { useDocumentStore } from '@/state/documentStore';
 
-import { exportDocument, saveDocumentInPlace } from './saveDocument';
+import { exportDocument, saveBytes, saveDocumentInPlace } from './saveDocument';
 
 const info: PdfDocumentInfo = { numPages: 1, fingerprint: 'fp', name: 'report.pdf' };
 
@@ -59,7 +67,7 @@ describe('saveDocumentInPlace', () => {
     // that is what makes Tauri send them as a raw binary body instead of
     // expanding them into a JSON array of numbers. The destination rides in a
     // header because a raw body cannot carry a sibling argument.
-    expect(invoke).toHaveBeenCalledWith('write_document', new Uint8Array([1, 2, 3]), {
+    expect(invoke).toHaveBeenCalledWith('write_document', exported, {
       headers: { 'Folio-Path': 'C%3A%2Fdocs%2Freport.pdf' },
     });
     expect(saveDialog).not.toHaveBeenCalled();
@@ -129,6 +137,65 @@ describe('saveDocumentInPlace', () => {
     await saveDocumentInPlace();
     expect(invoke).not.toHaveBeenCalled();
     expect(saveDialog).not.toHaveBeenCalled();
+  });
+});
+
+describe('refusing to write a payload that is not a document', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useDocumentStore.getState().reset();
+    useToastStore.setState({ toasts: [] });
+    setTauri(true);
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/docs/report.pdf' });
+    invoke.mockResolvedValue(undefined);
+  });
+  afterEach(() => setTauri(false));
+
+  /** `length` bytes carrying `prefix` at offset 0. */
+  function payload(prefix: string, length: number): Uint8Array {
+    const bytes = new Uint8Array(length);
+    bytes.set(new TextEncoder().encode(prefix), 0);
+    return bytes;
+  }
+
+  // Save-in-place replaces the only copy of the document, so an export that
+  // came back empty or truncated is unrecoverable data loss, not a no-op.
+  const rejected: Array<[string, Uint8Array]> = [
+    ['nothing at all', new Uint8Array(0)],
+    ['a handful of bytes', new Uint8Array([1, 2, 3])],
+    ['a truncated document', payload('%PDF-1.7\n', 64)],
+    ['something that is not a PDF at all', payload('<!doctype html>', 400)],
+  ];
+
+  for (const [what, bytes] of rejected) {
+    it(`refuses to save ${what} over the open document`, async () => {
+      mockSaveDocument.mockResolvedValueOnce(bytes);
+
+      await saveDocumentInPlace();
+
+      expect(invoke).not.toHaveBeenCalled();
+      // Silence here would look exactly like a successful save that did
+      // nothing; the user has to be told the file was left alone.
+      expect(useToastStore.getState().toasts).toMatchObject([{ kind: 'error' }]);
+    });
+  }
+
+  it('refuses at saveBytes too, which is where the signing flow writes', async () => {
+    // Signed bytes go out to @signpdf and come back, so they never pass
+    // through the export guard.
+    const ok = await saveBytes(new Uint8Array(0), 'report (signed).pdf');
+
+    expect(ok).toBe(false);
+    expect(saveDialog).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+    expect(useToastStore.getState().toasts).toMatchObject([{ kind: 'error' }]);
+  });
+
+  it('lets a real export through', async () => {
+    await saveDocumentInPlace();
+
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(useToastStore.getState().toasts).toMatchObject([{ kind: 'success' }]);
   });
 });
 
