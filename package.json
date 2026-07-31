@@ -45,6 +45,7 @@
     "test:coverage": "vitest run --coverage",
     "test:fuzz": "node scripts/run-fuzz.mjs",
     "test:e2e": "playwright test",
+    "test:e2e:preview": "playwright test -c playwright.preview.config.ts",
     "release:manifest": "node scripts/generate-latest.mjs",
     "release:sbom": "node scripts/generate-sbom.mjs"
   },

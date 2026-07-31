@@ -123,6 +123,20 @@ jobs:
       - name: Run e2e tests
         run: npm run test:e2e
 
+      # The same suite against `vite preview`, i.e. a real `npm run build`.
+      #
+      # The dev server ships each module roughly as authored, so nothing above
+      # this line exercises the bundler or its minifier. That gap shipped a real
+      # bug: the Vite 8 bump (#62) broke digital signing outright, because
+      # rolldown and esbuild disagree about what a default import of a CommonJS
+      # module means, and it was caught by luck rather than by design.
+      #
+      # Runs even when the step above failed, because the pair is the diagnosis:
+      # dev green + preview red means bundling, both red means the app.
+      - name: Run e2e tests against the production build
+        if: ${{ !cancelled() }}
+        run: npm run test:e2e:preview
+
       # Measure how far a saved copy sits from PDF/UA-1, which Section 508
       # 504.2.2 asks an authoring tool to be capable of exporting.
       #
@@ -164,6 +178,18 @@ jobs:
         with:
           name: playwright-report
           path: playwright-report/
+          retention-days: 7
+
+      # Separate artifact, not a second copy: the two runs write different
+      # reports, and the page snapshot in this one is what makes a bundling
+      # failure legible. The signing bug reached the log only as a download that
+      # never arrived, because the app catches the error into a toast.
+      - name: Upload Playwright report (production build)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report-preview
+          path: playwright-report-preview/
           retention-days: 7
 
   # Debug Tauri build across all three desktop platforms to catch breakage.
