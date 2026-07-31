@@ -35,7 +35,9 @@ extensions/vscode/
 
 The build resolves esbuild, React, PDF.js, and Folio's own `src/` from the repo's
 existing `node_modules` (it walks up), so you do **not** need a separate install
-just to build.
+just to build. esbuild is a devDependency of the repo root for exactly this
+reason: Vite used to pull it in transitively, but Vite 8 is rolldown-based and
+does not, so dropping it there would break this build and the fuzz harness below.
 
 ```bash
 # from extensions/vscode/

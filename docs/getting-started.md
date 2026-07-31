@@ -1,6 +1,6 @@
 # Getting Started with Folio
 
-Folio is a desktop PDF viewer built with **Tauri 2** (Rust backend) and a **React 19 + TypeScript 5 + Vite 7** frontend, rendering with **PDF.js**. This guide gets you from a clean machine to a running dev build and a release bundle.
+Folio is a desktop PDF viewer built with **Tauri 2** (Rust backend) and a **React 19 + TypeScript 5 + Vite 8** frontend, rendering with **PDF.js**. This guide gets you from a clean machine to a running dev build and a release bundle.
 
 ## Prerequisites
 
