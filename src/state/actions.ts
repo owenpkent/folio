@@ -1,5 +1,6 @@
 import { pickAndReadDocument } from '@/core/document/openDocument';
 import { getEngine, type DocumentSource } from '@/core/pdf';
+import { resetPageSizes } from '@/core/pdf/pageSizes';
 import { announce } from '@/a11y/announcer';
 import { useAnnotationStore } from '@/features/annotations';
 import { useEditStore } from '@/features/editing';
@@ -8,7 +9,7 @@ import { useOcrStore } from '@/features/ocr';
 // in UI modules this low-level orchestration module has no business importing.
 import { usePlacementStore } from '@/features/placement/store';
 import { useSignatureStore } from '@/features/signatures';
-import { detectSignatures, useSigningStore } from '@/features/signing';
+import { detectSignatures, useSigningStore, type DetectedSignature } from '@/features/signing';
 // Import the store directly rather than the feature barrel: the barrel also
 // exports TextEditLayer, which imports reloadEditedBytes from this file, and
 // routing through it here would make that a circular module dependency.
@@ -36,11 +37,20 @@ export async function loadSource(source: DocumentSource): Promise<void> {
 
   doc.setStatus('loading');
   try {
+    // Before loadDocument, not after: pdf.js transfers the byte array to its
+    // worker and detaches this view, so these are the last bytes anyone on the
+    // main thread can read. The engine used to keep a private copy for exactly
+    // this, which meant a second copy of the whole file resident for the whole
+    // session to serve one caller that wanted three fields out of it.
+    const detected = detectSignaturesSafely(source);
     const info = await engine.loadDocument(source);
     const [metadata, outline] = await Promise.all([engine.getMetadata(), engine.getOutline()]);
 
     doc.setLoaded(info, metadata, outline);
     doc.setSourcePath(source.kind === 'bytes' ? (source.path ?? null) : null);
+    // Page sizes are per document; a stale estimate would lay the new one out
+    // at the old one's page size until each page measured itself.
+    resetPageSizes();
     viewer.reset();
     viewer.setNumPages(info.numPages);
     useAnnotationStore.getState().loadForDocument(info.fingerprint);
@@ -51,12 +61,7 @@ export async function loadSource(source: DocumentSource): Promise<void> {
     // never mid-edit, so any leftover session/undo history from a prior one goes.
     useTextEditStore.getState().reset();
     usePlacementStore.getState().cancel();
-    try {
-      const original = engine.getOriginalBytes();
-      useSigningStore.getState().setDetected(original ? detectSignatures(original) : []);
-    } catch {
-      useSigningStore.getState().setDetected([]);
-    }
+    useSigningStore.getState().setDetected(detected);
     document.title = `${info.name} · Folio`;
 
     pluginHost.emitDocumentOpen({
@@ -74,6 +79,7 @@ export async function loadSource(source: DocumentSource): Promise<void> {
 
 export async function closeDocument(): Promise<void> {
   await getEngine().closeDocument();
+  resetPageSizes();
   useDocumentStore.getState().reset();
   useViewerStore.getState().reset();
   useAnnotationStore.getState().reset();
@@ -99,16 +105,29 @@ export async function reloadEditedBytes(bytes: Uint8Array): Promise<void> {
   if (doc.status !== 'ready' || !doc.info) return;
 
   const engine = getEngine();
+  // Same ordering rule as loadSource: read the bytes before the engine takes
+  // (and detaches) them. Callers must not touch `bytes` after this returns.
+  const detected = detectSignaturesSafely({ kind: 'bytes', data: bytes });
   await engine.loadDocument({ kind: 'bytes', data: bytes, name: doc.info.name });
   useDocumentStore.getState().bumpDocVersion();
   // Pages repaint in place on a docVersion bump (Page.tsx re-runs its canvas /
   // text-layer / annotation-layer effects rather than remounting), so scroll
   // position is never disturbed and needs no explicit preservation here.
 
+  useSigningStore.getState().setDetected(detected);
+}
+
+/**
+ * Scan a source's bytes for signatures, never throwing.
+ *
+ * A malformed or hostile document must not stop the open: signature detection
+ * is advisory, so a failure means "none found", not "cannot show this file".
+ */
+function detectSignaturesSafely(source: DocumentSource): DetectedSignature[] {
+  if (source.kind !== 'bytes') return [];
   try {
-    const original = engine.getOriginalBytes();
-    useSigningStore.getState().setDetected(original ? detectSignatures(original) : []);
+    return detectSignatures(source.data);
   } catch {
-    useSigningStore.getState().setDetected([]);
+    return [];
   }
 }

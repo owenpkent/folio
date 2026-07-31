@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import { announce } from '@/a11y/announcer';
 import { getEngine } from '@/core/pdf';
+import { primePageSizeEstimate, subscribePageSizes } from '@/core/pdf/pageSizes';
 import { useContextMenu } from '@/features/contextmenu';
 import { watchDevicePixelRatio } from '@/hooks/watchDevicePixelRatio';
 import { focusViewer, setViewerElement } from '@/state/viewerElement';
@@ -80,6 +81,10 @@ export function PdfViewer() {
       .then((d) => {
         if (cancelled) return;
         naturalRef.current = d;
+        // Page 1's size doubles as the layout estimate for every page not yet
+        // measured, so the scrollbar is honest from the first frame without
+        // measuring the whole document.
+        primePageSizeEstimate(d);
         recomputeFit();
       })
       .catch(() => {});
@@ -170,10 +175,37 @@ export function PdfViewer() {
     const el = container?.querySelector<HTMLElement>(
       `.folio-page[data-page-number="${pendingScrollPage}"]`,
     );
-    if (container && el) {
-      container.scrollTo({ top: Math.max(0, el.offsetTop - 16), behavior: 'smooth' });
-    }
     useViewerStore.getState().clearPendingScroll();
+    if (!container || !el) return;
+
+    const targetTop = () => Math.max(0, el.offsetTop - 16);
+    let aimedAt = targetTop();
+    container.scrollTo({ top: aimedAt, behavior: 'smooth' });
+
+    // Pages the user has never been near are laid out at an estimated height
+    // until they measure themselves, so a jump deep into a long document aims
+    // at where the target is currently believed to be. As those measurements
+    // land the pages above it resize and the target moves, so re-aim whenever
+    // it does. Reading offsetTop is deferred to the next frame because the
+    // notification fires before React has committed the new heights, and
+    // re-issuing a smooth scroll retargets the running animation rather than
+    // restarting it.
+    let raf = 0;
+    const stop = subscribePageSizes(() => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const want = targetTop();
+        if (want === aimedAt) return;
+        aimedAt = want;
+        container.scrollTo({ top: want, behavior: 'smooth' });
+      });
+    });
+
+    return () => {
+      stop();
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, [pendingScrollPage]);
 
   // Auto-scroll (teleprompter): glide the page down while active. A floating
