@@ -6,7 +6,85 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Opening a large PDF no longer white-screens the app.** The thumbnail
+  sidebar's lazy loading was inert: its `IntersectionObserver` was rooted at
+  `.folio-thumbnails`, which is not the element that scrolls. With an element
+  root, `IntersectionObserver` clips only against containers *between* target and
+  root and never above it, so the unclipped inner wrapper reported **every**
+  thumbnail in the document as visible in the first observation batch. Every page
+  then rasterized at once, with no concurrency cap. The sidebar is open by
+  default on desktop, so this ran on every open with no user action, and every
+  failure was swallowed by a `.catch(() => {})` -- including the "could not
+  acquire a 2D canvas context" that Chromium raises when canvas memory is
+  exhausted. The app therefore died silently, with the WebView2 renderer
+  OOM-killed and the window left blank. Rooted at the real scroller, and the
+  observer is now two-way so a thumbnail that scrolls away gives its canvas back
+  instead of retaining every one it ever rendered.
+- **Scrolling quickly through a long document no longer leaks a canvas per page.**
+  `renderPage` sized the canvas *after* awaiting the page, so a render aborted
+  mid-flight re-allocated the backing store for a page the viewer had already
+  zeroed and scrolled past, and nothing zeroed it a second time.
+
+### Security
+
+- **A tampered document can no longer earn a clean "no changes after signing"
+  badge.** `coversWholeDocument` was computed by scanning from the end of the
+  signed byte range, but that offset is read straight out of the file: when it
+  pointed past the end, the scan had nothing to iterate and returned true
+  *vacuously*. A `/ByteRange` naming a range longer than the file, plus arbitrary
+  appended content, verified as untampered. A range that ends past EOF is now
+  treated as a failure, not a pass.
+- **Signature detection is bounded so a hostile file cannot stall the open.** It
+  runs synchronously on the main thread over the whole document. The result cap
+  bounded successful matches but not *candidate* sites, so a file repeating the
+  literal `/ByteRange` cost ~290ms per megabyte of pure scanning; and the
+  per-window cap did not bound its product with the result cap, allowing ~400MB
+  of transient strings. Both are now capped, and the scanner no longer builds a
+  string copy of the entire file (which above V8's ~512MB string limit threw
+  outright, and below it pushed the renderer toward the OOM it was trying to
+  avoid).
+
+### Added
+
+- **Property/fuzz tests** (`fast-check`, `*.fuzz.test.ts`) over the parsers that
+  read bytes straight out of a PDF, run as part of `npm test` and at a much
+  higher iteration count via `npm run test:fuzz`. They cover `detectSignatures`
+  and the content-stream tokenizer and splice primitives, asserting the
+  properties an example-based test tends not to reach: the functions are total,
+  reported offsets stay in range, an operator splice never glues two tokens
+  together, and neither can be driven into unbounded work. The signature badge
+  bug above was found this way. See
+  [testing.md](docs/testing.md#property-and-fuzz-tests-fast-check).
+- **A root `ErrorBoundary`.** A render-phase throw previously unmounted the whole
+  tree and left a blank window, which is indistinguishable from the crash above
+  and equally unreportable. It now shows a message and the failing component
+  stack.
+
 ### Changed
+
+- **Long documents no longer do whole-document work at open.** Every page
+  measured itself on mount, so opening fired one worker round-trip per page in a
+  single burst and pinned a page object per page for the session -- and did it
+  all again on every zoom step, because the measurement was taken at the current
+  scale. Pages are now measured once at scale 1, only when approached, and lay
+  out at an estimate taken from page 1 until then. The engine's page, text, and
+  text-item caches are now LRU-bounded, calling `PDFPageProxy.cleanup()` on
+  eviction, which is the call that actually frees anything (PDF.js keeps its own
+  reference to every page it hands out). The eight per-page overlay layers now
+  mount only near the viewport rather than for every page.
+- **Saving no longer serializes the PDF as a JSON array of numbers.** The bytes
+  went to Rust as `Array.from(bytes)`, so a 50MB document became a
+  50-million-element array on the UI thread -- the exact cost `read_document` was
+  written to avoid in the other direction. They now travel as a raw binary body,
+  with the destination path in a percent-encoded header. Requires
+  `ipc: http://ipc.localhost` in the CSP `connect-src`; the Rust side still
+  accepts a JSON body so the `postMessage` fallback keeps working.
+- **The engine no longer retains a second copy of the open file.** It kept a
+  defensive `.slice()` of the whole document for the session so signature
+  detection could read it later, because PDF.js transfers (and detaches) the
+  array it is given. Detection now runs before the handover instead.
 
 - **Documentation sweep after 0.5.0.** The stack table, the setup guide, the
   contributing guide, and the architecture doc all still said React 18; the
