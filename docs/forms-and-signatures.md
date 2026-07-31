@@ -160,6 +160,26 @@ is derived from the signed byte range, so appended edits are detected. Full
 certificate-chain trust validation and CMS digest verification are not yet
 performed (see Limitations).
 
+The scanner reads the byte ranges out of the file, so it treats them as hostile
+input rather than as facts. Two rules matter for the "no changes after signing"
+verdict:
+
+- **A range that ends past the end of the file is not a pass.** It describes
+  bytes that do not exist, so there is nothing after it to inspect and the check
+  would otherwise come back clean by default. A `/ByteRange` claiming to sign
+  more than the file contains earns the *changed* verdict, not the clean one.
+- **The scan is bounded.** It reads only small windows around each signature
+  dictionary and caps how many candidate sites it will examine, because it runs
+  on the main thread while the document is opening. A file made of nothing but
+  repeated signature markers cannot use that to stall the UI. The cost of the cap
+  is that a signature hidden behind hundreds of decoy markers goes unreported,
+  which is the right way round: detection here is advisory, so failing to report
+  is safe where freezing the app is not.
+
+Detection runs on the bytes *before* they are handed to the PDF.js worker, since
+that transfer detaches the array on the main thread. That ordering is why the
+engine no longer keeps a second full copy of every open file.
+
 ### Where the crypto runs, and security
 
 Signing currently runs in the app's front-end (WebView) using the mature,
