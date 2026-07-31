@@ -2,16 +2,19 @@
 //
 // Folio already runs in a plain browser (its native calls are guarded by
 // isTauri()), and a webview is a browser context, so <App/> works here with its
-// browser fallbacks. This entry adds two webview-specific bridges:
+// browser fallbacks. This entry adds three webview-specific bridges:
 //   1. the PDF.js worker URL comes from a global the extension injected
 //      (the desktop build's `?url` import is swapped out at bundle time);
-//   2. Folio's theme follows the VS Code color theme.
+//   2. the PDF.js WASM decoders come from the same global, since they sit
+//      behind a vscode-webview URI rather than at the bundle root;
+//   3. Folio's theme follows the VS Code color theme.
 import '@/shims/node';
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from '@/App';
+import { setPdfWasmUrl } from '@/core/pdf';
 import { loadSource } from '@/state/actions';
 import { ThemeProvider } from '@/theme/ThemeProvider';
 import { useThemeStore } from '@/theme/themeStore';
@@ -27,6 +30,9 @@ function syncThemeFromVsCode(): void {
 }
 
 async function boot(): Promise<void> {
+  const assets = (globalThis as { __FOLIO_ASSETS__?: Record<string, string> }).__FOLIO_ASSETS__;
+  if (assets?.['pdfjs-wasm']) setPdfWasmUrl(assets['pdfjs-wasm']);
+
   syncThemeFromVsCode();
   // VS Code toggles the body class when the user switches themes; follow it live.
   new MutationObserver(syncThemeFromVsCode).observe(document.body, {

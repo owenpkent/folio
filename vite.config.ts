@@ -1,7 +1,10 @@
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
+import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 
 // Tauri exposes this when running `tauri dev` on a mobile device / remote host.
@@ -23,9 +26,68 @@ try {
 }
 const buildDate = new Date().toISOString();
 
+// Must match PDFJS_WASM_PATH in src/core/pdf/setupWorker.ts, which is what gets
+// handed to getDocument as `wasmUrl`.
+const PDFJS_WASM_PATH = 'pdfjs-wasm/';
+
+/**
+ * Serve and emit PDF.js's WebAssembly decoders (JBIG2, JPEG2000, the ICC
+ * transform) under a stable, unhashed directory.
+ *
+ * PDF.js 6 fetches these at run time by appending a filename to the `wasmUrl`
+ * directory it was given, so unlike the worker they cannot ride along as a
+ * `?url` import: an emitted asset gets a content hash, and the pure-JS
+ * fallbacks are loaded from the same base by dynamic `import()`. Copying the
+ * directory verbatim is the only shape that satisfies both.
+ */
+function pdfjsWasmAssets(): Plugin {
+  const require = createRequire(import.meta.url);
+  const dir = join(dirname(require.resolve('pdfjs-dist/package.json')), 'wasm');
+  // The fetched files only. The LICENSE_* siblings are never requested, and
+  // quickjs-eval.* (475 kB) is loaded solely by pdf.sandbox.mjs, the embedded-
+  // JavaScript sandbox, which Folio does not ship: every render passes
+  // enableScripting: false. Revisit this filter if that ever changes.
+  const files = readdirSync(dir).filter(
+    (f) => /\.(wasm|js)$/.test(f) && !f.startsWith('quickjs-eval'),
+  );
+
+  return {
+    name: 'folio-pdfjs-wasm',
+
+    // Dev has no bundle to emit into, so serve them straight from the package.
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const path = (req.url ?? '').split('?')[0];
+        if (!path.startsWith(`/${PDFJS_WASM_PATH}`)) return next();
+        // Matched against the real directory listing rather than sanitised, so
+        // a crafted request cannot walk out of it.
+        const name = path.slice(PDFJS_WASM_PATH.length + 1);
+        if (!files.includes(name)) return next();
+        // The .js fallbacks are ES modules loaded by import(); both types have
+        // to be exact or the browser refuses them.
+        res.setHeader(
+          'Content-Type',
+          name.endsWith('.wasm') ? 'application/wasm' : 'text/javascript',
+        );
+        res.end(readFileSync(join(dir, name)));
+      });
+    },
+
+    generateBundle() {
+      for (const name of files) {
+        this.emitFile({
+          type: 'asset',
+          fileName: `${PDFJS_WASM_PATH}${name}`,
+          source: readFileSync(join(dir, name)),
+        });
+      }
+    },
+  };
+}
+
 // https://vitejs.dev/config/  +  https://v2.tauri.app/develop/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), pdfjsWasmAssets()],
 
   resolve: {
     alias: {

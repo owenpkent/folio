@@ -72,6 +72,8 @@ class FolioPdfEditorProvider implements vscode.CustomReadonlyEditorProvider<PdfD
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(outRoot, 'app.js'));
     const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(outRoot, 'app.css'));
     const workerUri = webview.asWebviewUri(vscode.Uri.joinPath(outRoot, 'pdf.worker.min.mjs'));
+    // A directory, not a file: PDF.js appends its own filenames to this base.
+    const wasmUri = webview.asWebviewUri(vscode.Uri.joinPath(outRoot, 'pdfjs-wasm'));
     const pdfWebviewUri = webview.asWebviewUri(pdfUri);
     const name = path.basename(pdfUri.fsPath);
     const nonce = makeNonce();
@@ -80,13 +82,17 @@ class FolioPdfEditorProvider implements vscode.CustomReadonlyEditorProvider<PdfD
     // Strict CSP. The interesting lines: worker-src must permit the PDF.js
     // worker, and connect-src must permit fetching the PDF resource by URL.
     // 'unsafe-inline' on style-src is required by React inline styles; scripts
-    // stay nonce-locked.
+    // stay nonce-locked. 'wasm-unsafe-eval' is the narrow WebAssembly opt-in
+    // (it permits compilation only; it does not re-enable eval or inline
+    // script) that PDF.js 6 needs for its image decoders, matching what the
+    // desktop CSP in tauri.conf.json already carries. The decoder .wasm itself
+    // is fetched by the main thread, which is what connect-src covers.
     const cspContent = [
       "default-src 'none'",
       `connect-src ${csp}`,
       `img-src ${csp} data: blob:`,
       `style-src ${csp} 'unsafe-inline'`,
-      `script-src 'nonce-${nonce}'`,
+      `script-src 'nonce-${nonce}' 'wasm-unsafe-eval'`,
       `worker-src ${csp} blob:`,
       `font-src ${csp} data:`,
     ].join('; ');
@@ -107,7 +113,10 @@ class FolioPdfEditorProvider implements vscode.CustomReadonlyEditorProvider<PdfD
   <div id="root"></div>
   <div id="folio-data" data-pdf="${pdfWebviewUri}" data-name="${escapeHtml(name)}" hidden></div>
   <script nonce="${nonce}">
-    globalThis.__FOLIO_ASSETS__ = { 'pdf.worker.min.mjs': '${workerUri}' };
+    globalThis.__FOLIO_ASSETS__ = {
+      'pdf.worker.min.mjs': '${workerUri}',
+      'pdfjs-wasm': '${wasmUri}/',
+    };
   </script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
