@@ -13,6 +13,7 @@ Folio is tested at two layers:
 npm run test           # unit tests (Vitest), single run
 npm run test:watch     # unit tests in watch mode
 npm run test:coverage  # unit tests with a V8 coverage report
+npm run test:fuzz      # property tests at a high iteration count
 npm run test:e2e       # end-to-end tests (Playwright)
 ```
 
@@ -66,6 +67,52 @@ PDF rendering are exercised by the end-to-end suite rather than in unit tests.
 
 Create `thing.test.ts` beside `thing.ts`, import from `vitest`, and reset any
 shared store state in `beforeEach`. Keep tests deterministic and fast.
+
+## Property and fuzz tests (fast-check)
+
+Files named `*.fuzz.test.ts` use [fast-check](https://fast-check.dev) through
+`@fast-check/vitest`. They run as part of `npm test` like any other spec, so the
+normal suite stays a gate rather than a lottery; `npm run test:fuzz` re-runs just
+those files at a much higher iteration count.
+
+They exist for the code that reads bytes straight out of a PDF. Every offset such
+a parser reports is attacker-influenced, and most of them are later used as slice
+bounds or array indices, so the invariants worth asserting are things an
+example-based test tends not to reach: the function is total, its results stay in
+bounds, and it cannot be made to do unbounded work.
+
+Current targets:
+
+| File | What it pins |
+| --- | --- |
+| `features/signing/verify.fuzz.test.ts` | `detectSignatures`, the only PDF parser a hostile document reaches with no user action. A signature may only be reported as covering the whole document when the range it names ends inside the file, and a document made of nothing but signature markers must not stall the UI thread. |
+| `features/textedit/contentStream.fuzz.test.ts` | The content-stream tokenizer and the splice primitives: reported runs are always in range and spliceable, an operator splice never glues two tokens together, and a hostile form resolver cannot cause unbounded descent. |
+
+### Seeds and reproducing a failure
+
+`src/test/setup.ts` reads two environment variables:
+
+- `FC_NUM_RUNS`: iterations per property (default 100; `npm run test:fuzz`
+  raises it to 20,000).
+- `FC_SEED`: pins the generator so a run is byte-for-byte reproducible.
+
+A failure prints both a seed and a shrink path, and names the smallest input it
+could find. Replay it exactly by putting them on the property:
+
+```ts
+test.prop([arb], { seed: -1018431547, path: '0:0:0:1', endOnFailure: true })(...)
+```
+
+Once fixed, keep the minimal input as an entry in the property's `examples`
+array so it is checked on every run from then on, seed or no seed.
+
+### Adding a fuzz test
+
+Write generators that produce *structurally plausible* input. A parser keyed on a
+literal like `/ByteRange` will essentially never see it in random bytes, so an
+unstructured `fc.uint8Array()` would spend every iteration on the not-found path
+and prove nothing. Build the shape and fuzz the parts an attacker controls: the
+offsets, the lengths, the spacing, what follows the end.
 
 ## End-to-end tests (Playwright)
 
