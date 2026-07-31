@@ -3,6 +3,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { pushToast } from '@/components/common';
+import { mapWithConcurrency } from '@/core/concurrency';
 import { ensureWorker } from '@/core/pdf/setupWorker';
 import { exportDocument } from '@/features/export';
 import { useDocumentStore } from '@/state/documentStore';
@@ -17,6 +18,15 @@ import { usePrintStore } from './store';
 const PRINT_SCALE = 2;
 
 const PRINT_ROOT_ID = 'folio-print-root';
+
+/**
+ * How many page images to decode at once before handing over to the print
+ * dialog. Each decoded Letter page at PRINT_SCALE is ~7.4 MiB of RGBA, so
+ * decoding the whole array in one `Promise.all` asks the browser for
+ * pages x 7.4 MiB simultaneously; a 500-page document alone is ~3.6 GiB. Four
+ * keeps the decoders busy on any machine while bounding the peak.
+ */
+const DECODE_CONCURRENCY = 4;
 
 /**
  * Print the open document, including every unsaved edit.
@@ -109,9 +119,18 @@ export async function printDocument(): Promise<void> {
     }
 
     document.body.appendChild(root);
-    // The dialog screenshots the page synchronously, so every image has to be
-    // decoded before print() or the preview comes out blank.
-    await Promise.all(images.map((img) => img.decode().catch(() => undefined)));
+    // The dialog screenshots the page synchronously, so every image has to have
+    // finished decoding before print() or the preview comes out blank. That
+    // barrier stays; only its width changes. Decoding a few at a time removes
+    // the gratuitous part of the cost -- Promise.all asked the browser to
+    // allocate every page's bitmap in the same tick -- but note it does not
+    // bound the peak on its own: whether the earlier bitmaps are still resident
+    // by the time the last one decodes is the browser's call, and printing does
+    // need them all painted in the end. Rasterizing a long document is
+    // expensive by design; this just stops it being needlessly so.
+    await mapWithConcurrency(images, DECODE_CONCURRENCY, (img) =>
+      img.decode().catch(() => undefined),
+    );
 
     // Drop the modal before handing over to the system dialog.
     usePrintStore.getState().finish();
