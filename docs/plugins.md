@@ -275,7 +275,7 @@ interface PluginUi {
 
 ## Worked example: the Word Count plugin
 
-This is a complete, self-contained plugin that registers a command, a toolbar button that runs it, and a live sidebar panel, and reacts when a document opens. It is the real built-in from `src/plugins/builtins/wordCount.ts`.
+This is a complete, self-contained plugin that registers a command and a toolbar button that runs it, and reacts when a document opens. It is the real built-in from `src/plugins/builtins/wordCount.ts`. (It also contributed a sidebar panel until that put a permanent Word Count tab in the left rail; [Adding a sidebar panel](#adding-a-sidebar-panel) below keeps that code as an illustration.)
 
 ```ts
 // src/plugins/builtins/wordCount.ts
@@ -305,8 +305,60 @@ async function computeStats(): Promise<Stats | null> {
   return { words, characters, pages: info.numPages };
 }
 
-// The sidebar panel renders imperatively into the container and returns a
-// teardown callback. No JSX, no React: just DOM nodes.
+export const wordCountPlugin: FolioPlugin = {
+  id: 'app.folio.word-count',
+  name: 'Word Count',
+  version: '0.1.0',
+
+  activate(ctx: PluginContext) {
+    // 1) Command: enabled only when a document is ready; invocable by keybinding,
+    //    AI actions, or other plugins through the command registry.
+    ctx.registerCommand({
+      id: 'plugin.wordCount.show',
+      title: 'Word Count: count this document',
+      category: 'Plugins',
+      when: () => useDocumentStore.getState().status === 'ready',
+      run: async () => {
+        const stats = await computeStats();
+        ctx.ui.showToast(
+          stats
+            ? `${stats.words.toLocaleString()} words · ${stats.characters.toLocaleString()} characters · ${stats.pages.toLocaleString()} pages`
+            : 'No document open',
+          { kind: stats ? 'info' : 'error' },
+        );
+      },
+    });
+
+    // 2) Toolbar button: activates the same command from the toolbar (and
+    //    collapses into the overflow menu on narrow windows like any tool).
+    ctx.registerToolbarItem({
+      id: 'plugin.wordCount.toolbar',
+      title: 'Count this document',
+      icon: 'hash',
+      group: 'right',
+      commandId: 'plugin.wordCount.show',
+    });
+
+    // 3) React whenever a new document opens.
+    ctx.onDocumentOpen(() => {
+      ctx.ui.showToast('Word Count is ready for this document', { kind: 'info' });
+    });
+  },
+};
+```
+
+Points worth noting in this example:
+
+- The plugin registers a command and a toolbar item and never keeps the returned disposables: the host disposes both automatically on deactivate, so no `deactivate` is needed.
+- The command's `when` gates enablement (`status === 'ready'`), and the command is the single code path that computes the count. The toolbar item reuses it by pointing its `commandId` at the same `id`; a keybinding would reuse it the same way.
+
+### Adding a sidebar panel
+
+A panel adds a permanent tab to the sidebar rail, so contribute one only when the plugin has something worth a standing home (the built-in dropped its panel for exactly this reason). `render` receives the container DOM node and returns a teardown callback: imperative DOM, not a React component. Use `folio-plugin-panel__hint` for status text and the panel's own classes for content, so it inherits the app's theming.
+
+```ts
+// The panel renders imperatively into the container and returns a teardown
+// callback. No JSX, no React: just DOM nodes.
 function renderPanel(container: HTMLElement): () => void {
   let disposed = false;
   container.replaceChildren();
@@ -340,63 +392,21 @@ function renderPanel(container: HTMLElement): () => void {
     row('Pages', stats.pages.toLocaleString());
   });
 
+  // Stops the in-flight async work from writing into a container the host has
+  // already torn down.
   return () => {
     disposed = true;
   };
 }
 
-export const wordCountPlugin: FolioPlugin = {
-  id: 'app.folio.word-count',
-  name: 'Word Count',
-  version: '0.1.0',
-
-  activate(ctx: PluginContext) {
-    // 1) Command: enabled only when a document is ready; invocable by keybinding,
-    //    AI actions, or other plugins through the command registry.
-    ctx.registerCommand({
-      id: 'plugin.wordCount.show',
-      title: 'Word Count: count this document',
-      category: 'Plugins',
-      when: () => useDocumentStore.getState().status === 'ready',
-      run: async () => {
-        const stats = await computeStats();
-        ctx.ui.showToast(stats ? `${stats.words.toLocaleString()} words` : 'No document open', {
-          kind: stats ? 'info' : 'error',
-        });
-      },
-    });
-
-    // 2) Toolbar button: activates the same command from the toolbar (and
-    //    collapses into the overflow menu on narrow windows like any tool).
-    ctx.registerToolbarItem({
-      id: 'plugin.wordCount.toolbar',
-      title: 'Count this document',
-      icon: 'hash',
-      group: 'right',
-      commandId: 'plugin.wordCount.show',
-    });
-
-    // 3) Sidebar panel: renders live stats into the container DOM node.
-    ctx.registerSidebarPanel({
-      id: 'app.folio.word-count.panel',
-      title: 'Word Count',
-      icon: 'hash',
-      render: renderPanel,
-    });
-
-    // 4) React whenever a new document opens.
-    ctx.onDocumentOpen(() => {
-      ctx.ui.showToast('Word Count is ready for this document', { kind: 'info' });
-    });
-  },
-};
+// Inside activate(ctx):
+ctx.registerSidebarPanel({
+  id: 'app.folio.word-count.panel',
+  title: 'Word Count',
+  icon: 'hash',
+  render: renderPanel,
+});
 ```
-
-Points worth noting in this example:
-
-- The plugin registers a command, a toolbar item, and a panel, and never keeps the returned disposables: the host disposes all of them automatically on deactivate, so no `deactivate` is needed.
-- The command's `when` gates enablement (`status === 'ready'`), and the command is the single code path that computes the count. The toolbar item reuses it by pointing its `commandId` at the same `id`; a keybinding would reuse it the same way.
-- The sidebar panel renders imperatively into `container` and returns a teardown callback that stops the in-flight async work; this is the `render` contract, not a React component.
 
 ## How `PluginHost` loads and activates plugins
 

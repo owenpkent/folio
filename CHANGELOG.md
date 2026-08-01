@@ -110,6 +110,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ever flipped between light and dark. The trigger icon now reports the mode in
   effect rather than the one a click would apply, because it opens a menu rather
   than toggling. `Ctrl/Cmd + Shift + L` and the View menu are unchanged.
+- **Word Count no longer holds a tab in the sidebar.** The built-in plugin
+  contributed a sidebar panel, which put a permanent Word Count tab in the left
+  rail beside Thumbnails, Outline, Annotations, and Signatures: standing
+  furniture for a demo that most sessions never open. The plugin keeps its
+  command and its Tools-menu entry, and now reports characters and pages in the
+  toast alongside the word count, which is where the panel's numbers went.
+  `registerSidebarPanel` is untouched as a plugin API; [plugins.md](docs/plugins.md#adding-a-sidebar-panel)
+  keeps the panel code as a worked illustration.
 - **Long documents no longer do whole-document work at open.** Every page
   measured itself on mount, so opening fired one worker round-trip per page in a
   single burst and pinned a page object per page for the session -- and did it

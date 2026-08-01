@@ -61,7 +61,7 @@ These commands exist but have **no keyboard binding**; they are reachable from t
 | Dark reading color (Night / Green / Amber) | no command | Toolbar appearance menu / View menu |
 | About Folio | `help.about` | Toolbar button / Help menu |
 | Check for updates (desktop only) | `help.checkForUpdates` | About dialog button |
-| Word Count (built-in plugin) | `plugin.wordCount.show` | Tools menu (plugin-contributed); the sidebar panel also shows the stats |
+| Word Count (built-in plugin) | `plugin.wordCount.show` | Tools menu (plugin-contributed); the counts come back as a toast |
 
 Every one of these is reachable by keyboard through its menu item, toolbar button, or panel, so no functionality is keyboard-inaccessible (WCAG 2.1.1); they simply have no dedicated chord. The planned command palette is what makes them all directly reachable.
 
