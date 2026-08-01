@@ -6,68 +6,74 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Fixed
-
-- **The browser tab and the app window have an icon.** `index.html` declared no
-  favicon, so anything that ran Folio from the dev server or a browser -- the
-  Chromium app window `run.py dev` opens, above all, where the favicon *is* the
-  title-bar icon -- showed the browser's default globe. It points at the same
-  `folio-logo.svg` the desktop icon set is generated from, so the tab, the app
-  window, and the installed app all show one mark. The packaged desktop build
-  was never affected; Tauri embeds its icons in the binary.
-- **Opening a large PDF no longer white-screens the app.** The thumbnail
-  sidebar's lazy loading was inert: its `IntersectionObserver` was rooted at
-  `.folio-thumbnails`, which is not the element that scrolls. With an element
-  root, `IntersectionObserver` clips only against containers *between* target and
-  root and never above it, so the unclipped inner wrapper reported **every**
-  thumbnail in the document as visible in the first observation batch. Every page
-  then rasterized at once, with no concurrency cap. The sidebar is open by
-  default on desktop, so this ran on every open with no user action, and every
-  failure was swallowed by a `.catch(() => {})` -- including the "could not
-  acquire a 2D canvas context" that Chromium raises when canvas memory is
-  exhausted. The app therefore died silently, with the WebView2 renderer
-  OOM-killed and the window left blank. Rooted at the real scroller, and the
-  observer is now two-way so a thumbnail that scrolls away gives its canvas back
-  instead of retaining every one it ever rendered.
-- **Scrolling quickly through a long document no longer leaks a canvas per page.**
-  `renderPage` sized the canvas *after* awaiting the page, so a render aborted
-  mid-flight re-allocated the backing store for a page the viewer had already
-  zeroed and scrolled past, and nothing zeroed it a second time.
-- **Save refuses a payload that is not a document.** Saving in place replaces the
-  open file with the exported bytes, so an export that came back empty or
-  truncated would take the only copy with it, and nothing checked. Both save
-  paths now require the `%PDF-` header and a plausible length before anything is
-  written, and refusing says so instead of returning silently, which is
-  indistinguishable from a save that worked.
-
-### Security
-
-- **A `/ByteRange` that runs past the end of the file no longer verifies as
-  clean.** `coversWholeDocument` was computed by scanning from the end of the
-  signed byte range, but that offset is read straight out of the file: when it
-  pointed past the end, the scan had nothing to iterate and returned true
-  *vacuously*. A `/ByteRange` naming a range longer than the file, plus arbitrary
-  appended content, earned the green badge. A range that ends past EOF is now
-  treated as a failure, not a pass. Note the scope of that badge, which the
-  docstring and the signatures documentation had overstated and now describe
-  accurately: the check is structural, so it establishes that nothing was
-  appended after the signature, not that the signed content is unmodified. The
-  CMS digest is still not computed, so an in-place edit inside the signed range
-  is not detected.
-- **Signature detection no longer builds a string copy of the whole document.**
-  It runs synchronously on the main thread as a document opens, and it used to
-  latin-1 decode the entire file (which the first regex then flattened into a
-  second full-size copy) before looking for anything. Above V8's ~512MB string
-  limit that threw outright; below it, it pushed the renderer toward the same
-  out-of-memory condition the rest of this release is about. It now scans the raw
-  bytes and decodes only small windows around each signature dictionary. The byte
-  scan is bounded as well, at 200 candidate `/ByteRange` sites and 16MB of total
-  decoding per pass: those caps caught a cost introduced by this rewrite rather
-  than a pre-existing one, since a file made of nothing but repeated `/ByteRange`
-  markers measured ~290ms of scanning per megabyte before they were added.
+## [0.5.0] - 2026-08-01
 
 ### Added
 
+- **Move, resize, and delete any placed item from the keyboard.** Dragging and
+  the corner handle were the only way to position a text box, a placed image, a
+  check mark, a signature, or an embedded image, which is a WCAG 2.1.1 failure
+  repeated across five features. Every one of them is now focusable and responds
+  to the arrow keys (one screen pixel, ten with **Shift**), `+`/`-` to resize,
+  and **Delete** to remove. One implementation serves all five, so the bindings
+  cannot drift apart. Steps are screen pixels of the rendered page rather than
+  PDF points, matching how the drag handlers already worked: zoom in for finer
+  control. Arrows typed inside a text box still move the caret, and a nudge does
+  not also scroll the document. Announcements are debounced, so a run of presses
+  reports where the item ended up instead of flooding a screen reader per key.
+  Aspect ratio stays locked wherever the pointer locks it, and a resize that
+  would push one axis past its limit is refused whole rather than silently
+  reshaping the item.
+- **Application menu bar.** A classic File / Edit / View / Annotate / Sign /
+  Tools / Help menu row above the toolbar, built in-app (pure DOM, so it is
+  identical in the desktop app, the browser build, and the VS Code extension)
+  and driven by the command registry: each item executes the same command its
+  toolbar button did, shows the command's declared shortcut, and disables when
+  the command cannot run. Implements the full ARIA menubar keyboard pattern
+  (roving tab stop, arrow keys across and within menus, Home/End, Escape,
+  hover-slide between open menus). On narrow windows it folds into a single
+  hamburger Menu button with grouped rows. The Tools menu hosts
+  plugin-contributed commands and hides when no plugin contributes any.
+- **Thumbnails follow the current page.** The sidebar thumbnail strip scrolls
+  its highlighted page into view as you move through the document, using
+  nearest-edge scrolling so it never jumps when the thumb is already visible,
+  and stands down for a moment while you scroll the sidebar by hand.
+  Respects `prefers-reduced-motion`.
+- **Recent signature names.** The Type tab of the signature dialog remembers the
+  last five names you signed with (and the style you picked for each), offers
+  them as one-click chips, and prefills the most recent one, so signing a second
+  document no longer means retyping your name. Stored locally, text and font
+  only, never the rendered image.
+- **Text inside Form XObjects is now editable.** The content-stream parser
+  descends into `Do`-invoked Form XObjects, composing each form's own
+  `/Matrix` with the transform at the invocation site, so text placed by a
+  template, a letterhead, or a form generator can be clicked and replaced like
+  any other run. Previously all of it reported "cannot be edited", which read
+  as though the page were a scan even when the text was ordinary vector text.
+  An edit never rewrites the form in place: the same form can be drawn by
+  other pages, so the whole chain from the edited form up to the page is
+  copied and only this page's resources are redirected at the copy. Text in a
+  form the page draws more than once is still refused, because removing it
+  would clear every copy while the replacement is drawn only once.
+- **Check marks.** A mark placed by clicking a spot on the page, for forms that
+  show a printed box with no interactive field behind it. Selecting a placed
+  mark offers a check or a cross. It goes through the same click-to-place mode
+  as text boxes, images, and signatures, with one difference: a click that lands
+  on a *real* form widget reaches the widget instead, since a mark exists only to
+  stand in for a checkbox that has no field. Like the other placement tools, a
+  mark is an overlay until you save, then it is baked as a stroked vector path,
+  so it stays sharp at any zoom.
+- **Select, move, resize, replace, and delete images already in a PDF.** A new
+  **Edit images** tool, in the Edit menu beside *Edit text*, lets you click an image
+  already drawn on a page, then drag it, resize it from the corner, delete it,
+  or replace it with a different PNG/JPEG, committing immediately the same way
+  in-place text edits do, rather than waiting for a save. A move or resize
+  rewrites the page's `/Name Do` operator in place with a new matrix, keeping
+  the graphics state and z-order exactly as they were; a replace embeds the
+  new image under a fresh resource name and repoints only that operator, so
+  the original image XObject (and any other page still drawing it) is never
+  touched. Rotated or skewed images can still be replaced in place but not
+  moved or resized, and an image inside a Form XObject is not editable yet.
 - **Print.** `Ctrl/Cmd + P`, or File → Print…, sends the open document to the
   system print dialog. Printing goes through the same bake pipeline as Save
   (`exportDocument`), then rasterizes those bytes in a throwaway PDF.js
@@ -109,6 +115,29 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Text boxes, images, signatures, and check marks are placed where you
+  click.** Adding one no longer drops it in the middle of the page for you to
+  drag into position:
+  the tool arms a click-to-place mode (with a banner; Escape, the banner's
+  Cancel, or a click anywhere off a page backs out) and the next click on a page
+  decides where the item lands. Text boxes start at the click, images and
+  signatures land centered on it. Picking a spot is a pointer affordance, so the
+  banner takes focus and carries the keyboard path: **Place in the middle**
+  centers the item on the current page, which is what these tools did before.
+- **A text box moves by dragging anywhere on it.** The narrow grip above the box
+  is gone; press anywhere on the box and drag. A press that does not travel is
+  still a plain click, so selecting a box and placing the caret work as before.
+- **The toolbar slimmed down.** With the menu bar carrying the full command
+  set, the toolbar's right side keeps only Save and Find next to the pinned
+  theme controls and About; comment, highlight, edit text, edit images, add text
+  box, add image, add check mark, OCR, both signature actions, save a copy, and
+  plugin buttons all live in the menus.
+- **Upgraded to React 19** (`react`, `react-dom`, and both `@types` packages
+  together). No source changes were needed: no removed React 18 API is used
+  anywhere, and no ref callback returns a value, which is the React 19 change
+  least likely to be caught by a test suite since a returned value is now treated
+  as a cleanup function. Also picks up grouped GitHub Actions and Cargo
+  dependency bumps.
 - **One toolbar button for the viewing mode.** The light/dark toggle and the
   dark-reading-colour dropdown were two adjacent buttons; they are now a single
   `AppearanceMenu` that opens a menu with every option: Light, Dark, Match
@@ -182,120 +211,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reinstalled after any `@playwright/test` upgrade, or every spec fails at 0ms on
   a missing executable, which reads as a catastrophic regression and is not one.
 
-### Security
-
-- **Updated `postcss` to 8.5.24 and the VS Code extension's `esbuild` to 0.25**,
-  clearing the two Dependabot alerts that appeared once alerts were enabled for
-  the repository. Both are development-only dependencies and neither ships in a
-  built artifact: postcss arrives transitively through Vite
-  ([GHSA-r28c-9q8g-f849](https://github.com/advisories/GHSA-r28c-9q8g-f849), path
-  traversal in source-map auto-loading), and esbuild is the extension's bundler
-  ([GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99), dev
-  server request handling). The postcss one was a **high**, which the release
-  checklist gates on, so it would have blocked the next release.
-- **Accepted rather than fixed: one medium Dependabot alert.** `glib` carries an
-  unsoundness advisory in the `Iterator` and `DoubleEndedIterator` impls for
-  `VariantStrIter`, fixed upstream in 0.20.0. The version here is pinned
-  transitively by Tauri's Linux stack, so it cannot be moved from this
-  repository, and it is not in the Windows build that ships. Tracked in
-  [#58](https://github.com/owenpkent/folio/issues/58); the release checklist
-  gates on high and critical only.
-
-## [0.5.0] - 2026-07-28
-
-### Added
-
-- **Move, resize, and delete any placed item from the keyboard.** Dragging and
-  the corner handle were the only way to position a text box, a placed image, a
-  check mark, a signature, or an embedded image, which is a WCAG 2.1.1 failure
-  repeated across five features. Every one of them is now focusable and responds
-  to the arrow keys (one screen pixel, ten with **Shift**), `+`/`-` to resize,
-  and **Delete** to remove. One implementation serves all five, so the bindings
-  cannot drift apart. Steps are screen pixels of the rendered page rather than
-  PDF points, matching how the drag handlers already worked: zoom in for finer
-  control. Arrows typed inside a text box still move the caret, and a nudge does
-  not also scroll the document. Announcements are debounced, so a run of presses
-  reports where the item ended up instead of flooding a screen reader per key.
-  Aspect ratio stays locked wherever the pointer locks it, and a resize that
-  would push one axis past its limit is refused whole rather than silently
-  reshaping the item.
-- **Application menu bar.** A classic File / Edit / View / Annotate / Sign /
-  Tools / Help menu row above the toolbar, built in-app (pure DOM, so it is
-  identical in the desktop app, the browser build, and the VS Code extension)
-  and driven by the command registry: each item executes the same command its
-  toolbar button did, shows the command's declared shortcut, and disables when
-  the command cannot run. Implements the full ARIA menubar keyboard pattern
-  (roving tab stop, arrow keys across and within menus, Home/End, Escape,
-  hover-slide between open menus). On narrow windows it folds into a single
-  hamburger Menu button with grouped rows. The Tools menu hosts
-  plugin-contributed commands and hides when no plugin contributes any.
-- **Thumbnails follow the current page.** The sidebar thumbnail strip scrolls
-  its highlighted page into view as you move through the document, using
-  nearest-edge scrolling so it never jumps when the thumb is already visible,
-  and stands down for a moment while you scroll the sidebar by hand.
-  Respects `prefers-reduced-motion`.
-- **Recent signature names.** The Type tab of the signature dialog remembers the
-  last five names you signed with (and the style you picked for each), offers
-  them as one-click chips, and prefills the most recent one, so signing a second
-  document no longer means retyping your name. Stored locally, text and font
-  only, never the rendered image.
-- **Text inside Form XObjects is now editable.** The content-stream parser
-  descends into `Do`-invoked Form XObjects, composing each form's own
-  `/Matrix` with the transform at the invocation site, so text placed by a
-  template, a letterhead, or a form generator can be clicked and replaced like
-  any other run. Previously all of it reported "cannot be edited", which read
-  as though the page were a scan even when the text was ordinary vector text.
-  An edit never rewrites the form in place: the same form can be drawn by
-  other pages, so the whole chain from the edited form up to the page is
-  copied and only this page's resources are redirected at the copy. Text in a
-  form the page draws more than once is still refused, because removing it
-  would clear every copy while the replacement is drawn only once.
-- **Check marks.** A mark placed by clicking a spot on the page, for forms that
-  show a printed box with no interactive field behind it. Selecting a placed
-  mark offers a check or a cross. It goes through the same click-to-place mode
-  as text boxes, images, and signatures, with one difference: a click that lands
-  on a *real* form widget reaches the widget instead, since a mark exists only to
-  stand in for a checkbox that has no field. Like the other placement tools, a
-  mark is an overlay until you save, then it is baked as a stroked vector path,
-  so it stays sharp at any zoom.
-- **Select, move, resize, replace, and delete images already in a PDF.** A new
-  **Edit images** tool, in the Edit menu beside *Edit text*, lets you click an image
-  already drawn on a page, then drag it, resize it from the corner, delete it,
-  or replace it with a different PNG/JPEG, committing immediately the same way
-  in-place text edits do, rather than waiting for a save. A move or resize
-  rewrites the page's `/Name Do` operator in place with a new matrix, keeping
-  the graphics state and z-order exactly as they were; a replace embeds the
-  new image under a fresh resource name and repoints only that operator, so
-  the original image XObject (and any other page still drawing it) is never
-  touched. Rotated or skewed images can still be replaced in place but not
-  moved or resized, and an image inside a Form XObject is not editable yet.
-
-### Changed
-
-- **Text boxes, images, signatures, and check marks are placed where you
-  click.** Adding one no longer drops it in the middle of the page for you to
-  drag into position:
-  the tool arms a click-to-place mode (with a banner; Escape, the banner's
-  Cancel, or a click anywhere off a page backs out) and the next click on a page
-  decides where the item lands. Text boxes start at the click, images and
-  signatures land centered on it. Picking a spot is a pointer affordance, so the
-  banner takes focus and carries the keyboard path: **Place in the middle**
-  centers the item on the current page, which is what these tools did before.
-- **A text box moves by dragging anywhere on it.** The narrow grip above the box
-  is gone; press anywhere on the box and drag. A press that does not travel is
-  still a plain click, so selecting a box and placing the caret work as before.
-- **The toolbar slimmed down.** With the menu bar carrying the full command
-  set, the toolbar's right side keeps only Save and Find next to the pinned
-  theme controls and About; comment, highlight, edit text, edit images, add text
-  box, add image, add check mark, OCR, both signature actions, save a copy, and
-  plugin buttons all live in the menus.
-- **Upgraded to React 19** (`react`, `react-dom`, and both `@types` packages
-  together). No source changes were needed: no removed React 18 API is used
-  anywhere, and no ref callback returns a value, which is the React 19 change
-  least likely to be caught by a test suite since a returned value is now treated
-  as a cleanup function. Also picks up grouped GitHub Actions and Cargo
-  dependency bumps.
-
 ### Fixed
 
 - **The densest displays no longer render below their own pixel density**
@@ -351,6 +266,37 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   of a drag. Keyboard activation fires no pointer events, so `Enter` and
   `Space` on a focused pin did nothing at all, a WCAG 2.1.1 failure on a
   control that named itself as actionable.
+- **The browser tab and the app window have an icon.** `index.html` declared no
+  favicon, so anything that ran Folio from the dev server or a browser -- the
+  Chromium app window `run.py dev` opens, above all, where the favicon *is* the
+  title-bar icon -- showed the browser's default globe. It points at the same
+  `folio-logo.svg` the desktop icon set is generated from, so the tab, the app
+  window, and the installed app all show one mark. The packaged desktop build
+  was never affected; Tauri embeds its icons in the binary.
+- **Opening a large PDF no longer white-screens the app.** The thumbnail
+  sidebar's lazy loading was inert: its `IntersectionObserver` was rooted at
+  `.folio-thumbnails`, which is not the element that scrolls. With an element
+  root, `IntersectionObserver` clips only against containers *between* target and
+  root and never above it, so the unclipped inner wrapper reported **every**
+  thumbnail in the document as visible in the first observation batch. Every page
+  then rasterized at once, with no concurrency cap. The sidebar is open by
+  default on desktop, so this ran on every open with no user action, and every
+  failure was swallowed by a `.catch(() => {})` -- including the "could not
+  acquire a 2D canvas context" that Chromium raises when canvas memory is
+  exhausted. The app therefore died silently, with the WebView2 renderer
+  OOM-killed and the window left blank. Rooted at the real scroller, and the
+  observer is now two-way so a thumbnail that scrolls away gives its canvas back
+  instead of retaining every one it ever rendered.
+- **Scrolling quickly through a long document no longer leaks a canvas per page.**
+  `renderPage` sized the canvas *after* awaiting the page, so a render aborted
+  mid-flight re-allocated the backing store for a page the viewer had already
+  zeroed and scrolled past, and nothing zeroed it a second time.
+- **Save refuses a payload that is not a document.** Saving in place replaces the
+  open file with the exported bytes, so an export that came back empty or
+  truncated would take the only copy with it, and nothing checked. Both save
+  paths now require the `%PDF-` header and a plausible length before anything is
+  written, and refusing says so instead of returning silently, which is
+  indistinguishable from a save that worked.
 
 ### Security
 
@@ -361,6 +307,47 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fan-out to the power of the depth limit in stream traversals, enough to hang
   the tab on a file the user only meant to open. Total descents per parse are
   now capped, well above what real documents use.
+- **A `/ByteRange` that runs past the end of the file no longer verifies as
+  clean.** `coversWholeDocument` was computed by scanning from the end of the
+  signed byte range, but that offset is read straight out of the file: when it
+  pointed past the end, the scan had nothing to iterate and returned true
+  *vacuously*. A `/ByteRange` naming a range longer than the file, plus arbitrary
+  appended content, earned the green badge. A range that ends past EOF is now
+  treated as a failure, not a pass. Note the scope of that badge, which the
+  docstring and the signatures documentation had overstated and now describe
+  accurately: the check is structural, so it establishes that nothing was
+  appended after the signature, not that the signed content is unmodified. The
+  CMS digest is still not computed, so an in-place edit inside the signed range
+  is not detected.
+- **Signature detection no longer builds a string copy of the whole document.**
+  It runs synchronously on the main thread as a document opens, and it used to
+  latin-1 decode the entire file (which the first regex then flattened into a
+  second full-size copy) before looking for anything. Above V8's ~512MB string
+  limit that threw outright; below it, it pushed the renderer toward the same
+  out-of-memory condition the rest of this release is about. It now scans the raw
+  bytes and decodes only small windows around each signature dictionary. The byte
+  scan is bounded as well, at 200 candidate `/ByteRange` sites and 16MB of total
+  decoding per pass: those caps caught a cost introduced by this rewrite rather
+  than a pre-existing one, since a file made of nothing but repeated `/ByteRange`
+  markers measured ~290ms of scanning per megabyte before they were added.
+
+
+- **Updated `postcss` to 8.5.24 and the VS Code extension's `esbuild` to 0.25**,
+  clearing the two Dependabot alerts that appeared once alerts were enabled for
+  the repository. Both are development-only dependencies and neither ships in a
+  built artifact: postcss arrives transitively through Vite
+  ([GHSA-r28c-9q8g-f849](https://github.com/advisories/GHSA-r28c-9q8g-f849), path
+  traversal in source-map auto-loading), and esbuild is the extension's bundler
+  ([GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99), dev
+  server request handling). The postcss one was a **high**, which the release
+  checklist gates on, so it would have blocked the next release.
+- **Accepted rather than fixed: one medium Dependabot alert.** `glib` carries an
+  unsoundness advisory in the `Iterator` and `DoubleEndedIterator` impls for
+  `VariantStrIter`, fixed upstream in 0.20.0. The version here is pinned
+  transitively by Tauri's Linux stack, so it cannot be moved from this
+  repository, and it is not in the Windows build that ships. Tracked in
+  [#58](https://github.com/owenpkent/folio/issues/58); the release checklist
+  gates on high and critical only.
 
 ## [0.4.0] - 2026-07-23
 

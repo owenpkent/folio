@@ -1,6 +1,6 @@
 # Folio Roadmap
 
-Folio is an open-source, MIT-licensed PDF viewer aiming at Adobe Acrobat-caliber quality: fast rendering, accessibility-first (WCAG 2.2 AA), dark-mode native, extensible through a plugin system, and AI-ready. The stack is Tauri 2 (Rust) with React 18, TypeScript 5, and Vite 8, rendering via PDF.js (`pdfjs-dist` v4), Zustand for state, CSS-variable theming, and Vitest plus Playwright for tests.
+Folio is an open-source, MIT-licensed PDF viewer aiming at Adobe Acrobat-caliber quality: fast rendering, accessibility-first (WCAG 2.2 AA), dark-mode native, extensible through a plugin system, and AI-ready. The stack is Tauri 2 (Rust) with React 19, TypeScript 5, and Vite 8, rendering via PDF.js (`pdfjs-dist` v6), Zustand for state, CSS-variable theming, and Vitest plus Playwright for tests.
 
 This roadmap is a direction, not a contract. Milestones ship when they are correct and accessible, not on a fixed date. Each phase lists what "done" means so progress is legible.
 
@@ -30,6 +30,7 @@ The core viewer: open a PDF and read it comfortably, fully by keyboard, fully wi
 | Search | Full-text search with a results list and next/previous navigation | Done |
 | Thumbnails | Thumbnail sidebar panel for page navigation | Done |
 | Outline | Bookmarks/outline sidebar panel with jump-to-destination | Done |
+| Print | Send the document to the system print dialog, with placed text, images, check marks, signatures, and highlights baked in | Done |
 | Dark mode | Native dark theme via CSS variables, following the OS by default; unified so dark inverts the rendered page at raster time (crisp on HiDPI), with selectable Night/Green/Amber reading schemes | Done |
 | Accessibility | Full keyboard operation, focus management, ARIA labeling, screen-reader page announcements, visible focus, reduced-motion support | Done |
 | Command registry | Global command registry backing keybindings, palette, and toolbar (see [docs/plugins.md](./docs/plugins.md)) | Done |
@@ -69,7 +70,7 @@ signatures first, then certificate-based digital signatures. See
 | Form navigation | Tab-order field navigation, validation feedback | In progress (native field focus works) |
 | Signing (cryptographic) | Certificate-based PKCS#7 detached signing; import a .p12 or create a self-signed identity | Done (PAdES profiles and RFC 3161 timestamps planned) |
 | Signature verification | Detect signatures; show signer, signing time, and post-signing tamper status | In progress (certificate-chain trust and CMS digest validation planned) |
-| Accessibility | Fields announced with label, type, state, and required status | In progress (native inputs; signature placement has a keyboard path, keyboard repositioning and resizing planned) |
+| Accessibility | Fields announced with label, type, state, and required status | In progress (native inputs; signature placement, repositioning, resizing, and deletion all have a keyboard path) |
 
 **Milestone: complete a form and sign it (shipped).** A user can fill an
 AcroForm, add a visual signature, and cryptographically sign the document with an

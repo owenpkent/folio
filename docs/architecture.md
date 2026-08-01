@@ -1,6 +1,6 @@
 # Folio Architecture
 
-Folio is a desktop PDF viewer built on **Tauri 2** (Rust backend) with a **React 19 + TypeScript 5** frontend, bundled by **Vite 8** (rolldown-based). Rendering is delegated to **PDF.js** (`pdfjs-dist` v4). Application state lives in **Zustand** stores. Theming is driven entirely by **CSS custom properties**.
+Folio is a desktop PDF viewer built on **Tauri 2** (Rust backend) with a **React 19 + TypeScript 5** frontend, bundled by **Vite 8** (rolldown-based). Rendering is delegated to **PDF.js** (`pdfjs-dist` v6). Application state lives in **Zustand** stores. Theming is driven entirely by **CSS custom properties**.
 
 This document describes the layer stack, the data flow for opening and rendering a PDF, the engine abstraction, the PDF.js worker threading model, state management, extension points, and the Tauri command boundary.
 
@@ -149,7 +149,7 @@ Page count is not a method: it comes back on the `PdfDocumentInfo` that `loadDoc
 
 `getPageViewport` and `getTextItems` are a deliberate exception to that narrowness: in-place text editing (`features/textedit`, see [editing-and-ocr.md](editing-and-ocr.md#editing-existing-text)) has to hit-test a click against the exact items and coordinate space PDF.js used to build the text layer, so the interface leaks PDF.js's `PageViewport` and per-item text content (`PageTextItems`) rather than re-wrapping them. `features/imageedit` reuses `getPageViewport` the same way, to convert a click and a drag between CSS pixels and PDF space, without needing `getTextItems`. No import of `pdfjs-dist` appears outside `core/pdf` even so: the two methods hand back PDF.js-shaped data rather than the module itself, and the barrel re-exports the `PageViewport` type so a caller can name what `getPageViewport` returns without reaching for PDF.js directly.
 
-`PdfJsEngine` is the sole implementation today. It wraps `pdfjs-dist` v4: `loadDocument` calls `getDocument`, `renderPage` uses `page.render`, `renderTextLayer` and `getPageText` are built from `page.getTextContent`, and so on.
+`PdfJsEngine` is the sole implementation today. It wraps `pdfjs-dist` v6: `loadDocument` calls `getDocument`, `renderPage` uses `page.render`, `renderTextLayer` and `getPageText` are built from `page.getTextContent`, and so on.
 
 Two rules of the rendering contract are easy to break by accident, and both show up as garbled pages rather than as errors:
 

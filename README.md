@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24C8DB.svg)](https://tauri.app)
-[![React](https://img.shields.io/badge/React-18-61DAFB.svg)](https://react.dev)
+[![React](https://img.shields.io/badge/React-19-61DAFB.svg)](https://react.dev)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 </div>
@@ -18,8 +18,8 @@ native [Tauri](https://tauri.app) shell, and is designed from the first commit
 around three things Acrobat treats as afterthoughts: **accessibility**,
 **a real dark mode**, and **extensibility**.
 
-> Status: in development (v0.4). The core viewer, forms, annotations that
-> embed into a saved copy, editing, OCR, visual and cryptographic signing,
+> Status: in development (v0.5). The core viewer, printing, forms, annotations
+> that embed into a saved copy, editing, OCR, visual and cryptographic signing,
 > theming, accessibility (Section 508), the plugin system, and the AI/MCP
 > scaffolding are in place. See the [roadmap](ROADMAP.md).
 
@@ -43,6 +43,8 @@ Folio rendering a two-page form PDF, in light and dark:
 - Acrobat-style right-click context menu for common tools and actions
 - Thumbnail strip and document outline (bookmarks)
 - Fast in-document text search with a results list
+- Print to the system print dialog, with everything you placed on the page
+  (text, images, check marks, signatures, highlights) baked into the output
 
 **Accessibility (first-class, not bolted on)**
 - Real text layer over every page: selectable, screen-reader readable
