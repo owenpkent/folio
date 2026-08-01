@@ -20,6 +20,7 @@ import { registerFileOpen } from '@/features/fileopen';
 import { registerImageEditCommands } from '@/features/imageedit';
 import { OcrProgressModal, registerOcrCommands } from '@/features/ocr';
 import { PlacementHint } from '@/features/placement';
+import { PrintProgressModal, registerPrintCommands } from '@/features/print';
 import { AboutModal } from '@/features/about';
 import { ContextMenu } from '@/features/contextmenu';
 import { registerSignatureCommands, SignatureModal } from '@/features/signatures';
@@ -48,6 +49,7 @@ export function App() {
     registerSigningCommands();
     registerTextEditCommands();
     registerExportCommands();
+    registerPrintCommands();
     void activateBuiltinPlugins();
   }, []);
 
@@ -123,6 +125,7 @@ export function App() {
       <SignatureModal />
       <SigningModal />
       <OcrProgressModal />
+      <PrintProgressModal />
       <AboutModal />
       <ContextMenu />
       <ToastHost />

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { Icon, IconButton, type IconName } from '@/components/common';
 import { useImageEditStore } from '@/features/imageedit';
@@ -13,8 +14,10 @@ import { NARROW_VIEWPORT_QUERY } from '@/theme/breakpoints';
 import {
   DARK_SCHEME_LABELS,
   DARK_SCHEME_TINT,
+  THEME_LABELS,
   useThemeStore,
   type DarkScheme,
+  type UiTheme,
 } from '@/theme/themeStore';
 
 /* ---------------------------------------------------------------------------
@@ -65,7 +68,7 @@ const DARK_SCHEMES: DarkScheme[] = ['night', 'green', 'amber'];
 const run = (id: string) => commandRegistry.execute(id);
 
 /** The dark-scheme swatch's ink color, derived from the same tint table the
-    renderer and DarkSchemeMenu use so the app's two scheme pickers can never
+    renderer and AppearanceMenu use so the app's two scheme pickers can never
     drift apart. Night has no tint and shows plain white ink. */
 function inkColor(scheme: DarkScheme): string {
   const tint = DARK_SCHEME_TINT[scheme];
@@ -138,8 +141,10 @@ export function MenuBar() {
   const sidebarOpen = useViewerStore((s) => s.sidebarOpen);
   const handMode = useViewerStore((s) => s.handMode);
   const autoScroll = useViewerStore((s) => s.autoScroll);
+  const theme = useThemeStore((s) => s.theme);
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme);
   const darkScheme = useThemeStore((s) => s.darkScheme);
+  const setTheme = useThemeStore((s) => s.setTheme);
   const setDarkScheme = useThemeStore((s) => s.setDarkScheme);
   const toolbarItems = useContributionStore((s) => s.toolbarItems);
   // The two in-place editing tools are toggles, so their menu rows carry live
@@ -192,17 +197,15 @@ export function MenuBar() {
   // The Tools menu is entirely plugin-contributed (Word Count today); its
   // enabled state comes from each command's own guard rather than `hasDoc`
   // directly, since a future plugin's command may have a different guard.
-  const toolsEntries: MenuItemDef[] = toolbarItems.map(
-    (item): MenuItemDef => ({
-      kind: 'item',
-      id: item.id,
-      label: item.title,
-      icon: (item.icon as IconName) ?? 'note',
-      disabled: !commandEnabled(item.commandId),
-      shortcut: shortcutFor(item.commandId),
-      onSelect: () => run(item.commandId),
-    }),
-  );
+  const toolsEntries: MenuItemDef[] = toolbarItems.map((item): MenuItemDef => ({
+    kind: 'item',
+    id: item.id,
+    label: item.title,
+    icon: (item.icon as IconName) ?? 'note',
+    disabled: !commandEnabled(item.commandId),
+    shortcut: shortcutFor(item.commandId),
+    onSelect: () => run(item.commandId),
+  }));
 
   const menus: TopMenuDef[] = [
     {
@@ -213,6 +216,8 @@ export function MenuBar() {
         sep('file-sep-1'),
         docItem('file.save', 'Save', 'save'),
         docItem('file.saveAs', 'Save a copy', 'download'),
+        sep('file-sep-2'),
+        docItem('file.print', 'Print…', 'print'),
       ],
     },
     {
@@ -257,17 +262,40 @@ export function MenuBar() {
           shortcut: shortcutFor('theme.toggle'),
           onSelect: () => run('theme.toggle'),
         },
-        ...DARK_SCHEMES.map(
-          (scheme): MenuItemDef => ({
-            kind: 'item',
-            id: `view.darkScheme.${scheme}`,
-            label: DARK_SCHEME_LABELS[scheme],
-            swatch: scheme,
-            role: 'menuitemradio',
-            checked: darkScheme === scheme,
-            onSelect: () => setDarkScheme(scheme),
-          }),
-        ),
+        {
+          // The toggle above only alternates light and dark, so without this
+          // row the third mode is unreachable from the one surface that
+          // implements the full menu keyboard pattern. Checking it hands the
+          // choice back to the OS; unchecking it pins the theme resolved at
+          // that moment, which is what the user is looking at.
+          kind: 'item',
+          id: 'view.matchSystem',
+          label: 'Match system',
+          icon: 'contrast',
+          role: 'menuitemcheckbox',
+          checked: theme === 'system',
+          onSelect: () => {
+            const next: UiTheme = theme === 'system' ? resolvedTheme : 'system';
+            setTheme(next);
+            announce(`Viewing mode ${THEME_LABELS[next]}`);
+          },
+        },
+        sep('view-sep-5'),
+        ...DARK_SCHEMES.map((scheme): MenuItemDef => ({
+          kind: 'item',
+          id: `view.darkScheme.${scheme}`,
+          label: DARK_SCHEME_LABELS[scheme],
+          swatch: scheme,
+          role: 'menuitemradio',
+          checked: darkScheme === scheme,
+          onSelect: () => {
+            setDarkScheme(scheme);
+            // The row's new checked state lands behind the dropdown as it
+            // closes, so this is the only feedback the change gets. Same
+            // sentence the appearance menu says, since it is the same change.
+            announce(`Dark reading color ${DARK_SCHEME_LABELS[scheme]}`);
+          },
+        })),
       ],
     },
     {
@@ -345,7 +373,8 @@ export function MenuBar() {
     if (!openId || !focus) return;
     const menu = menusRef.current.find((m) => m.id === openId);
     if (!menu) return;
-    const idx = focus === 'first' ? firstEnabledIndex(menu.entries) : lastEnabledIndex(menu.entries);
+    const idx =
+      focus === 'first' ? firstEnabledIndex(menu.entries) : lastEnabledIndex(menu.entries);
     focusRow(menu.id, idx);
   }, [openId]);
 
@@ -616,7 +645,12 @@ export function MenuBar() {
               onKeyDown={onMobileMenuKeyDown}
             >
               {menus.map((menu) => (
-                <div key={menu.id} role="group" aria-label={menu.label} className="folio-menubar__mobile-group">
+                <div
+                  key={menu.id}
+                  role="group"
+                  aria-label={menu.label}
+                  className="folio-menubar__mobile-group"
+                >
                   <div className="folio-menubar__mobile-heading" aria-hidden="true">
                     {menu.label}
                   </div>

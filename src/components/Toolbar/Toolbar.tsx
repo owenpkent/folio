@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { IconButton } from '@/components/common';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -7,9 +8,15 @@ import { useDocumentStore } from '@/state/documentStore';
 import { focusViewer } from '@/state/viewerElement';
 import { AUTO_SCROLL_MAX, AUTO_SCROLL_MIN, useViewerStore } from '@/state/viewerStore';
 import { COMPACT_VIEWPORT_QUERY, NARROW_VIEWPORT_QUERY } from '@/theme/breakpoints';
-import { DARK_SCHEME_LABELS, useThemeStore, type DarkScheme } from '@/theme/themeStore';
+import {
+  DARK_SCHEME_LABELS,
+  THEME_LABELS,
+  useThemeStore,
+  type DarkScheme,
+  type UiTheme,
+} from '@/theme/themeStore';
 
-import { DarkSchemeMenu } from './DarkSchemeMenu';
+import { AppearanceMenu } from './AppearanceMenu';
 import { ToolbarOverflow } from './ToolbarOverflow';
 import type { OverflowTool } from './toolbarTools';
 
@@ -18,6 +25,7 @@ const run = (id: string) => commandRegistry.execute(id);
 // Cycle order for the mobile "Dark color" menu entry (the desktop pinned tail
 // offers the same schemes as a dropdown, which a flat menu row can't host).
 const SCHEME_ORDER: DarkScheme[] = ['night', 'green', 'amber'];
+const THEME_ORDER: UiTheme[] = ['light', 'dark', 'system'];
 
 // The auto-scroll slider is geometric, not linear: equal slider travel is equal
 // *ratio* of speed change, so the slow end (where fine control matters) gets as
@@ -40,8 +48,10 @@ export function Toolbar() {
   const autoScrollSpeed = useViewerStore((s) => s.autoScrollSpeed);
   const setAutoScrollSpeed = useViewerStore((s) => s.setAutoScrollSpeed);
   const goToPage = useViewerStore((s) => s.goToPage);
+  const theme = useThemeStore((s) => s.theme);
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme);
   const darkScheme = useThemeStore((s) => s.darkScheme);
+  const setTheme = useThemeStore((s) => s.setTheme);
   const setDarkScheme = useThemeStore((s) => s.setDarkScheme);
   const isNarrow = useMediaQuery(NARROW_VIEWPORT_QUERY);
   const isCompact = useMediaQuery(COMPACT_VIEWPORT_QUERY);
@@ -135,17 +145,28 @@ export function Toolbar() {
           icon: 'contrast',
           label: `Dark reading color: ${DARK_SCHEME_LABELS[darkScheme]} (tap to change)`,
           menuLabel: `Dark color: ${DARK_SCHEME_LABELS[darkScheme]}`,
-          onClick: () =>
-            setDarkScheme(
-              SCHEME_ORDER[(SCHEME_ORDER.indexOf(darkScheme) + 1) % SCHEME_ORDER.length],
-            ),
+          onClick: () => {
+            const next = SCHEME_ORDER[(SCHEME_ORDER.indexOf(darkScheme) + 1) % SCHEME_ORDER.length];
+            setDarkScheme(next);
+            // The row's own label only updates behind the now-closed menu, so
+            // the announcement is the only feedback a screen reader gets. Same
+            // wording as the appearance menu on wider viewports.
+            announce(`Dark reading color ${DARK_SCHEME_LABELS[next]}`);
+          },
         },
         {
-          id: 'theme-toggle',
-          icon: resolvedTheme === 'dark' ? 'sun' : 'moon',
-          label: 'Toggle light / dark (Ctrl/Cmd + Shift + L)',
-          menuLabel: 'Toggle light / dark',
-          onClick: () => run('theme.toggle'),
+          // The pinned AppearanceMenu folds away at this width, so the mode it
+          // owns reappears here as a cycling row, matching the dark-scheme row
+          // above rather than nesting a second dropdown inside the More menu.
+          id: 'theme-mode',
+          icon: resolvedTheme === 'dark' ? 'moon' : 'sun',
+          label: `Viewing mode: ${THEME_LABELS[theme]} (tap to change)`,
+          menuLabel: `Mode: ${THEME_LABELS[theme]}`,
+          onClick: () => {
+            const next = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length];
+            setTheme(next);
+            announce(`Viewing mode ${THEME_LABELS[next]}`);
+          },
         },
         {
           id: 'about',
@@ -164,8 +185,8 @@ export function Toolbar() {
   const [visibleCount, setVisibleCount] = useState(docTools.length);
   const toolCount = docTools.length;
 
-  // How many right-group tools fit inline before the pinned tail (dark scheme,
-  // theme, About); the rest collapse into the overflow menu. Measured from the
+  // How many right-group tools fit inline before the pinned tail (appearance,
+  // About); the rest collapse into the overflow menu. Measured from the
   // fixed siblings' widths so it never depends on the flow's own content (which
   // would oscillate). Right-group buttons are uniform-width IconButtons, so a
   // single button width is enough to divide the available space.
@@ -331,12 +352,7 @@ export function Toolbar() {
         {/* The theme controls and About stay pinned (always visible); the
             document tools to their left collapse into the overflow menu. */}
         <div className="folio-toolbar__pinned" ref={pinnedRef}>
-          <DarkSchemeMenu />
-          <IconButton
-            icon={resolvedTheme === 'dark' ? 'sun' : 'moon'}
-            label="Toggle light / dark (Ctrl/Cmd + Shift + L)"
-            onClick={() => run('theme.toggle')}
-          />
+          <AppearanceMenu />
           <IconButton
             icon="info"
             label="About Folio (version, build info, updates)"

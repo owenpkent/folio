@@ -24,48 +24,16 @@ async function computeStats(): Promise<Stats | null> {
   return { words, characters, pages: info.numPages };
 }
 
-function renderPanel(container: HTMLElement): () => void {
-  let disposed = false;
-  container.replaceChildren();
-
-  const status = document.createElement('p');
-  status.className = 'folio-plugin-panel__hint';
-  status.textContent = 'Reading document…';
-  container.appendChild(status);
-
-  const list = document.createElement('dl');
-  list.className = 'folio-stats';
-  container.appendChild(list);
-
-  const row = (label: string, value: string) => {
-    const dt = document.createElement('dt');
-    dt.textContent = label;
-    const dd = document.createElement('dd');
-    dd.textContent = value;
-    list.append(dt, dd);
-  };
-
-  void computeStats().then((stats) => {
-    if (disposed) return;
-    if (!stats) {
-      status.textContent = 'Open a document to see word counts.';
-      return;
-    }
-    status.remove();
-    row('Words', stats.words.toLocaleString());
-    row('Characters', stats.characters.toLocaleString());
-    row('Pages', stats.pages.toLocaleString());
-  });
-
-  return () => {
-    disposed = true;
-  };
-}
-
 /**
  * A small built-in plugin that demonstrates the plugin API: it contributes a
- * command, a toolbar button that runs it, and a live sidebar panel, and
- * recomputes when a document opens.
+ * command and a toolbar item that runs it (which the menu bar surfaces under
+ * Tools), and reacts to a document opening.
+ *
+ * It used to contribute a sidebar panel too, which put a permanent Word Count
+ * tab in the left rail next to Thumbnails and Outline. That is a lot of
+ * standing furniture for a demo, so the stats now come from the command's
+ * toast. `registerSidebarPanel` is still part of the plugin API; see
+ * docs/plugins.md.
  */
 export const wordCountPlugin: FolioPlugin = {
   id: 'app.folio.word-count',
@@ -80,9 +48,14 @@ export const wordCountPlugin: FolioPlugin = {
       when: () => useDocumentStore.getState().status === 'ready',
       run: async () => {
         const stats = await computeStats();
-        ctx.ui.showToast(stats ? `${stats.words.toLocaleString()} words` : 'No document open', {
-          kind: stats ? 'info' : 'error',
-        });
+        // The characters and pages counts used to live in the sidebar panel;
+        // with that gone the toast is the only place they can surface.
+        ctx.ui.showToast(
+          stats
+            ? `${stats.words.toLocaleString()} words · ${stats.characters.toLocaleString()} characters · ${stats.pages.toLocaleString()} pages`
+            : 'No document open',
+          { kind: stats ? 'info' : 'error' },
+        );
       },
     });
 
@@ -92,13 +65,6 @@ export const wordCountPlugin: FolioPlugin = {
       icon: 'hash',
       group: 'right',
       commandId: 'plugin.wordCount.show',
-    });
-
-    ctx.registerSidebarPanel({
-      id: 'app.folio.word-count.panel',
-      title: 'Word Count',
-      icon: 'hash',
-      render: renderPanel,
     });
 
     ctx.onDocumentOpen(() => {

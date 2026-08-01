@@ -163,7 +163,7 @@ kbd {
   color: var(--folio-text);
 }
 
-/* ---- Toolbar dropdown (dark reading color) ---- */
+/* ---- Toolbar dropdown (appearance: viewing mode + dark reading color) ---- */
 .folio-dropdown {
   position: relative;
   display: inline-flex;
@@ -209,6 +209,19 @@ kbd {
 }
 .folio-dropdown__label {
   flex: 1;
+}
+.folio-dropdown__group-label {
+  padding: 6px 10px 3px;
+  color: var(--folio-text-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.folio-dropdown__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--folio-border);
 }
 .folio-swatch {
   display: inline-flex;
@@ -1884,6 +1897,74 @@ kbd {
      44px target size rather than the app's general 40px convention above. */
   .folio-menubar__mobile-menu .folio-dropdown__item {
     min-height: 44px;
+  }
+}
+
+/* ---- Print ----
+   printDocument() rasterizes the baked PDF into #folio-print-root, appends it
+   to <body>, and puts .folio-printing on <body> for the duration of the print
+   call. On screen the root is never visible; when printing, it is the only
+   thing that is.
+
+   Everything below is gated on .folio-printing, not on the root's existence.
+   The root is in the DOM for a few milliseconds per run and never otherwise, so
+   a rule that only asked ":not(#folio-print-root)" hid the entire UI from every
+   print that did not come from printDocument() (Ctrl+P from a text field, the
+   browser's own File > Print, the Chrome-extension and VS Code webview builds
+   that load this stylesheet) and handed back a blank sheet with no error. A
+   plain class on <body> is used rather than :has(), which WebKitGTK did not
+   support until 2.42 and which the webview targets cannot be assumed to have. */
+#folio-print-root {
+  display: none;
+}
+
+@media print {
+  /* Everything the app draws — toolbar, sidebar, canvas, modals, toasts — is a
+     body child, so one rule hides the whole UI without enumerating it. */
+  body.folio-printing > *:not(#folio-print-root) {
+    display: none !important;
+  }
+
+  body.folio-printing #folio-print-root {
+    display: block;
+  }
+
+  /* One sheet per document page. The box is left to size itself; what fits the
+     raster inside the sheet is the cap on the image below. */
+  .folio-print-page {
+    break-after: page;
+    page-break-after: always; /* legacy alias; WebKitGTK still wants it */
+  }
+  .folio-print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  /* Fit, never fill: both axes capped, aspect ratio left to the intrinsic size,
+     so a landscape page on portrait paper letterboxes instead of cropping.
+
+     The height cap is the part that matters. `width: 100%` on its own cost a
+     second, near-blank sheet after every page whenever the document was
+     narrower than the paper: a 420x560pt page is aspect 0.75, so across an
+     8.5in Letter sheet it lays out 11.33in tall and overflows the 11in box. A
+     2-page document came out as "4 sheets of paper" in the print dialog.
+     `vh` is the page box in paged media, which `@page { margin: 0 }` below
+     makes equal to the sheet. The cap goes on the image rather than on a
+     fixed-height page box, because giving `.folio-print-page` `height: 100vh`
+     fixed the overflow but then dropped a page outright (2 pages, 1 sheet):
+     a full-height fragmentainer child does not reliably honour break-after. */
+  .folio-print-page img {
+    display: block;
+    max-width: 100%;
+    max-height: 100vh;
+    width: auto;
+    height: auto;
+    margin: 0 auto; /* centred when it is the height that is binding */
+  }
+
+  /* The PDF's own margins are already in the raster, so the sheet gets none of
+     its own. Paper size and orientation are left to the print dialog. */
+  @page {
+    margin: 0;
   }
 }
 

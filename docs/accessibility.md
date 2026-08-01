@@ -15,6 +15,7 @@ Bindings are declared on the command, wherever that command lives, mostly `src/c
 | Open document | `file.open` | `Ctrl+O` | `Cmd+O` |
 | Save | `file.save` | `Ctrl+S` | `Cmd+S` |
 | Save a copy | `file.saveAs` | `Ctrl+Shift+S` | `Cmd+Shift+S` |
+| Print | `file.print` | `Ctrl+P` | `Cmd+P` |
 | Next page | `nav.nextPage` | `→` | `→` |
 | Previous page | `nav.prevPage` | `←` | `←` |
 | Scroll down one screen | `nav.scrollDown` | `Page Down` | `Page Down` |
@@ -35,6 +36,8 @@ Bindings are declared on the command, wherever that command lives, mostly `src/c
 
 `↑`/`↓`, unmodified `Home`/`End` and `Space` are unbound and scroll natively, which works because the viewer takes focus when a document opens and gets it back when the find bar closes. `←`/`→` do **not** scroll: they are bound to page navigation and the dispatcher calls `preventDefault()`, so they never reach the browser's own scrolling. That is a deliberate trade (paging is the more useful binding) but it means horizontal scrolling at high zoom needs the scrollbar, the hand tool, or shift-scroll.
 
+Two rules qualify the "never hijack typing" default in `src/a11y/useKeyboardShortcuts.ts`. `Ctrl/Cmd+P` is the one chord besides `Escape` that still fires while the caret is in a text field: letting it fall through hands the browser's own print the app's chrome instead of the document, which is never what the shortcut means in a PDF viewer. And a held chord is swallowed rather than repeated, apart from the arrow, paging and `Home`/`End` keys that exist to be held: leaning on `Ctrl/Cmd+P` opens one dialog, not thirty.
+
 These commands exist but have **no keyboard binding**; they are reachable from the menu bar or the toolbar (and via the registry) only. The menu bar implements the full ARIA menubar keyboard pattern, so every menu item is operable with arrow keys, `Home`/`End`, `Enter`, and `Escape`:
 
 | Action | Command id | Trigger |
@@ -54,9 +57,11 @@ These commands exist but have **no keyboard binding**; they are reachable from t
 | Recognize text on this page | `ocr.recognizePage` | Command |
 | Add signature | `sign.addSignature` | Sign menu / Signatures panel |
 | Digitally sign | `sign.digitallySign` | Sign menu / Signatures panel |
+| Viewing mode (Light / Dark / Match system) | no command of its own; `theme.toggle` covers light and dark | Toolbar appearance menu / View menu ("Match system") |
+| Dark reading color (Night / Green / Amber) | no command | Toolbar appearance menu / View menu |
 | About Folio | `help.about` | Toolbar button / Help menu |
 | Check for updates (desktop only) | `help.checkForUpdates` | About dialog button |
-| Word Count (built-in plugin) | `plugin.wordCount.show` | Tools menu (plugin-contributed); the sidebar panel also shows the stats |
+| Word Count (built-in plugin) | `plugin.wordCount.show` | Tools menu (plugin-contributed); the counts come back as a toast |
 
 Every one of these is reachable by keyboard through its menu item, toolbar button, or panel, so no functionality is keyboard-inaccessible (WCAG 2.1.1); they simply have no dedicated chord. The planned command palette is what makes them all directly reachable.
 
@@ -127,7 +132,7 @@ Folio exposes a stable landmark structure so screen-reader users can navigate by
 | Region | Element/role | ARIA |
 |---|---|---|
 | Application menu bar | `role="menubar"` | `aria-label="Application menu"`; each trigger is `role="menuitem"` with `aria-haspopup` and `aria-expanded`, dropdowns are `role="menu"`, checkable rows are `menuitemcheckbox`/`menuitemradio` with `aria-checked`, and shortcut hints are `aria-hidden` so they stay out of accessible names. On narrow viewports the row is replaced by one "Menu" button opening a grouped dropdown |
-| Top toolbar | `<header role="banner">` | icon buttons carry `aria-label` (for example "Toggle sidebar (Ctrl/Cmd + B)", "Zoom in (Ctrl/Cmd + =)"); the live zoom readout uses `aria-live="polite"` |
+| Top toolbar | `<header role="banner">` | icon buttons carry `aria-label` (for example "Toggle sidebar (Ctrl/Cmd + B)", "Zoom in (Ctrl/Cmd + =)"); the live zoom readout uses `aria-live="polite"`. The appearance trigger is a menu button, not a toggle: it carries `aria-haspopup="menu"` and `aria-expanded`, and deliberately suppresses the `aria-pressed` that `IconButton` emits for a pressed-looking control, which would otherwise announce a pressed state that only tracks whether the popup is showing |
 | Sidebar (outline, thumbnails, annotations) | `<aside>` (complementary) | `aria-label="Document tools"`; the rail is `role="tablist"` with `aria-orientation="vertical"`, each tab is `role="tab"` with `aria-selected` and a roving tabindex, and the body is `role="tabpanel"` |
 | Page viewport | `<main>` | `aria-label="Document"` |
 | Search bar | `role="search"` | labeled input, `aria-live` result count |
@@ -136,7 +141,11 @@ Folio exposes a stable landmark structure so screen-reader users can navigate by
 
 There is no separate status-bar landmark today: the current page (an editable page box) and the current zoom percentage live in the toolbar, with the zoom readout in an `aria-live="polite"` region. A dedicated status bar is planned.
 
-Additional roles in the sidebar panels: thumbnails present a selectable list, each with `aria-current="page"` for the page in view; toolbar toggles expose their state via `aria-pressed`; the dark-scheme menu exposes its current scheme in its label.
+Additional roles in the sidebar panels: thumbnails present a selectable list, each with `aria-current="page"` for the page in view; toolbar toggles expose their state via `aria-pressed`; the appearance menu names the mode in effect at the start of its own label ("Appearance: Match system", followed by the `Ctrl/Cmd + Shift + L` hint), and its rows are `menuitemradio`s carrying `aria-checked`.
+
+The appearance menu holds **two** independent radio sets, viewing mode and dark reading color, so each triple sits in its own `role="group"` named by its visible caption through `aria-labelledby`. Without the groups a screen reader reads one six-item radio group with two rows checked at once, and the captions (being `role="presentation"`) name neither set.
+
+**Known gap: the toolbar dropdowns are not arrow-key menus.** The appearance and More tools dropdowns use `role="menu"`, but their rows are reached with `Tab` rather than the arrow keys, and `Escape` closes them without returning focus to the trigger. Everything in them is operable, and the same settings are reachable from the menu bar (which does implement the full pattern), but the two dropdowns owe the roving tabindex the role promises.
 
 The sidebar rail is a real tablist: it uses a roving tabindex, so `Tab` steps over the rail as one stop and `↑`/`↓` (and `←`/`→`, and `Home`/`End`) move between tabs, with selection following focus. That handler is load-bearing rather than a nicety: a roving tabindex without it leaves every unselected panel unreachable by keyboard.
 
@@ -173,7 +182,9 @@ There are around four dozen announcements; `grep -rn "announce(" src/` is the au
 |---|---|
 | Page change | `Page 5 of 24` |
 | Zoom change | `Zoom 150 percent` |
-| Theme change | `dark theme` / `light theme` (the resolved theme) |
+| Theme toggled with `Ctrl/Cmd + Shift + L` | `dark theme` / `light theme` (the resolved theme) |
+| Viewing mode picked from a menu | `Viewing mode Light` / `Viewing mode Dark` / `Viewing mode Match system` (the mode chosen, since `system` resolves asynchronously) |
+| Dark reading color picked | `Dark reading color Night` / `Dark reading color Green` / `Dark reading color Amber` |
 | Document opened via the picker | `Opened report.pdf, 24 pages` |
 | Document closed | `Closed document` |
 | Highlight added | `Highlight added` |
@@ -190,17 +201,19 @@ One inconsistency worth knowing: a document opened from a **deep link or an OS f
 
 The polite region (`role="status"`, `aria-live="polite"`) never interrupts the user mid-sentence. Messages that need attention go to a separate assertive region (`role="alert"`, `aria-live="assertive"`) instead: that is what the `true` second argument to `announce()` selects. Assertive today: failures (`Could not open document: …`, `Could not save the document: …`, `Could not create the certificate`) and instructions the user must act on before anything happens (`Select some text first, then add a highlight`, `Create a signature first`, `Enter a name and a passphrase`).
 
-The find-in-page result count is a separate `aria-live="polite"` region inside the search bar (not routed through the announcer); it reads `3 of 17`, `Searching…`, or `No results`. Fit-mode changes, sidebar toggles, and image-edit actions (select, move, resize, replace, delete) are not currently announced, with one exception: activating image selection from the keyboard on a page with no editable image announces `No editable image on this page.`
+The find-in-page result count is a separate `aria-live="polite"` region inside the search bar (not routed through the announcer); it reads `3 of 17`, `Searching…`, or `No results`. The print progress modal has one too, reading `Preparing to print, 40% done` in ten-percent steps rather than once per page: a region that updated per page would queue hundreds of announcements on a long document and still be reading page 40 after the print dialog had opened. The exact page stays on screen and on the progressbar for anyone who wants it, and `Escape` cancels the run like any other modal in the app. Fit-mode changes, sidebar toggles, and image-edit actions (select, move, resize, replace, delete) are not currently announced, with one exception: activating image selection from the keyboard on a page with no editable image announces `No editable image on this page.`
 
 ## Dark mode and dark schemes
 
-Folio's dark mode is unified: toggling **light / dark / system** darkens the chrome and inverts the rendered page together, rather than treating the page as a separately-controlled reading mode. Full detail, including how the inversion is rendered, is in `docs/theming.md`; the accessibility-relevant summary is a choice of color for the inverted page, made via the dark-scheme picker next to the theme toggle:
+Folio's dark mode is unified: switching between **light / dark / system** darkens the chrome and inverts the rendered page together, rather than treating the page as a separately-controlled reading mode. Full detail, including how the inversion is rendered, is in `docs/theming.md`; the accessibility-relevant summary is a choice of color for the inverted page, made in the toolbar's single appearance menu under its "Dark reading color" group:
 
 | Dark scheme | Effect on page | Use case |
 |---|---|---|
 | Night (default) | Inverted, white-on-black | Low-light reading without a blinding white page |
 | Green | Inverted, green-on-black | Reduced-glare reading, classic terminal-style contrast |
 | Amber | Inverted, amber-on-black | Reduced-glare reading, warmer alternative to Night |
+
+The mode itself lives in the same menu, above the schemes. `Ctrl/Cmd + Shift + L` alternates light and dark only, so **Match system** is reachable from the appearance menu and from the View menu's "Match system" row (switching it off pins whichever theme is resolved at that moment). The View menu is the surface that implements the full APG menu keyboard pattern, so that row is the keyboard route to the third mode.
 
 UI text and controls meet the WCAG 2.2 AA contrast minimums (4.5:1 for normal text, 3:1 for large text and non-text UI components) in both light and dark themes. Focus indicators meet 3:1 against adjacent colors.
 
@@ -253,7 +266,7 @@ The table maps Folio features to the success criteria they satisfy. This is a wo
 | Fit width and application zoom (no loss at magnification) | 1.4.4 Resize Text; 1.4.10 Reflow | AA |
 | Full keyboard operation, all actions as commands | 2.1.1 Keyboard | A |
 | No keyboard trap; overlays trap-and-release correctly | 2.1.2 No Keyboard Trap | A |
-| Shortcuts are suppressed while typing in text inputs, `textarea`, `select`, or contenteditable (except `Escape`), avoiding printable-key conflicts | 2.1.4 Character Key Shortcuts | A |
+| Shortcuts are suppressed while typing in text inputs, `textarea`, `select`, or contenteditable (except `Escape` and `Ctrl/Cmd+P`, neither of which is a printable character), avoiding printable-key conflicts | 2.1.4 Character Key Shortcuts | A |
 | Skip-to-document link | 2.4.1 Bypass Blocks | A |
 | Visible focus indicator (`--folio-focus`) | 2.4.7 Focus Visible | AA |
 | Focus not obscured by toolbar/overlays | 2.4.11 Focus Not Obscured (Minimum) | AA |

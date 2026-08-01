@@ -61,6 +61,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Print.** `Ctrl/Cmd + P`, or File → Print…, sends the open document to the
+  system print dialog. Printing goes through the same bake pipeline as Save
+  (`exportDocument`), then rasterizes those bytes in a throwaway PDF.js
+  document, so placed text, images, check marks, signatures, and highlights all
+  reach the paper. Printing the on-screen canvas instead would have dropped
+  every one of them, since they are DOM overlays above the canvas rather than
+  pixels in it. Pages are rendered at 144dpi in their authored colors: dark mode
+  is a screen reading aid and is deliberately not carried onto paper. Each page
+  is fitted inside one sheet rather than scaled to the paper's width, which on
+  any document narrower than the paper would have followed every page with a
+  second, near-blank sheet.
 - **Property/fuzz tests** (`fast-check`, `*.fuzz.test.ts`) over the parsers that
   read bytes straight out of a PDF, run as part of `npm test` and at a much
   higher iteration count via `npm run test:fuzz`. They cover `detectSignatures`
@@ -91,6 +102,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **One toolbar button for the viewing mode.** The light/dark toggle and the
+  dark-reading-colour dropdown were two adjacent buttons; they are now a single
+  `AppearanceMenu` that opens a menu with every option: Light, Dark, Match
+  system, then Night, Green, Amber. `Match system` was already a supported
+  `theme` value but no toolbar control could reach it, since the toggle only
+  ever flipped between light and dark. The trigger icon now reports the mode in
+  effect rather than the one a click would apply, because it opens a menu rather
+  than toggling. `Ctrl/Cmd + Shift + L` and the View menu are unchanged.
+- **Word Count no longer holds a tab in the sidebar.** The built-in plugin
+  contributed a sidebar panel, which put a permanent Word Count tab in the left
+  rail beside Thumbnails, Outline, Annotations, and Signatures: standing
+  furniture for a demo that most sessions never open. The plugin keeps its
+  command and its Tools-menu entry, and now reports characters and pages in the
+  toast alongside the word count, which is where the panel's numbers went.
+  `registerSidebarPanel` is untouched as a plugin API; [plugins.md](docs/plugins.md#adding-a-sidebar-panel)
+  keeps the panel code as a worked illustration.
 - **Long documents no longer do whole-document work at open.** Every page
   measured itself on mount, so opening fired one worker round-trip per page in a
   single burst and pinned a page object per page for the session -- and did it

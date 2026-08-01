@@ -34,11 +34,14 @@ test('starts with the drawer closed and keeps every control reachable', async ({
   expect(clipped, 'toolbar content overflows its own width').toBeLessThanOrEqual(1);
 
   // Everything folded out of the bar reappears in the More menu: the pinned
-  // tail (About, theme), the narrow folds (fit modes), the compact folds (zoom).
+  // tail (About, appearance), the narrow folds (fit modes), the compact folds
+  // (zoom). The appearance dropdown cannot nest here, so the mode and the dark
+  // colour arrive as two cycling rows instead.
   await page.getByRole('button', { name: 'More tools' }).click();
   const menu = page.getByRole('menu', { name: 'More tools' });
   await expect(menu.getByRole('menuitem', { name: 'About Folio' })).toBeVisible();
-  await expect(menu.getByRole('menuitem', { name: 'Toggle light / dark' })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: /^Mode:/ })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: /^Dark color:/ })).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: 'Fit width' })).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: 'Zoom in' })).toBeVisible();
 });
