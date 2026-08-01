@@ -112,9 +112,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   defensive `.slice()` of the whole document for the session so signature
   detection could read it later, because PDF.js transfers (and detaches) the
   array it is given. Detection now runs before the handover instead.
-
-- **Documentation sweep after 0.5.0.** The stack table, the setup guide, the
-  contributing guide, and the architecture doc all still said React 18; the
+- **Documentation swept to match the code.** The stack table, the setup guide,
+  the contributing guide, and the architecture doc all still said React 18; the
   in-place image tool was still described as living on the toolbar rather than in
   the Edit menu; and the source-tree listing was missing `components/MenuBar`.
   Corrected, along with a broken relative link in `CLAUDE.md` that pointed into
@@ -134,6 +133,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   [#58](https://github.com/owenpkent/folio/issues/58)). The Dependabot section
   also described major upgrades as never grouped, which stopped being true when
   cohort grouping landed.
+- **The two causes of a dependency PR dying at `npm ci` are named separately**,
+  in CONTRIBUTING and in the header of `.github/dependabot.yml`. An `ERESOLVE`
+  prints the same peer conflict whether a cohort member was left behind (add it
+  to the group) or upstream has not shipped support at all (no group change
+  helps; the PR waits), and the guidance previously offered only the first
+  answer. Both places now point at `npm view <pkg> peerDependencies` as the way
+  to tell them apart, and rule out `--legacy-peer-deps`, which cannot help under
+  `npm ci` either way. The labels that config assigns (`dependencies`,
+  `javascript`, `rust`, `github-actions`) also did not exist, so Dependabot
+  commented that it could not apply them on every PR it opened; they exist now.
 - **The Playwright browser gotcha is documented** in
   [testing.md](docs/testing.md) and the release checklist: the binary must be
   reinstalled after any `@playwright/test` upgrade, or every spec fails at 0ms on
@@ -150,7 +159,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ([GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99), dev
   server request handling). The postcss one was a **high**, which the release
   checklist gates on, so it would have blocked the next release.
-
+- **Accepted rather than fixed: one medium Dependabot alert.** `glib` carries an
+  unsoundness advisory in the `Iterator` and `DoubleEndedIterator` impls for
+  `VariantStrIter`, fixed upstream in 0.20.0. The version here is pinned
+  transitively by Tauri's Linux stack, so it cannot be moved from this
+  repository, and it is not in the Windows build that ships. Tracked in
+  [#58](https://github.com/owenpkent/folio/issues/58); the release checklist
+  gates on high and critical only.
 
 ## [0.5.0] - 2026-07-28
 
