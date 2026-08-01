@@ -8,6 +8,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The browser tab and the app window have an icon.** `index.html` declared no
+  favicon, so anything that ran Folio from the dev server or a browser -- the
+  Chromium app window `run.py dev` opens, above all, where the favicon *is* the
+  title-bar icon -- showed the browser's default globe. It points at the same
+  `folio-logo.svg` the desktop icon set is generated from, so the tab, the app
+  window, and the installed app all show one mark. The packaged desktop build
+  was never affected; Tauri embeds its icons in the binary.
 - **Opening a large PDF no longer white-screens the app.** The thumbnail
   sidebar's lazy loading was inert: its `IntersectionObserver` was rooted at
   `.folio-thumbnails`, which is not the element that scrolls. With an element
