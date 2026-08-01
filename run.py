@@ -2,11 +2,12 @@
 """Folio launcher.
 
 One command to run Folio on your machine, so you don't have to remember the
-npm / vsce / code invocations. Run with no arguments for an interactive menu,
-or pass a subcommand:
+npm / vsce / code invocations. Run with no arguments to just open Folio in the
+browser, or pass a subcommand:
 
-    python run.py dev              # Folio in the browser (opens it; closing the
-                                   #   app window stops the server)
+    python run.py dev              # same as no arguments: Folio in the browser
+                                   #   (closing the app window stops the server)
+    python run.py menu             # the interactive menu of everything below
     python run.py ext [file.pdf]   # build + open the VS Code extension (dev host)
     python run.py build-ext        # just build the VS Code extension
     python run.py package          # build a distributable .vsix
@@ -302,7 +303,8 @@ def main() -> int:
         epilog=__doc__,
     )
     sub = parser.add_subparsers(dest="command")
-    sub.add_parser("dev", help="Folio in the browser (Vite dev server)")
+    sub.add_parser("dev", help="Folio in the browser (Vite dev server); the default")
+    sub.add_parser("menu", help="interactive menu of every way to run Folio")
     p_ext = sub.add_parser("ext", help="build + open the VS Code extension dev host")
     p_ext.add_argument("pdf", nargs="?", help="a PDF to open in the dev host")
     sub.add_parser("build-ext", help="build the VS Code extension")
@@ -314,6 +316,7 @@ def main() -> int:
     args = parser.parse_args()
     dispatch = {
         "dev": cmd_dev,
+        "menu": lambda _a: interactive(),
         "ext": cmd_ext,
         "build-ext": cmd_build_ext,
         "package": cmd_package,
@@ -322,7 +325,7 @@ def main() -> int:
         "doctor": cmd_doctor,
     }
     if args.command is None:
-        return interactive()
+        return cmd_dev(args)
     return dispatch[args.command](args)
 
 

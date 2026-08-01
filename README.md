@@ -156,8 +156,8 @@ Prefer a single command? [`run.py`](run.py) is a stdlib-only launcher that wraps
 these plus the VS Code extension:
 
 ```bash
-python run.py            # interactive menu
-python run.py dev        # Folio in the browser (opens it; closing the window stops the server)
+python run.py            # just open Folio in the browser (closing the window stops the server)
+python run.py menu       # interactive menu of every way to run it
 python run.py ext a.pdf  # build + open the VS Code extension on a PDF
 python run.py doctor     # check prerequisites
 ```
