@@ -35,10 +35,15 @@ vi.mock('@/core/pdf/setupWorker', () => ({
 }));
 vi.mock('@/a11y/announcer', () => ({ announce: vi.fn() }));
 
+// The legacy build, which is the one printDocument imports and the one
+// ensureWorker() configures. Mocking bare 'pdfjs-dist' instead is what let this
+// suite pass green while every real print died on an unconfigured worker: the
+// mock stood in for a module the app should never have been importing.
+//
 // Shaped like PDF.js 6: getDocument() hands back a loading task that owns
 // destroy() (PDFDocumentProxy.destroy() is gone), and render() takes the canvas
 // rather than a 2D context.
-vi.mock('pdfjs-dist', () => ({
+vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({
   getDocument: vi.fn((params: { wasmUrl?: string }) => ({
     destroy,
     promise: Promise.resolve({

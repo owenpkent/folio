@@ -1,4 +1,10 @@
-import * as pdfjsLib from 'pdfjs-dist';
+// The legacy bundle, for the reason setupWorker.ts spells out, and because
+// `ensureWorker()` sets `workerSrc` on *that* module's globals: importing the
+// default build here gave print a second, unconfigured copy of PDF.js, and
+// every print failed on `No "GlobalWorkerOptions.workerSrc" specified`. Types
+// still come from the package root, as PdfJsEngine does it.
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import type { PDFDocumentLoadingTask, RenderTask } from 'pdfjs-dist';
 import { flushSync } from 'react-dom';
 
 import { announce } from '@/a11y/announcer';
@@ -169,12 +175,12 @@ export async function printDocument(): Promise<void> {
 
   const objectUrls: string[] = [];
   let root: HTMLDivElement | null = null;
-  let renderTask: pdfjsLib.RenderTask | null = null;
+  let renderTask: RenderTask | null = null;
   let handedToDialog = false;
   // PDF.js 6 removed PDFDocumentProxy.destroy(); tearing down the loading task
   // is what releases the worker now. Held out here, rather than beside the
   // document it resolves to, so a load that never resolves is still torn down.
-  let loadingTask: pdfjsLib.PDFDocumentLoadingTask | null = null;
+  let loadingTask: PDFDocumentLoadingTask | null = null;
 
   /** Release the throwaway document. Safe to call twice; the second is a no-op. */
   const destroyDoc = async () => {

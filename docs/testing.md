@@ -219,6 +219,16 @@ it,
 and a typed signature lands centered on the click and is offered back, prefilled,
 the next time the dialog opens.
 
+**`e2e/print.spec.ts`** — that print reaches the dialog with a real, fully baked
+raster: one decoded image per page, the `folio-printing` class that reveals them,
+and a filled field measurably darkening the page-1 raster compared with the same
+document printed empty. This spec exists because the unit tests cannot do its
+job: they mock `pdfjs-dist`, so they see nothing about which PDF.js build is
+imported or whether its worker is configured. Print shipped green through them
+while failing on the first document in the real app. Both tests stub
+`window.print` — the assertion is about what reaches the dialog, and a real
+dialog is a modal that would hang the run.
+
 **`e2e/keyboard-manipulation.spec.ts`** — the keyboard path for direct
 manipulation (WCAG 2.1.1), which dragging and the corner handle were previously
 the only route to: a placed text box moves with the arrow keys and ten times as

@@ -1929,6 +1929,15 @@ kbd {
     display: block;
   }
 
+  /* One page box per document page, and the raster is fitted *inside* it.
+     `width: 100%` alone silently cost a second sheet per page whenever the
+     document was narrower than the paper: a 420x560pt page is aspect 0.75, so
+     across an 8.5in Letter sheet it lays out 11.33in tall, overflows the 11in
+     box, and pushes a near-blank sheet after every page. A 2-page document
+     came out as "4 sheets of paper" in the dialog. The page box needs a
+     definite height for `max-height` on the image to resolve against, which is
+     what `100vh` is doing here: in paged media it is the page box, which
+     `@page { margin: 0 }` below makes equal to the sheet. */
   .folio-print-page {
     break-after: page;
     page-break-after: always; /* legacy alias; WebKitGTK still wants it */
@@ -1937,10 +1946,26 @@ kbd {
     break-after: auto;
     page-break-after: auto;
   }
+  /* Fit, never fill: both axes capped, aspect ratio left to the intrinsic size,
+     so a landscape page on portrait paper letterboxes instead of cropping.
+
+     The height cap is the part that matters. `width: 100%` on its own cost a
+     second, near-blank sheet after every page whenever the document was
+     narrower than the paper: a 420x560pt page is aspect 0.75, so across an
+     8.5in Letter sheet it lays out 11.33in tall and overflows the 11in box. A
+     2-page document came out as "4 sheets of paper" in the print dialog.
+     `vh` is the page box in paged media, which `@page { margin: 0 }` below
+     makes equal to the sheet. The cap goes on the image rather than on a
+     fixed-height page box, because giving `.folio-print-page` `height: 100vh`
+     fixed the overflow but then dropped a page outright (2 pages, 1 sheet):
+     a full-height fragmentainer child does not reliably honour break-after. */
   .folio-print-page img {
     display: block;
-    width: 100%;
+    max-width: 100%;
+    max-height: 100vh;
+    width: auto;
     height: auto;
+    margin: 0 auto; /* centred when it is the height that is binding */
   }
 
   /* The PDF's own margins are already in the raster, so the sheet gets none of
