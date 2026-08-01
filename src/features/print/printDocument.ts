@@ -368,7 +368,12 @@ export async function printDocument(): Promise<void> {
     }
     const message = error instanceof Error ? error.message : String(error);
     usePrintStore.getState().fail(message);
-    pushToast('Could not prepare the document for printing', 'error');
+    // The message, not just the fact of the failure: the modal is already gone
+    // by the time this runs (it only renders while status is 'preparing'), so
+    // the toast is the one surface the reason can reach. Several of the reasons
+    // thrown above are actionable -- a document too long for one pass says to
+    // save it and print in ranges -- and a bare "could not print" strands them.
+    pushToast(`Could not print: ${message}`, 'error');
   } finally {
     unsubscribe();
     renderTask = null;

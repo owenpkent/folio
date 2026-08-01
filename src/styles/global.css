@@ -1929,15 +1929,8 @@ kbd {
     display: block;
   }
 
-  /* One page box per document page, and the raster is fitted *inside* it.
-     `width: 100%` alone silently cost a second sheet per page whenever the
-     document was narrower than the paper: a 420x560pt page is aspect 0.75, so
-     across an 8.5in Letter sheet it lays out 11.33in tall, overflows the 11in
-     box, and pushes a near-blank sheet after every page. A 2-page document
-     came out as "4 sheets of paper" in the dialog. The page box needs a
-     definite height for `max-height` on the image to resolve against, which is
-     what `100vh` is doing here: in paged media it is the page box, which
-     `@page { margin: 0 }` below makes equal to the sheet. */
+  /* One sheet per document page. The box is left to size itself; what fits the
+     raster inside the sheet is the cap on the image below. */
   .folio-print-page {
     break-after: page;
     page-break-after: always; /* legacy alias; WebKitGTK still wants it */

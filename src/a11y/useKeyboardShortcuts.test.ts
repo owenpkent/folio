@@ -95,6 +95,19 @@ describe('useKeyboardShortcuts', () => {
     expect(run).toHaveBeenCalledTimes(2);
   });
 
+  it('still lets a held modified chord repeat when the command steps', () => {
+    const run = vi.fn();
+    commandRegistry.register({ id: 'test.kb', title: 'T', keybinding: 'Mod+z', run });
+    renderHook(() => useKeyboardShortcuts());
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, repeat: true }));
+
+    // Undo and the zoom steps walk a history one step per press, so holding
+    // them has to keep stepping; the repeat guard is aimed at one-shot actions.
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
   it('does not run a command whose when() is false', () => {
     const run = vi.fn();
     commandRegistry.register({

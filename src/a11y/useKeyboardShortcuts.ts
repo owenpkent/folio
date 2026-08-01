@@ -57,6 +57,14 @@ const REPEATABLE_KEYS = new Set([
 ]);
 
 /**
+ * Chords whose commands are meant to fire again while the key is held, in
+ * normalized form. REPEATABLE_KEYS covers the bare navigation keys; these are
+ * the modified ones people hold down for the same reason, stepping repeatedly
+ * through undo history or zoom levels rather than acting once.
+ */
+const REPEATABLE_CHORDS = new Set(['Mod+z', 'Mod+=', 'Mod+-']);
+
+/**
  * Chords that keep working while the caret is in a text field, in normalized
  * form. Print is here because falling through to the browser's own Ctrl+P
  * prints the app's DOM instead of the document, which is never what the
@@ -88,7 +96,7 @@ export function useKeyboardShortcuts(): void {
         if (command.when && !command.when()) continue;
         // Swallow a held key rather than letting it fall through: the browser
         // acting on a repeated Ctrl+P is the native dialog we are replacing.
-        if (e.repeat && !REPEATABLE_KEYS.has(e.key)) {
+        if (e.repeat && !REPEATABLE_KEYS.has(e.key) && !REPEATABLE_CHORDS.has(binding)) {
           e.preventDefault();
           return;
         }

@@ -3,6 +3,7 @@ import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { commandRegistry } from '@/commands';
+import { useToastStore } from '@/components/common';
 import { useDocumentStore } from '@/state/documentStore';
 
 import { PrintProgressModal } from './PrintProgressModal';
@@ -117,6 +118,7 @@ beforeEach(() => {
   exportDocument.mockClear();
   destroy.mockClear();
   usePrintStore.getState().finish();
+  useToastStore.setState({ toasts: [] });
   useDocumentStore.setState({ status: 'ready' });
 
   // jsdom has no 2D context and no toBlob; both are stubbed rather than pulling
@@ -409,6 +411,13 @@ describe('printDocument', () => {
     expect(printSpy).not.toHaveBeenCalled();
     expect(usePrintStore.getState().status).toBe('error');
     expect(usePrintStore.getState().error).toContain('5000 pages');
+    // The modal only renders while status is 'preparing', so the toast is the
+    // only surface the reason reaches. A refusal the user cannot act on --
+    // there is a way to print this document, in ranges -- is barely better
+    // than a print that fails.
+    const [toast] = useToastStore.getState().toasts;
+    expect(toast.kind).toBe('error');
+    expect(toast.message).toContain('print in smaller ranges');
     expect(destroy).toHaveBeenCalledTimes(1);
   });
 
