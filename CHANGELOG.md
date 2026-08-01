@@ -16,7 +16,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reach the paper. Printing the on-screen canvas instead would have dropped
   every one of them, since they are DOM overlays above the canvas rather than
   pixels in it. Pages are rendered at 144dpi in their authored colors: dark mode
-  is a screen reading aid and is deliberately not carried onto paper.
+  is a screen reading aid and is deliberately not carried onto paper. Each page
+  is fitted inside one sheet rather than scaled to the paper's width, which on
+  any document narrower than the paper would have followed every page with a
+  second, near-blank sheet.
 
 ### Changed
 

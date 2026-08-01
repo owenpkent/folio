@@ -75,7 +75,7 @@ Each layer maps to a real directory in the repository.
 | Signatures | `src/features/signatures/` | Visual signature creation (draw/type/upload), on-page placement, per-document `store`, and a small global list of recently typed names (`recents.ts`) |
 | Digital signing | `src/features/signing/` | Certificate identities (create/import .p12 via node-forge), PKCS#7 signing (@signpdf), and signature detection. Runs in the WebView today; a Rust/keychain backend is planned |
 | Save / export | `src/features/export/` | Writes the filled PDF (PDF.js `saveDocument`), then loads pdf-lib once to bake the OCR layer, edits, signatures, and review annotations |
-| Print | `src/features/print/` | Bakes via `exportDocument`, rasterizes the result in a throwaway PDF.js document at up to 144dpi (less on a long document, since every page bitmap has to be resident at once and the run is held to one memory budget; a document too long to fit even at the floor is refused), and hands `#folio-print-root` to `window.print()` |
+| Print | `src/features/print/` | Bakes via `exportDocument`, rasterizes the result in a throwaway PDF.js document at up to 144dpi (less on a long document, since every page bitmap has to be resident at once and the run is held to one memory budget; a document too long to fit even at the floor is refused), and hands `#folio-print-root` to `window.print()`. Each page image is capped on **both** axes so it fits inside one page box: sizing on width alone puts a page taller than the paper onto a second, near-blank sheet, which is one wasted sheet per page |
 | Plugins | `src/plugins/` | Plugin host, SDK types, `contributionStore`, `builtins/` |
 | AI layer | `src/ai/` | `aiStore`, `providers/` (`AIProvider` impls, Claude default), `mcp/` (experimental MCP transport) |
 
@@ -221,6 +221,13 @@ Three things beyond the render contract itself keep pages sharp and memory bound
 
 Nothing above `src/core/pdf` imports `pdfjs-dist`, values or types alike. If you see a `pdfjs-dist` import outside `core/pdf`, that is a layering violation; add the type to the barrel's re-exports instead.
 
+**There is currently one violation, and it cost a shipped-broken feature.** `src/features/print/printDocument.ts` calls `getDocument()` directly, because it rasterizes a *throwaway* document (the baked export bytes) rather than the open one, and `PdfEngine` models the open document. It imported `pdfjs-dist` while the rest of the app imports `pdfjs-dist/legacy/build/pdf.mjs`, so `ensureWorker()` configured one module's globals and print called the other, unconfigured, copy: every print failed on `No "GlobalWorkerOptions.workerSrc" specified`. Until print is routed through the barrel, anything opening its own document owes two things `PdfJsEngine` would have supplied:
+
+- the **legacy build** for values (see below), and
+- `wasmUrl: pdfWasmUrl()` on `getDocument()`, without which the worker has no JBIG2 or JPEG2000 decoders and scanned pages come out blank.
+
+Note that unit tests cannot enforce this. `vi.mock('pdfjs-dist')` will happily stand in for a module the app should never have imported, which is exactly how the above passed 20 green tests. `e2e/print.spec.ts` runs the real PDF.js and is what actually guards it.
+
 ## PDF.js Web Worker threading model
 
 PDF.js splits work across two threads:
@@ -228,7 +235,14 @@ PDF.js splits work across two threads:
 - **Main thread (UI):** owns the DOM, canvases, and React. It sends commands (load, render, get text) and receives results.
 - **Worker thread:** does the CPU-heavy work: parsing the file structure, decoding streams, resolving and rasterizing fonts, and extracting text content.
 
-`setupWorker.ts` sets `GlobalWorkerOptions.workerSrc` (once, idempotently) to a hashed worker URL that Vite emits from a `pdfjs-dist/build/pdf.worker.min.mjs?url` import, so the worker travels with the bundle rather than being copied into `public/`. Communication is `postMessage`-based and structured-clone friendly, so page bitmaps and text runs cross the boundary without blocking input handling.
+`setupWorker.ts` sets `GlobalWorkerOptions.workerSrc` (once, idempotently) to a hashed worker URL that Vite emits from a `pdfjs-dist/legacy/build/pdf.worker.min.mjs?url` import, so the worker travels with the bundle rather than being copied into `public/`. Communication is `postMessage`-based and structured-clone friendly, so page bitmaps and text runs cross the boundary without blocking input handling.
+
+**Both PDF.js imports are from `legacy/build`, and they have to stay there.** The default v6 bundle assumes a 2025-era engine: it reads `Iterator.prototype` at module scope (a `ReferenceError`, not a feature test, on engines without iterator helpers) and calls `Map.prototype.getOrInsertComputed` on the annotation-layer render path. Folio's Linux target is webkit2gtk-4.1, whose WebKitGTK on the Ubuntu LTS releases CI builds against predates both. The legacy bundle ships the core-js polyfills, at roughly +58 KB minified on the main bundle and +50 KB on the worker.
+
+Two consequences that are easy to get wrong:
+
+- **The API and the worker must be the same build.** The worker refuses to talk to an API of a different version.
+- **`GlobalWorkerOptions` is per module instance.** Importing bare `pdfjs-dist` anywhere for *values* gives you a second copy of PDF.js whose worker was never configured, and the failure surfaces at the first `getDocument()` rather than at the import. Types are safe to take from the package root — `legacy/build/pdf.d.mts` is a bare re-export of them — which is why `PdfJsEngine.ts` imports values from `legacy/build` and types from `pdfjs-dist`.
 
 Practical consequences:
 
