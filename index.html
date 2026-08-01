@@ -6,6 +6,14 @@
     <meta name="color-scheme" content="light dark" />
     <title>Folio</title>
     <!--
+      The same mark the desktop icon set is generated from, so the browser tab,
+      the app window `run.py dev` opens, and the installed app all show one
+      logo. Referenced out of src/assets rather than copied into public/: Vite
+      rewrites and hashes link hrefs in this file, and a second copy of the
+      artwork would be a copy nobody remembers to update.
+    -->
+    <link rel="icon" type="image/svg+xml" href="/src/assets/folio-logo.svg" />
+    <!--
       No-flash theme bootstrap: apply the saved (or system) theme before first
       paint so the app never flashes the wrong background. Kept tiny and inline
       on purpose. ThemeProvider takes over once React mounts.
