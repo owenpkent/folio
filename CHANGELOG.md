@@ -6,32 +6,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-<<<<<<< HEAD
-### Added
-
-- **Print.** `Ctrl/Cmd + P`, or File → Print…, sends the open document to the
-  system print dialog. Printing goes through the same bake pipeline as Save
-  (`exportDocument`), then rasterizes those bytes in a throwaway PDF.js
-  document, so placed text, images, check marks, signatures, and highlights all
-  reach the paper. Printing the on-screen canvas instead would have dropped
-  every one of them, since they are DOM overlays above the canvas rather than
-  pixels in it. Pages are rendered at 144dpi in their authored colors: dark mode
-  is a screen reading aid and is deliberately not carried onto paper. Each page
-  is fitted inside one sheet rather than scaled to the paper's width, which on
-  any document narrower than the paper would have followed every page with a
-  second, near-blank sheet.
-
-### Changed
-
-- **One toolbar button for the viewing mode.** The light/dark toggle and the
-  dark-reading-colour dropdown were two adjacent buttons; they are now a single
-  `AppearanceMenu` that opens a menu with every option: Light, Dark, Match
-  system, then Night, Green, Amber. `Match system` was already a supported
-  `theme` value but no toolbar control could reach it, since the toggle only
-  ever flipped between light and dark. The trigger icon now reports the mode in
-  effect rather than the one a click would apply, because it opens a menu rather
-  than toggling. `Ctrl/Cmd + Shift + L` and the View menu are unchanged.
-=======
 ### Fixed
 
 - **Opening a large PDF no longer white-screens the app.** The thumbnail
@@ -87,6 +61,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Print.** `Ctrl/Cmd + P`, or File → Print…, sends the open document to the
+  system print dialog. Printing goes through the same bake pipeline as Save
+  (`exportDocument`), then rasterizes those bytes in a throwaway PDF.js
+  document, so placed text, images, check marks, signatures, and highlights all
+  reach the paper. Printing the on-screen canvas instead would have dropped
+  every one of them, since they are DOM overlays above the canvas rather than
+  pixels in it. Pages are rendered at 144dpi in their authored colors: dark mode
+  is a screen reading aid and is deliberately not carried onto paper. Each page
+  is fitted inside one sheet rather than scaled to the paper's width, which on
+  any document narrower than the paper would have followed every page with a
+  second, near-blank sheet.
 - **Property/fuzz tests** (`fast-check`, `*.fuzz.test.ts`) over the parsers that
   read bytes straight out of a PDF, run as part of `npm test` and at a much
   higher iteration count via `npm run test:fuzz`. They cover `detectSignatures`
@@ -117,6 +102,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **One toolbar button for the viewing mode.** The light/dark toggle and the
+  dark-reading-colour dropdown were two adjacent buttons; they are now a single
+  `AppearanceMenu` that opens a menu with every option: Light, Dark, Match
+  system, then Night, Green, Amber. `Match system` was already a supported
+  `theme` value but no toolbar control could reach it, since the toggle only
+  ever flipped between light and dark. The trigger icon now reports the mode in
+  effect rather than the one a click would apply, because it opens a menu rather
+  than toggling. `Ctrl/Cmd + Shift + L` and the View menu are unchanged.
 - **Long documents no longer do whole-document work at open.** Every page
   measured itself on mount, so opening fired one worker round-trip per page in a
   single burst and pinned a page object per page for the session -- and did it
@@ -138,8 +131,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   defensive `.slice()` of the whole document for the session so signature
   detection could read it later, because PDF.js transfers (and detaches) the
   array it is given. Detection now runs before the handover instead.
-
->>>>>>> origin/main
 - **Documentation sweep after 0.5.0.** The stack table, the setup guide, the
   contributing guide, and the architecture doc all still said React 18; the
   in-place image tool was still described as living on the toolbar rather than in
