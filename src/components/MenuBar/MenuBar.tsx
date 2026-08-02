@@ -8,6 +8,7 @@ import { useTextEditStore } from '@/features/textedit';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useContributionStore } from '@/plugins';
 import { isTauri } from '@/core/document/openDocument';
+import { originalDocumentUrl } from '@/core/document/openFromQuery';
 import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
 import { NARROW_VIEWPORT_QUERY } from '@/theme/breakpoints';
@@ -207,6 +208,10 @@ export function MenuBar() {
     onSelect: () => run(item.commandId),
   }));
 
+  // Recomputed per render; `hasDoc` flipping is what brings this into view,
+  // since the URL is recorded before the document finishes loading.
+  const canDownloadOriginal = !isTauri() && originalDocumentUrl() !== null;
+
   const menus: TopMenuDef[] = [
     {
       id: 'file',
@@ -216,6 +221,12 @@ export function MenuBar() {
         sep('file-sep-1'),
         docItem('file.save', 'Save', 'save'),
         docItem('file.saveAs', 'Save a copy', 'download'),
+        // Browser build only, and only when the document came from a URL: the
+        // extension redirects PDF navigations here, including ones the site
+        // meant as a download, so the untouched file stays one click away.
+        ...(canDownloadOriginal
+          ? [freeItem('file.downloadOriginal', 'Download original', 'download')]
+          : []),
         sep('file-sep-2'),
         docItem('file.print', 'Print…', 'print'),
       ],

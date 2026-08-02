@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { announce } from '@/a11y/announcer';
 import { pushToast } from '@/components/common';
 import { isTauri } from '@/core/document/openDocument';
+import { downloadOriginal, originalDocumentUrl } from '@/core/document/openFromQuery';
 import { checkForUpdates } from '@/features/updates';
 import { closeDocument, openDocumentViaPicker } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
@@ -39,6 +40,19 @@ const commands: Command[] = [
     category: 'File',
     when: hasDocument,
     run: () => closeDocument(),
+  },
+  {
+    id: 'file.downloadOriginal',
+    title: 'Download original',
+    category: 'File',
+    // Browser build only, and only when the document arrived from a URL. The
+    // extension redirects PDF navigations into this viewer, including ones the
+    // site meant as a download, so the untouched file has to stay one click away.
+    when: () => !isTauri() && originalDocumentUrl() !== null,
+    run: async () => {
+      if (await downloadOriginal()) return;
+      pushToast('Could not download the original file.', 'error');
+    },
   },
   {
     id: 'file.setDefaultViewer',

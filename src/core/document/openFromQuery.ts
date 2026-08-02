@@ -57,12 +57,67 @@ function basename(url: URL): string {
  * `file:` is refused deliberately rather than by oversight -- local PDFs are not
  * handled yet, and would need their own interception path.
  */
+/**
+ * The URL this document was fetched from, when it arrived via `#file=`.
+ *
+ * Held so the viewer can offer the original back to the user. The browser
+ * extension redirects PDF navigations here, including ones the site meant as a
+ * download, so "give me the actual file" has to remain one click away.
+ */
+let originalUrl: string | null = null;
+
+/** The URL the current document came from, or null if it wasn't opened from one. */
+export function originalDocumentUrl(): string | null {
+  return originalUrl;
+}
+
+/**
+ * Download the document as the server sent it, bypassing anything Folio has
+ * layered on top.
+ *
+ * Fetched into a blob rather than pointed at with `<a download>`: the download
+ * attribute is ignored cross-origin, so the anchor would navigate instead, and
+ * the extension's redirect rule would catch that navigation and land us back in
+ * the viewer. A same-origin blob URL has no such problem. The refetch is
+ * normally served from cache.
+ */
+export async function downloadOriginal(): Promise<boolean> {
+  const url = originalUrl ? safeUrl(originalUrl) : null;
+  if (!url) return false;
+  let objectUrl: string | null = null;
+  try {
+    const res = await fetch(url.href);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    objectUrl = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = basename(url);
+    a.rel = 'noopener';
+    document.body.append(a);
+    a.click();
+    a.remove();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    // Revoking immediately can cancel the download in some browsers; give the
+    // click a turn of the event loop to be picked up first.
+    if (objectUrl) {
+      const toRevoke = objectUrl;
+      setTimeout(() => URL.revokeObjectURL(toRevoke), 60_000);
+    }
+  }
+}
+
 export async function openFromQueryParam(): Promise<void> {
   if (isTauri()) return;
   const raw = readFileParam();
   if (!raw) return;
   const url = safeUrl(raw);
   if (!url) return;
+  // Recorded before the load so anything reacting to the document appearing
+  // already sees a URL to offer back.
+  originalUrl = url.href;
   try {
     const res = await fetch(url.href);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

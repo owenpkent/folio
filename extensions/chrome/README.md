@@ -89,6 +89,5 @@ This is a **preview**.
 - **`file://` PDFs are not handled.** Local files need their own interception
   path and their own verification; the viewer refuses the `file:` scheme rather
   than half-supporting it.
-- The viewer has no **download original** button yet, which is what makes the
-  first bullet tolerable. Until it lands, a hijacked download has no one-click
-  escape hatch.
+  The escape hatch is **File → Download original** in the viewer, which fetches
+  the file as the server sent it.
