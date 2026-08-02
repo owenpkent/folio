@@ -11,11 +11,44 @@ Open PDFs in Folio from the browser, two ways:
 ## Build & load
 
 ```bash
-node extensions/chrome/build.mjs      # builds Folio's web app into dist/, copies the icon
+npm run build:chrome              # stage into extensions/chrome/build/
+npm run package:chrome            # stage, and pack the store .zip
+node extensions/chrome/build.mjs --no-ocr --zip   # …without the OCR runtime
 ```
 
 Then in Chrome: `chrome://extensions` → enable **Developer mode** → **Load
-unpacked** → select `extensions/chrome`.
+unpacked** → select **`extensions/chrome/build`** (not this directory).
+
+The build stages into `build/` rather than in place so it can own the manifest
+version and drop files that should not ship, without those edits showing up as
+churn in the checked-in source. `manifest.version` is derived from
+`package.json`; `npm run check:versions` fails if the checked-in manifest has
+drifted from it.
+
+### Payload
+
+Source maps are excluded: they roughly doubled the package and handed a store
+reviewer several MB of noise.
+
+| | Unpacked | Packed |
+| --- | --- | --- |
+| Default | 12.68 MB | 5.59 MB |
+| `--no-ocr` | 4.24 MB | 1.26 MB |
+
+The OCR runtime is most of the extension. It is included by default because
+dropping it silently removes a feature, and because the store's remote-code ban
+means it cannot be fetched on demand: it either ships in the package or it does
+not exist. Whether it earns its place in a *browser* extension is still open.
+
+### Reproducibility
+
+The `.zip` is a function of the commit: building the same commit twice gives
+byte-identical output. Entries are sorted, timestamps are pinned to the DOS
+epoch, and `SOURCE_DATE_EPOCH` is set from the commit timestamp so the build date
+vite bakes into the bundle stops floating. Verified, not assumed.
+
+The archive is written by `zip.mjs` rather than a dependency, because nothing in
+the tree produced deterministic output.
 
 > Loading it from the command line with `--load-extension` will *appear* to work
 > and silently do nothing: branded Chrome removed that flag in 137. Use the

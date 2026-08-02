@@ -24,7 +24,19 @@ try {
 } catch {
   /* not a git checkout; leave "unknown" */
 }
-const buildDate = new Date().toISOString();
+/**
+ * Baked into the bundle for the About dialog, which also makes it the one input
+ * that stops two builds of the same commit from producing identical output.
+ * `SOURCE_DATE_EPOCH` (the reproducible-builds convention, in seconds) pins it;
+ * the Chrome extension build sets it from the commit timestamp so a store
+ * package can be reproduced and diffed. Unset, this is just the wall clock.
+ */
+const sourceDateEpoch = Number(process.env.SOURCE_DATE_EPOCH);
+const buildDate = (
+  Number.isFinite(sourceDateEpoch) && sourceDateEpoch > 0
+    ? new Date(sourceDateEpoch * 1000)
+    : new Date()
+).toISOString();
 
 // Must match PDFJS_WASM_PATH in src/core/pdf/setupWorker.ts, which is what gets
 // handed to getDocument as `wasmUrl`.
