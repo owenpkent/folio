@@ -80,4 +80,10 @@ export default tseslint.config(
     files: ['extensions/chrome/**/*.js'],
     languageOptions: { globals: { ...globals.serviceworker, ...globals.webextensions } },
   },
+  {
+    // The options page is a document, not a worker: it needs the DOM globals
+    // the block above deliberately withholds.
+    files: ['extensions/chrome/options.js'],
+    languageOptions: { globals: { ...globals.browser, ...globals.webextensions } },
+  },
 );

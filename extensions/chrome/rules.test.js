@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { RULE_IDS, buildRules, handoffUrlForTab, isPdfUrl, originalUrlFromViewer } from './rules.js';
+import { MODES } from './settings.js';
 
 const VIEWER = 'chrome-extension://abcdefghijklmnop/dist/index.html';
 
@@ -69,6 +70,34 @@ describe('buildRules', () => {
     for (const rule of rules) {
       expect(new RegExp(rule.condition.regexFilter, 'i').test(VIEWER)).toBe(false);
     }
+  });
+});
+
+describe('buildRules honours settings', () => {
+  it('installs nothing unless the user chose the in-browser viewer', () => {
+    // Turning it off must remove the rules, not leave them installed and
+    // second-guess them at redirect time.
+    expect(buildRules(VIEWER, { mode: MODES.OFF })).toEqual([]);
+    expect(buildRules(VIEWER, { mode: MODES.DESKTOP })).toEqual([]);
+    expect(buildRules(VIEWER, { mode: MODES.BROWSER })).toHaveLength(2);
+  });
+
+  it('excludes the sites the user listed, on both rules', () => {
+    const rules = buildRules(VIEWER, { mode: MODES.BROWSER, excludedSites: ['example.com'] });
+    for (const rule of rules) {
+      expect(rule.condition.excludedRequestDomains).toEqual(['example.com']);
+    }
+  });
+
+  it('omits the exclusion key entirely when nothing is excluded', () => {
+    for (const rule of buildRules(VIEWER)) {
+      expect(rule.condition).not.toHaveProperty('excludedRequestDomains');
+    }
+  });
+
+  it('normalizes exclusions coming from storage', () => {
+    const rules = buildRules(VIEWER, { mode: MODES.BROWSER, excludedSites: ['HTTPS://Example.com/x'] });
+    expect(rules[0].condition.excludedRequestDomains).toEqual(['example.com']);
   });
 });
 

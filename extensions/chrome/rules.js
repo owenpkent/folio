@@ -24,6 +24,8 @@
 // across browser restarts, so the cost is only that they must be asserted once
 // at install and re-asserted at startup.
 
+import { DEFAULTS, normalizeSettings, shouldIntercept } from './settings.js';
+
 /** Rule ids we own. Anything not in here is not ours and is left alone. */
 export const RULE_IDS = Object.freeze({ PDF_URL: 1, PDF_CONTENT_TYPE: 2 });
 
@@ -59,7 +61,19 @@ function redirectTo(viewerUrl) {
  * chrome-extension:// and neither regex matches that scheme, so a navigation
  * loop is not reachable either.
  */
-export function buildRules(viewerUrl) {
+export function buildRules(viewerUrl, settings = DEFAULTS) {
+  const { excludedSites } = normalizeSettings(settings);
+
+  // Off, or desktop-hand-off-only: install nothing. An empty rule set is how
+  // the user turns interception off, rather than leaving rules in place and
+  // second-guessing them at redirect time.
+  if (!shouldIntercept(settings)) return [];
+
+  // `excludedRequestDomains` covers subdomains, which is what a user typing
+  // "example.com" into the exclusion list means. Omitted entirely when empty:
+  // an empty array is a valid-but-pointless condition and reads as a mistake.
+  const excluded = excludedSites.length ? { excludedRequestDomains: excludedSites } : {};
+
   return [
     {
       id: RULE_IDS.PDF_URL,
@@ -69,6 +83,7 @@ export function buildRules(viewerUrl) {
         regexFilter: PDF_URL_REGEX,
         isUrlFilterCaseSensitive: false,
         resourceTypes: ['main_frame'],
+        ...excluded,
       },
     },
     {
@@ -79,6 +94,7 @@ export function buildRules(viewerUrl) {
         regexFilter: ANY_HTTP_REGEX,
         isUrlFilterCaseSensitive: false,
         resourceTypes: ['main_frame'],
+        ...excluded,
         responseHeaders: [{ header: 'content-type', values: PDF_CONTENT_TYPES }],
         // A server that asked for a download gets its download.
         //

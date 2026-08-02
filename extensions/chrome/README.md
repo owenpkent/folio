@@ -29,8 +29,27 @@ registers the `folio://` scheme).
 | Piece | File |
 | --- | --- |
 | Redirect rules (the interception logic) | `rules.js` |
+| Settings model and validation | `settings.js` |
+| `chrome.storage` access, in one place | `storage.js` |
 | Rule installation, context menus, toolbar | `background.js` |
+| Options page | `options.html` / `options.js` / `options.css` |
 | The in-browser viewer (Folio web build, loads `#file=`) | `dist/` (generated) + `src/core/document/openFromQuery.ts` |
+
+## Settings
+
+Right-click the extension → **Options**, or `chrome://extensions` → Details →
+Extension options. Stored in `chrome.storage.sync`, so they follow the browser
+profile between machines.
+
+- **Open it in Folio's viewer** (default) — replaces Chrome's PDF reader.
+- **Leave PDFs to Chrome** — no redirect; the toolbar button and right-click
+  entry still hand the current PDF to the desktop app.
+- **Turn the extension off** — no rules, no menus, nothing.
+- **Sites to leave alone** — one host per line. Subdomains are included, so
+  `example.com` also covers `docs.example.com`.
+
+Turning interception off genuinely uninstalls the redirect rules rather than
+leaving them in place and second-guessing them at redirect time.
 
 ### Why there are two redirect rules
 
@@ -70,4 +89,6 @@ This is a **preview**.
 - **`file://` PDFs are not handled.** Local files need their own interception
   path and their own verification; the viewer refuses the `file:` scheme rather
   than half-supporting it.
-- No options page yet, so the redirect cannot be turned off or scoped per-site.
+- The viewer has no **download original** button yet, which is what makes the
+  first bullet tolerable. Until it lands, a hijacked download has no one-click
+  escape hatch.

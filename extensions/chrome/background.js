@@ -6,12 +6,18 @@
 //   B) Render it in Folio's IN-BROWSER viewer (the bundled web build), by
 //      redirecting PDF navigations to dist/index.html#file=<url>.
 //
-// The redirect rules live in rules.js; see the comment there for why there are
+// Which of those happens is the user's choice; see settings.js and options.html.
+// The redirect rules live in rules.js -- see the comment there for why there are
 // two of them and why they are dynamic rather than static.
 //
 // The bundled viewer lives in dist/ and is produced by build.mjs.
 
 import { RULE_IDS, buildRules, handoffUrlForTab } from './rules.js';
+import { MODES } from './settings.js';
+import { loadSettings, onSettingsChanged } from './storage.js';
+
+const MENU_LINK = 'folio-open-desktop-link';
+const MENU_PAGE = 'folio-open-desktop-page';
 
 const viewerUrl = () => chrome.runtime.getURL('dist/index.html');
 
@@ -25,50 +31,106 @@ function openInDesktop(pdfUrl) {
 
 // --- Option B: redirect PDFs to the in-browser viewer ----------------------
 // Dynamic rules survive browser restarts, so this is not needed on every worker
-// wake-up. It is asserted at install (ids may be new) and at startup (cheap
-// insurance against a profile whose rules were dropped or half-written).
-async function installRedirectRules() {
+// wake-up. It is asserted at install, at startup, and whenever settings change.
+// `buildRules` returns an empty list unless the user chose the in-browser mode,
+// so turning the extension off genuinely removes the rules rather than leaving
+// them installed and second-guessing them later.
+async function applyRules(settings) {
   await chrome.declarativeNetRequest.updateDynamicRules({
     removeRuleIds: Object.values(RULE_IDS),
-    addRules: buildRules(viewerUrl()),
+    addRules: buildRules(viewerUrl(), settings),
   });
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+// --- Context menus ----------------------------------------------------------
+async function applyMenus(settings) {
+  await chrome.contextMenus.removeAll();
+  if (settings.mode === MODES.OFF) return;
+
   chrome.contextMenus.create({
-    id: 'folio-open-desktop-link',
+    id: MENU_LINK,
     title: 'Open link in Folio (desktop)',
     contexts: ['link'],
     targetUrlPatterns: ['*://*/*.pdf', '*://*/*.pdf?*'],
   });
   chrome.contextMenus.create({
-    id: 'folio-open-desktop-page',
+    id: MENU_PAGE,
     title: 'Open this PDF in Folio (desktop)',
     contexts: ['page'],
     // PDFs we did not intercept, plus the viewer itself once we did. Without
     // the second pattern the entry vanishes on exactly the pages where the
     // extension is working.
-    documentUrlPatterns: ['*://*/*.pdf', '*://*/*.pdf?*', `${chrome.runtime.getURL('dist/index.html')}*`],
+    documentUrlPatterns: ['*://*/*.pdf', '*://*/*.pdf?*', `${viewerUrl()}*`],
   });
-  void installRedirectRules();
+}
+
+// --- Toolbar button ---------------------------------------------------------
+// The button only does something on a PDF, so it is only enabled on a PDF.
+// A button that is always clickable but usually inert is worse than one that
+// tells you, before you click, that there is nothing to click.
+async function applyActionState(tab, settings) {
+  if (!tab?.id) return;
+  const target = settings.mode === MODES.OFF ? null : handoffUrlForTab(tab.url, viewerUrl());
+  if (target) {
+    await chrome.action.enable(tab.id);
+    await chrome.action.setTitle({ tabId: tab.id, title: 'Open this PDF in Folio (desktop)' });
+  } else {
+    await chrome.action.disable(tab.id);
+    await chrome.action.setTitle({ tabId: tab.id, title: 'Folio: no PDF on this page' });
+  }
+}
+
+async function refreshTab(tabId) {
+  try {
+    const [tab, settings] = await Promise.all([chrome.tabs.get(tabId), loadSettings()]);
+    await applyActionState(tab, settings);
+  } catch {
+    // The tab went away between the event and this call. Nothing to do.
+  }
+}
+
+async function applyAll() {
+  const settings = await loadSettings();
+  await Promise.all([applyRules(settings), applyMenus(settings)]);
+  return settings;
+}
+
+// --- Wiring -----------------------------------------------------------------
+chrome.runtime.onInstalled.addListener(() => {
+  void applyAll();
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  void installRedirectRules();
+  void applyAll();
+});
+
+onSettingsChanged(() => {
+  void applyAll().then(async (settings) => {
+    // The open tab's button may have just become (ir)relevant.
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab) await applyActionState(tab, settings);
+  });
+});
+
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  void refreshTab(tabId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  // Only the URL matters here; ignore the loading/title churn.
+  if (changeInfo.url) void refreshTab(tabId);
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'folio-open-desktop-link') {
+  if (info.menuItemId === MENU_LINK) {
     openInDesktop(info.linkUrl);
-  } else if (info.menuItemId === 'folio-open-desktop-page') {
+  } else if (info.menuItemId === MENU_PAGE) {
     // On a page we already redirected, info.pageUrl is the chrome-extension://
     // viewer, which the desktop app cannot open. Recover the real document.
     openInDesktop(handoffUrlForTab(info.pageUrl ?? tab?.url, viewerUrl()));
   }
 });
 
-// Toolbar click: open the current tab's PDF in the desktop app. Does nothing on
-// a tab that is not a PDF, rather than handing the app an arbitrary page URL.
 chrome.action.onClicked.addListener((tab) => {
   openInDesktop(handoffUrlForTab(tab?.url, viewerUrl()));
 });
