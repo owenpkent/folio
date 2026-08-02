@@ -8,7 +8,14 @@ import { useViewerStore } from '@/state/viewerStore';
 import { recognizeImage } from './recognize';
 import { useOcrStore } from './store';
 
-const ready = () => useDocumentStore.getState().status === 'ready';
+/**
+ * OCR needs its self-hosted runtime present. The Chrome extension package ships
+ * without it, so the commands must be unavailable there rather than failing on a
+ * missing asset once the user has already committed to running them.
+ */
+export const ocrAvailable = (): boolean => __OCR_BUNDLED__;
+
+const ready = () => ocrAvailable() && useDocumentStore.getState().status === 'ready';
 
 // Rasterise at 2x for legible glyphs; a good accuracy/speed trade-off.
 const OCR_SCALE = 2;

@@ -238,6 +238,19 @@ more than the happy path -- arrows *inside* a text box move the caret rather tha
 the box, and a nudge key moves the item **without** also scrolling the document
 out from under it.
 
+**`e2e/browser-extension.spec.ts`** — the contract the Chrome extension depends
+on, exercised through the viewer rather than through the extension (branded
+Chrome will not side-load one from the command line). It renders a PDF named by
+`#file=`, **keeps a query string intact** rather than truncating at the first
+`&`, refuses schemes it will not fetch, and offers **Download original** only for
+a document that came from a URL.
+
+> One trap, because it made the suite lie before it failed: a Playwright `goto`
+> whose only difference from the current URL is the fragment is a *same-document*
+> navigation. The app never remounts, so it never reads the fragment, and the
+> test asserts against the previous document. The spec's `openWithFragment`
+> helper forces a real load; do not inline it away.
+
 ### Tests that pin silent failures
 
 Most of the suite guards behaviour that fails *quietly*, which is why these tests
@@ -287,8 +300,18 @@ npx playwright show-report      # open the last HTML report
 
 ## Manual testing (desktop and browser integrations)
 
-Signing, the updater, the `folio://` deep link, and the Chrome extension can't
-run in the automated suite; verify them by hand.
+Signing, the updater, and the `folio://` deep link can't run in the automated
+suite; verify them by hand.
+
+The Chrome extension is **partly** automated, and it is worth knowing which part.
+Its pure logic (redirect rules, settings, the package writer) is unit tested, the
+viewer contract has [`e2e/browser-extension.spec.ts`](../e2e/browser-extension.spec.ts),
+and CI builds the package and checks the manifest's permission surface. What no
+automation covers is the extension actually installed in a browser: that the
+redirect rules fire, that the options page saves, and that the toolbar button
+tracks the tab. Branded Chrome has ignored `--load-extension` since Chrome 137,
+so loading it must be done by hand — `chrome://extensions` → Developer mode →
+**Load unpacked** → `extensions/chrome/build` (after `npm run build:chrome`).
 
 ### Run the app
 

@@ -6,6 +6,82 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The Chrome extension grew up.** It was a preview that only caught URLs
+  ending in `.pdf`, which misses most PDFs served from behind an application
+  (`/download?id=123`). A second `declarativeNetRequest` rule now matches the
+  response's content-type. The two rules are deliberately not interchangeable:
+  the URL rule fires *before the request is sent*, so the origin serves nothing,
+  while the content-type rule can only fire once the response has arrived, so
+  the PDF is fetched, discarded, and fetched again. The URL rule takes priority
+  and the content-type rule is the catch-all underneath it.
+- **An options page for the extension**, with three modes — open PDFs in Folio's
+  viewer, leave them to the browser, or turn the extension off — plus a per-site
+  exclusion list covering subdomains. Turning interception off removes the
+  redirect rules rather than leaving them installed and second-guessing them.
+  Keyboard-operable and screen-reader-labeled, and it follows the OS colour
+  scheme along with `prefers-contrast` and `prefers-reduced-motion`.
+- **File → Download original**, for a document opened from a URL in the browser.
+  A PDF link the site marked as a download is opened in the viewer rather than
+  downloaded, because the URL rule matches before any response headers exist, so
+  the untouched file stays one click away. It is fetched into a blob rather than
+  linked with `download`, which is ignored cross-origin and would navigate
+  straight back into the viewer.
+- **A reproducible extension package.** `npm run package:chrome` stages into
+  `extensions/chrome/build/` and emits a `.zip` that is a function of the commit:
+  building the same commit twice gives byte-identical output, which CI verifies
+  by doing exactly that. The archive writer is in-tree because nothing in the
+  dependency set produces deterministic output.
+- **A privacy policy for the extension**, at
+  [docs/browser-extension-privacy.md](docs/browser-extension-privacy.md).
+
+### Changed
+
+- The extension's toolbar button is enabled only on a page where it does
+  something, instead of being always clickable and usually inert.
+- `manifest.version` is derived from `package.json`, and `npm run check:versions`
+  fails if the checked-in manifest has drifted. A separate check pins the
+  extension's permission surface, so widening it is a deliberate edit rather
+  than a side effect.
+- Source maps no longer ship in the extension package, and the OCR runtime is
+  left out of it: together they took the package from about 17 MB to 4.24 MB
+  (1.26 MB packed). OCR is absent from the UI in that build rather than present
+  and failing on a missing asset.
+- The roadmap no longer lists a browser extension as a non-goal, which it has
+  not been since the preview landed.
+
+### Fixed
+
+- **A PDF URL containing `&` opened the wrong document.** The extension carries
+  the document's URL in the viewer's fragment un-encoded, and the viewer read it
+  with `URLSearchParams`, which truncated at the first ampersand: a link to
+  `/download?doc=42&fmt=pdf` fetched `/download?doc=42`. The fragment is now read
+  verbatim.
+- `SOURCE_DATE_EPOCH` is honoured when set, so the build date baked into the
+  bundle stops two builds of the same commit from differing.
+- Dependency advisories cleared: `brace-expansion` (dev-only, GHSA-mh99-v99m-4gvg)
+  and `event-listener` (RUSTSEC-2026-0221). `npm audit` and `cargo audit` both
+  report no vulnerabilities.
+
+### Security
+
+- The URL handed to the desktop app over `folio://` is scheme-checked before the
+  link is built. It can be recovered from the viewer's fragment, which is chosen
+  by whatever navigated there, so a page could park the user on the viewer with
+  `#file=javascript:…` and wait for a toolbar click. The desktop side already
+  rejected it; this is the outer of two checks rather than the only one.
+- The extension viewer sets `frame-ancestors 'none'`. It must be reachable from
+  any origin for the redirect to work, which also allowed any page to frame it
+  and use load success or failure as an oracle for an authenticated request.
+- The viewer now refuses to fetch anything that is not `http:` or `https:`. The
+  document URL arrives in a fragment from a page navigation, so any site can
+  choose it; `javascript:`, `data:`, and `file:` were previously passed to
+  `fetch` unchecked.
+- The extension's `web_accessible_resources` narrowed from `dist/*` to
+  `dist/index.html`. Only the entry point needs to be reachable from a web
+  origin; the page's own assets are same-origin once it has loaded.
+
 ## [0.5.0] - 2026-08-01
 
 ### Added
