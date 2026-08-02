@@ -13,7 +13,7 @@ Open PDFs in Folio from the browser, two ways:
 ```bash
 npm run build:chrome              # stage into extensions/chrome/build/
 npm run package:chrome            # stage, and pack the store .zip
-node extensions/chrome/build.mjs --no-ocr --zip   # …without the OCR runtime
+node extensions/chrome/build.mjs --with-ocr --zip   # …including the OCR runtime
 ```
 
 Then in Chrome: `chrome://extensions` → enable **Developer mode** → **Load
@@ -27,18 +27,24 @@ drifted from it.
 
 ### Payload
 
+| | Unpacked | Packed |
+| --- | --- | --- |
+| Default | 4.24 MB | 1.26 MB |
+| `--with-ocr` | 12.68 MB | 5.59 MB |
+
 Source maps are excluded: they roughly doubled the package and handed a store
 reviewer several MB of noise.
 
-| | Unpacked | Packed |
-| --- | --- | --- |
-| Default | 12.68 MB | 5.59 MB |
-| `--no-ocr` | 4.24 MB | 1.26 MB |
+**OCR is not in the package.** It was 77% of the packed size, and it cannot be
+fetched on demand because the store bans remote code, so it either ships or the
+feature does not exist here. It is also not currently *workable* here:
+`src/features/ocr/recognize.ts` asks for its runtime at absolute paths
+(`/tesseract/…`), which under `chrome-extension://<id>/dist/` resolve above the
+viewer and 404. Bundling the assets would not have made it work. Re-enabling
+means fixing those paths first, not just passing `--with-ocr`.
 
-The OCR runtime is most of the extension. It is included by default because
-dropping it silently removes a feature, and because the store's remote-code ban
-means it cannot be fetched on demand: it either ships in the package or it does
-not exist. Whether it earns its place in a *browser* extension is still open.
+Builds without OCR drop the commands and the menu row too, so the feature is
+absent rather than present and failing.
 
 ### Reproducibility
 
