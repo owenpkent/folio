@@ -18,6 +18,8 @@ New here? Start with **[Getting started](getting-started.md)**, then
 | [Editing and OCR](editing-and-ocr.md) | Text boxes, images, and check marks; editing text or images already on a page; and recognising text on scanned pages. |
 | [Forms and signatures](forms-and-signatures.md) | Filling AcroForms, placing ink signatures, and certificate-based digital signing. |
 | [Theming](theming.md) | Design tokens, light/dark, and the dark reading schemes. |
+| [Chrome extension](../extensions/chrome/README.md) | Replacing the browser's PDF reader with Folio's viewer, the settings, and how the two redirect rules differ. |
+| [Extension privacy policy](browser-extension-privacy.md) | What the extension stores, what syncs, and why each permission is needed. |
 
 ### Building on Folio
 

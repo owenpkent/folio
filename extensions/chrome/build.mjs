@@ -2,7 +2,7 @@
 //
 //   node extensions/chrome/build.mjs            # stage build/
 //   node extensions/chrome/build.mjs --zip      # stage build/ and pack the .zip
-//   node extensions/chrome/build.mjs --no-ocr   # stage without the OCR runtime
+//   node extensions/chrome/build.mjs --with-ocr # stage with the OCR runtime
 //
 // Output goes to extensions/chrome/build/, NOT to this directory. Load that as
 // the unpacked extension. Staging separately is what lets the build own the

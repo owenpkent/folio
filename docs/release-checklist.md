@@ -33,8 +33,9 @@ issue or defer the release.
 - [ ] `CHANGELOG.md` — `## [Unreleased]` items moved under a `## [<ver>] - YYYY-MM-DD`
       heading with a fresh empty `## [Unreleased]` above, and the compare links updated
 - [ ] Versions match across `package.json`, `src-tauri/tauri.conf.json`,
-      `src-tauri/Cargo.toml`, and the `folio` entry in `src-tauri/Cargo.lock` — and
-      match the planned tag `v<ver>`
+      `src-tauri/Cargo.toml`, `extensions/chrome/manifest.json`, and the `folio`
+      entry in `src-tauri/Cargo.lock` — and match the planned tag `v<ver>`
+      (`npm run check:extension` covers the manifest)
 - [ ] `ROADMAP.md` — rows that shipped this cycle flipped to Done
 - [ ] README — feature list still accurate, screenshots not stale
 - [ ] Feature docs updated where behavior changed (e.g. `docs/editing-and-ocr.md`,
@@ -68,6 +69,20 @@ On the EV-cert Windows host:
 - [ ] `tauri.conf.json → plugins.updater.pubkey` (key ID `95E10389C64A7469`) matches the private key used to sign the `.sig` (otherwise installed clients reject the update)
 - [ ] SBOMs generated (`release/sbom/`) if shipping them this release
 - [ ] GitHub release **draft** prepared with notes derived from the CHANGELOG; do not publish yet
+
+### Chrome extension (only if shipping an extension update this release)
+
+- [ ] `npm run check:extension` — manifest version matches `package.json` and the
+      permission surface has not drifted
+- [ ] `npm run package:chrome` — builds `extensions/chrome/folio-chrome-<ver>.zip`
+- [ ] Loaded unpacked from `extensions/chrome/build` in **branded** Chrome and smoke
+      tested by hand: a `.pdf` URL and a content-type-only PDF both open in the viewer,
+      the options page saves, and the toolbar button tracks the tab. None of this is
+      covered by CI, and `--load-extension` does not work in branded Chrome
+- [ ] If any permission changed: the store listing's justification table updated to match,
+      in the same change. A permission the listing does not justify is a rejection
+- [ ] `docs/browser-extension-privacy.md` still accurate for anything new that stores or
+      transmits data. An inaccurate disclosure is grounds for removal after publishing
 
 ---
 

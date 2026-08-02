@@ -115,7 +115,7 @@ Folio rendering a two-page form PDF, in light and dark:
 **Desktop and distribution**
 - EV-signed Windows installer; installs per-user and **auto-updates** from GitHub Releases
 - Set Folio as your **default PDF viewer**: double-click a `.pdf` to open it in Folio (there's a one-click "make default" action on the start screen)
-- Open PDFs from your browser: a Chrome extension renders them in Folio, or hands off to the desktop app via a `folio://` deep link
+- **Replace Chrome's PDF reader**: a Chrome extension opens PDFs in Folio's viewer instead, catching them by content-type as well as by `.pdf` URL, so documents served from behind an app (`/download?id=…`) are caught too. Choose per-site, or turn it off; or hand the document to the desktop app via a `folio://` deep link
 - **About dialog** with app version, commit hash, and build date, plus a manual "Check for updates" action (desktop)
 
 **AI-ready**
@@ -218,7 +218,10 @@ folio/
 │  ├─ assets/            app-icon source (folio-logo.svg)
 │  └─ test/              test setup
 ├─ src-tauri/            Rust backend (file IO, native shell)
+├─ extensions/chrome/    Chrome extension: Folio's viewer instead of Chrome's PDF reader
 ├─ extensions/vscode/    VS Code extension: view PDFs in an editor tab (preview)
+├─ e2e/                  Playwright end-to-end suite
+├─ scripts/              build, release, and version/manifest parity checks
 └─ docs/                 architecture, accessibility, theming, plugins, AI
 ```
 
