@@ -134,10 +134,30 @@ export function originalUrlFromViewer(tabUrl, viewerUrl) {
 }
 
 /**
+ * Is this something we are willing to hand to the desktop app?
+ *
+ * The viewer's fragment is chosen by whatever navigated to it, so a URL
+ * recovered from it is untrusted: a page can park the user on the viewer with
+ * `#file=javascript:…` and wait for them to click the toolbar button. The
+ * desktop side re-validates (`fetch_pdf` rejects non-http(s) and resolves the
+ * host against a private-range blocklist), so this is the outer of two checks
+ * rather than the only one, but the extension should not be building a
+ * `folio://` link around an arbitrary scheme in the first place.
+ */
+export function isHandoffableUrl(url) {
+  try {
+    return ['http:', 'https:'].includes(new URL(url).protocol);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The URL the toolbar action should hand to the desktop app for a given tab:
  * the original document if we are already showing it, the tab's own URL if it
  * is a PDF, otherwise null (nothing sensible to do).
  */
 export function handoffUrlForTab(tabUrl, viewerUrl) {
-  return originalUrlFromViewer(tabUrl, viewerUrl) ?? (isPdfUrl(tabUrl) ? tabUrl : null);
+  const candidate = originalUrlFromViewer(tabUrl, viewerUrl) ?? (isPdfUrl(tabUrl) ? tabUrl : null);
+  return candidate && isHandoffableUrl(candidate) ? candidate : null;
 }

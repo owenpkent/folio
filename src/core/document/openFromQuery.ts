@@ -35,7 +35,11 @@ function safeUrl(raw: string): URL | null {
 
 function basename(url: URL): string {
   try {
-    return decodeURIComponent(url.pathname.split('/').pop() || '') || 'Document.pdf';
+    const last = decodeURIComponent(url.pathname.split('/').pop() || '');
+    // Decoding can reintroduce separators that were percent-encoded in the
+    // path (`/a%2Fb.pdf`), and this feeds an `<a download>`. Browsers sanitize
+    // that attribute themselves, but a filename is not the place to rely on it.
+    return last.replace(/[\\/]/g, '_').replace(/^\.+/, '') || 'Document.pdf';
   } catch {
     return 'Document.pdf';
   }

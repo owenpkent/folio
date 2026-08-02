@@ -12,7 +12,7 @@
 //
 // The bundled viewer lives in dist/ and is produced by build.mjs.
 
-import { RULE_IDS, buildRules, handoffUrlForTab } from './rules.js';
+import { RULE_IDS, buildRules, handoffUrlForTab, isHandoffableUrl } from './rules.js';
 import { MODES } from './settings.js';
 import { loadSettings, onSettingsChanged } from './storage.js';
 
@@ -23,7 +23,11 @@ const viewerUrl = () => chrome.runtime.getURL('dist/index.html');
 
 // --- Option A: hand off to the desktop app ---------------------------------
 function openInDesktop(pdfUrl) {
-  if (!pdfUrl) return;
+  // The single choke point for handing a URL to the desktop app, so every path
+  // into it (toolbar, both context menus) is scheme-checked once rather than
+  // each remembering to. A URL recovered from the viewer's fragment was chosen
+  // by whatever navigated there.
+  if (!pdfUrl || !isHandoffableUrl(pdfUrl)) return;
   // Navigating to a custom scheme invokes the OS protocol handler (folio://),
   // which the desktop app registers at install time.
   chrome.tabs.create({ url: `folio://open?url=${encodeURIComponent(pdfUrl)}` });

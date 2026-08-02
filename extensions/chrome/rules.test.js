@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { RULE_IDS, buildRules, handoffUrlForTab, isPdfUrl, originalUrlFromViewer } from './rules.js';
+import {
+  RULE_IDS,
+  buildRules,
+  handoffUrlForTab,
+  isHandoffableUrl,
+  isPdfUrl,
+  originalUrlFromViewer,
+} from './rules.js';
 import { MODES } from './settings.js';
 
 const VIEWER = 'chrome-extension://abcdefghijklmnop/dist/index.html';
@@ -121,7 +128,28 @@ describe('originalUrlFromViewer', () => {
   });
 });
 
+describe('isHandoffableUrl', () => {
+  it('accepts only http and https', () => {
+    expect(isHandoffableUrl('https://example.com/a.pdf')).toBe(true);
+    expect(isHandoffableUrl('http://example.com/a.pdf')).toBe(true);
+    expect(isHandoffableUrl('javascript:alert(1)')).toBe(false);
+    expect(isHandoffableUrl('data:application/pdf;base64,AA==')).toBe(false);
+    expect(isHandoffableUrl('file:///c:/a.pdf')).toBe(false);
+    expect(isHandoffableUrl('folio://open?url=x')).toBe(false);
+    expect(isHandoffableUrl('not a url')).toBe(false);
+    expect(isHandoffableUrl(undefined)).toBe(false);
+  });
+});
+
 describe('handoffUrlForTab', () => {
+  it('refuses a hostile scheme parked in the viewer fragment', () => {
+    // A page can navigate the user to the viewer with any fragment it likes and
+    // wait for them to press the toolbar button. That must not become a
+    // folio:// link wrapped around javascript:.
+    expect(handoffUrlForTab(`${VIEWER}#file=javascript:alert(1)`, VIEWER)).toBeNull();
+    expect(handoffUrlForTab(`${VIEWER}#file=file:///c:/secret.pdf`, VIEWER)).toBeNull();
+  });
+
   it('prefers the original document when we are already showing it', () => {
     const original = 'https://example.com/a.pdf';
     expect(handoffUrlForTab(`${VIEWER}#file=${original}`, VIEWER)).toBe(original);
