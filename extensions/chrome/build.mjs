@@ -26,7 +26,15 @@ const out = resolve(here, 'build');
 
 const args = new Set(process.argv.slice(2));
 const wantZip = args.has('--zip');
-const withOcr = !args.has('--no-ocr');
+
+// OCR is OUT by default. It was 8.4 MB of a 12.7 MB package, 77% of the packed
+// size, and it cannot be fetched on demand because the store bans remote code.
+// It is also not merely absent but currently unworkable here: recognize.ts asks
+// for its runtime at absolute paths (`/tesseract/...`), which under
+// chrome-extension://<id>/dist/ resolve above the viewer and 404. Shipping the
+// assets would not have made the feature work. Re-enabling means fixing those
+// paths first, not just passing this flag.
+const withOcr = args.has('--with-ocr');
 
 /** Extension source that ships as-is. Anything not listed here does not ship. */
 const SOURCE_FILES = [
@@ -64,10 +72,16 @@ function sourceDateEpoch() {
 const epoch = sourceDateEpoch();
 console.log(`Building Folio ${pkg.version} (relative base) ...`);
 if (!epoch) console.log('  no commit timestamp available; output will not be reproducible');
+// FOLIO_NO_OCR drops the OCR commands and menu row from the bundle, so the
+// feature is absent rather than present and failing on an asset that is not there.
 execSync('npm run build -- --base=./', {
   cwd: repo,
   stdio: 'inherit',
-  env: { ...process.env, ...(epoch ? { SOURCE_DATE_EPOCH: epoch } : {}) },
+  env: {
+    ...process.env,
+    ...(epoch ? { SOURCE_DATE_EPOCH: epoch } : {}),
+    ...(withOcr ? {} : { FOLIO_NO_OCR: '1' }),
+  },
 });
 
 // --- 2. Stage ---------------------------------------------------------------
@@ -130,9 +144,11 @@ const total = sizeOf(files);
 
 console.log('\nPayload:');
 console.log(`  total            ${mb(total)}  (${files.length} files)`);
-if (ocrFiles.length) {
-  console.log(`  of which OCR     ${mb(sizeOf(ocrFiles))}  (--no-ocr drops it)`);
-}
+console.log(
+  ocrFiles.length
+    ? `  of which OCR     ${mb(sizeOf(ocrFiles))}`
+    : '  OCR              not bundled (--with-ocr includes it)',
+);
 console.log(`  icons            ${iconsHave.join(', ') || 'none'}`);
 
 // --- 4. Pack ----------------------------------------------------------------

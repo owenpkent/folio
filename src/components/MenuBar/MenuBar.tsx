@@ -9,6 +9,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useContributionStore } from '@/plugins';
 import { isTauri } from '@/core/document/openDocument';
 import { originalDocumentUrl } from '@/core/document/openFromQuery';
+import { ocrAvailable } from '@/features/ocr';
 import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
 import { NARROW_VIEWPORT_QUERY } from '@/theme/breakpoints';
@@ -245,7 +246,9 @@ export function MenuBar() {
         docItem('edit.addText', 'Add text box', 'type'),
         docItem('edit.addImage', 'Add image', 'image'),
         docItem('edit.addCheckmark', 'Add check mark', 'check'),
-        docItem('ocr.recognizeDocument', 'Recognize text (OCR)', 'scan'),
+        // Absent, not disabled, in builds without the OCR runtime: the Chrome
+        // extension package leaves it out entirely.
+        ...(ocrAvailable() ? [docItem('ocr.recognizeDocument', 'Recognize text (OCR)', 'scan')] : []),
         sep('edit-sep-2'),
         docItem('search.toggle', 'Find', 'search'),
       ],

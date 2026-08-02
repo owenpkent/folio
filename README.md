@@ -238,7 +238,8 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Testing](docs/testing.md)
 - [Releasing](docs/releasing.md) (signed installer + auto-updater) and the [release checklist](docs/release-checklist.md)
 - [VS Code extension](extensions/vscode/README.md) (preview: view PDFs in an editor tab)
-- [Chrome extension](extensions/chrome/README.md) (preview: open PDFs in Folio from the browser)
+- [Chrome extension](extensions/chrome/README.md) — replace Chrome's PDF reader with Folio's viewer, or hand the document to the desktop app
+- [Browser extension privacy policy](docs/browser-extension-privacy.md)
 - [Roadmap](ROADMAP.md)
 
 ## Contributing

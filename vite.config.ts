@@ -112,6 +112,10 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_DATE__: JSON.stringify(buildDate),
     __COMMIT_HASH__: JSON.stringify(commitHash),
+    // The Chrome extension package leaves the OCR runtime out (it was 77% of
+    // the payload), so the feature has to be absent from the UI rather than
+    // present and failing on a missing asset. Set by extensions/chrome/build.mjs.
+    __OCR_BUNDLED__: JSON.stringify(process.env.FOLIO_NO_OCR !== '1'),
   },
 
   // Prevent Vite from obscuring Rust errors during `tauri dev`.
