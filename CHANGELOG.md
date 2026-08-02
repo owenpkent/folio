@@ -60,9 +60,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   verbatim.
 - `SOURCE_DATE_EPOCH` is honoured when set, so the build date baked into the
   bundle stops two builds of the same commit from differing.
+- Dependency advisories cleared: `brace-expansion` (dev-only, GHSA-mh99-v99m-4gvg)
+  and `event-listener` (RUSTSEC-2026-0221). `npm audit` and `cargo audit` both
+  report no vulnerabilities.
 
 ### Security
 
+- The URL handed to the desktop app over `folio://` is scheme-checked before the
+  link is built. It can be recovered from the viewer's fragment, which is chosen
+  by whatever navigated there, so a page could park the user on the viewer with
+  `#file=javascript:…` and wait for a toolbar click. The desktop side already
+  rejected it; this is the outer of two checks rather than the only one.
+- The extension viewer sets `frame-ancestors 'none'`. It must be reachable from
+  any origin for the redirect to work, which also allowed any page to frame it
+  and use load success or failure as an oracle for an authenticated request.
 - The viewer now refuses to fetch anything that is not `http:` or `https:`. The
   document URL arrives in a fragment from a page navigation, so any site can
   choose it; `javascript:`, `data:`, and `file:` were previously passed to

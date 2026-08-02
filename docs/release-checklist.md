@@ -19,6 +19,11 @@ issue or defer the release.
 - [ ] `npm run lint` — no ESLint errors
 - [ ] `npm run typecheck` — no type errors
 - [ ] `npm run check:versions` — `tauri` crate and `@tauri-apps/api` share the same major.minor (also enforced in CI)
+- [ ] `npm audit` — no high/critical
+- [ ] `cargo audit --manifest-path src-tauri/Cargo.toml` — **zero vulnerabilities**. The
+      standing warning count is unmaintained/unsound advisories on transitive crates,
+      most of them Tauri's Linux GTK stack, which Windows builds never compile. Treat a
+      *new* warning as worth reading and any actual vulnerability as blocking
 - [ ] `npm run build` — clean production build, no warnings worth investigating
 - [ ] `npm run test:e2e` — Playwright smoke suite green (needs `npx playwright install chromium`, and again after any `@playwright/test` upgrade, or every spec fails at 0ms on a missing browser)
 - [ ] No outstanding **High** or **Critical** Dependabot alerts on `main`
