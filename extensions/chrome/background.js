@@ -1,14 +1,19 @@
-// Folio Chrome extension — background service worker.
+// Folio Chrome extension -- background service worker.
 //
 // Two ways to open a PDF in Folio:
 //   A) Hand off to the Folio DESKTOP app via the folio:// deep link
 //      (right-click a PDF link / the PDF page, or click the toolbar icon).
-//   B) Render it in Folio's IN-BROWSER viewer (the bundled web build),
-//      by redirecting PDF navigations to dist/index.html#file=<url>.
+//   B) Render it in Folio's IN-BROWSER viewer (the bundled web build), by
+//      redirecting PDF navigations to dist/index.html#file=<url>.
+//
+// The redirect rules live in rules.js; see the comment there for why there are
+// two of them and why they are dynamic rather than static.
 //
 // The bundled viewer lives in dist/ and is produced by build.mjs.
 
-const REDIRECT_RULE_ID = 1;
+import { RULE_IDS, buildRules, handoffUrlForTab } from './rules.js';
+
+const viewerUrl = () => chrome.runtime.getURL('dist/index.html');
 
 // --- Option A: hand off to the desktop app ---------------------------------
 function openInDesktop(pdfUrl) {
@@ -19,24 +24,13 @@ function openInDesktop(pdfUrl) {
 }
 
 // --- Option B: redirect PDFs to the in-browser viewer ----------------------
-// Set as a dynamic rule so we can build the absolute chrome-extension:// URL
-// from this extension's id at runtime. The matched PDF URL (\0) is carried in
-// the fragment (#file=) so it survives without colliding with query parsing.
-async function installRedirectRule() {
-  const viewer = chrome.runtime.getURL('dist/index.html');
+// Dynamic rules survive browser restarts, so this is not needed on every worker
+// wake-up. It is asserted at install (ids may be new) and at startup (cheap
+// insurance against a profile whose rules were dropped or half-written).
+async function installRedirectRules() {
   await chrome.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: [REDIRECT_RULE_ID],
-    addRules: [
-      {
-        id: REDIRECT_RULE_ID,
-        priority: 1,
-        action: { type: 'redirect', redirect: { regexSubstitution: `${viewer}#file=\\0` } },
-        condition: {
-          regexFilter: '^https?://.*\\.pdf(\\?.*)?$',
-          resourceTypes: ['main_frame'],
-        },
-      },
-    ],
+    removeRuleIds: Object.values(RULE_IDS),
+    addRules: buildRules(viewerUrl()),
   });
 }
 
@@ -51,17 +45,30 @@ chrome.runtime.onInstalled.addListener(() => {
     id: 'folio-open-desktop-page',
     title: 'Open this PDF in Folio (desktop)',
     contexts: ['page'],
-    documentUrlPatterns: ['*://*/*.pdf', '*://*/*.pdf?*'],
+    // PDFs we did not intercept, plus the viewer itself once we did. Without
+    // the second pattern the entry vanishes on exactly the pages where the
+    // extension is working.
+    documentUrlPatterns: ['*://*/*.pdf', '*://*/*.pdf?*', `${chrome.runtime.getURL('dist/index.html')}*`],
   });
-  void installRedirectRule();
+  void installRedirectRules();
 });
 
-chrome.contextMenus.onClicked.addListener((info) => {
-  if (info.menuItemId === 'folio-open-desktop-link') openInDesktop(info.linkUrl);
-  else if (info.menuItemId === 'folio-open-desktop-page') openInDesktop(info.pageUrl);
+chrome.runtime.onStartup.addListener(() => {
+  void installRedirectRules();
 });
 
-// Toolbar click: open the current tab's PDF in the desktop app.
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'folio-open-desktop-link') {
+    openInDesktop(info.linkUrl);
+  } else if (info.menuItemId === 'folio-open-desktop-page') {
+    // On a page we already redirected, info.pageUrl is the chrome-extension://
+    // viewer, which the desktop app cannot open. Recover the real document.
+    openInDesktop(handoffUrlForTab(info.pageUrl ?? tab?.url, viewerUrl()));
+  }
+});
+
+// Toolbar click: open the current tab's PDF in the desktop app. Does nothing on
+// a tab that is not a PDF, rather than handing the app an arbitrary page URL.
 chrome.action.onClicked.addListener((tab) => {
-  if (tab.url) openInDesktop(tab.url);
+  openInDesktop(handoffUrlForTab(tab?.url, viewerUrl()));
 });

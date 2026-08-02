@@ -133,7 +133,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    include: ['src/**/*.{test,spec}.{ts,tsx}', 'extensions/chrome/**/*.{test,spec}.js'],
     css: false,
     // Comfortably above the 30s `interruptAfterTimeLimit` the fast-check setup
     // uses as its DoS backstop. At vitest's 5s default the test was killed
