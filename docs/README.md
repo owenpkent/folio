@@ -39,6 +39,7 @@ One feature each: why it works the way it does, or how it is going to.
 | [Redaction](redaction.md) | The design for true redaction, which is not built yet: the guarantee, the removal rules, the fail-closed verifier, and the order of work. |
 | [Bookmarks](bookmarks.md) | A design for editable outline bookmarks. Deferred. |
 | [Bookmarks research](bookmarks-research.md) | The notes behind that design, each claim marked by where it came from. |
+| [Android](android.md) | Scope for an Android build: why it reuses the existing app, what the port requires, and what the first release leaves out. Planned, not built. |
 
 ### Contributing
 
