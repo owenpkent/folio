@@ -26,6 +26,7 @@ New here? Start with **[Getting started](getting-started.md)**, then
 | [Architecture](architecture.md) | The command registry, the `PdfEngine` abstraction, the layer stack, and the rules that are easy to break by accident. |
 | [Writing plugins](plugins.md) | The plugin host, contribution points, and the public API surface. |
 | [AI and MCP](ai.md) | The AI layer and the Model Context Protocol integration. |
+| [Android](android.md) | Scope for an Android build: why it reuses the existing app, what the port requires, and what the first release leaves out. Planned, not shipped. |
 
 ### Contributing
 
