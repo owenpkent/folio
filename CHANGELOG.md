@@ -31,8 +31,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   pointer, and `Escape` dismisses it (WCAG 2.2 SC 1.4.13).
   Addresses are also found in **OCR text**, which matters because recognised
   text lives in a sidecar until it is baked into a saved copy: without it a
-  freshly recognised scan would offer nothing at all. Acrobat's own URL
-  detection explicitly does not work on OCR text over a scan.
+  freshly recognised scan would offer nothing at all.
 
 ## [0.5.0] - 2026-08-01
 

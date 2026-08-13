@@ -155,14 +155,14 @@ start and sharing one would delete the exports CI feeds to veraPDF.
 `e2e/fixtures/` (gitignored, regenerated each run). Nothing binary is committed.
 There are three: `form.pdf`, a two-page PDF with an empty fillable text field, a
 checkbox, and a radio group; `filled-form.pdf`, a single page whose only
-content is three text fields that already hold values; and `addresses.pdf`, a
-page carrying an email address, a web address, and a `/Link` annotation whose
-declared target is deliberately nothing like the words printed over it. The latter is
-deliberately otherwise blank, so any ink on the rendered canvas is a form
-widget that should have been left to the annotation layer, which is what makes
-the doubled-text assertion below possible.
+content is three text fields that already hold values, and is deliberately
+otherwise blank, so any ink on the rendered canvas is a form widget that
+should have been left to the annotation layer, which is what makes the
+doubled-text assertion below possible; and `addresses.pdf`, a page carrying an
+email address, a web address, and a `/Link` annotation whose declared target
+is deliberately nothing like the words printed over it.
 
-There are eight specs.
+There are nine specs.
 
 **`e2e/smoke.spec.ts`** covers the core document flows:
 

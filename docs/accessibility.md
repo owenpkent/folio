@@ -166,13 +166,13 @@ Nothing enforces the pairing, so two rules are worth keeping in mind:
 
 ## Page text and link addresses
 
-Right-clicking an email or web address offers to copy it. The address is found three ways, in priority order: a `/Link` annotation the author declared, then an address printed in the page's own text, then one in text Folio recognised itself on a scan. The declared link wins because that is the target a click would actually follow. The OCR source matters more than it sounds: recognised text lives in a sidecar until it is baked into a saved copy, so without it a freshly recognised scan would offer nothing at all, which is the case a reader most wants this in. Acrobat has the same three-way split and explicitly cannot do the third.
+Right-clicking an email or web address offers to copy it. The address is found three ways, in priority order: a `/Link` annotation the author declared, then an address printed in the page's own text, then one in text Folio recognised itself on a scan. The declared link wins because that is the target a click would actually follow. The OCR source matters more than it sounds: recognised text lives in a sidecar until it is baked into a saved copy, so without it a freshly recognised scan would offer nothing at all, which is the case a reader most wants this in.
 
 Hovering an address marks it, so you can see it is copyable without right-clicking to find out, and shows the target underneath. There is deliberately **no cursor change**: in Acrobat a link is left-clickable, so its hand cursor is honest, but Folio only ever offers to copy, from the context menu, so a pointer cursor would promise a click that does nothing. The hint is anchored under the address rather than following the pointer, so it can be moved onto without vanishing, and `Escape` dismisses it without moving the pointer at all (WCAG 2.2 SC 1.4.13). It is `aria-hidden`: a hover cannot be triggered without a pointer, so no assistive technology can reach it, and everything it says is repeated in the context menu row.
 
 The menu shows the target on a second line under the label rather than only naming the action. That is deliberate: a document is free to print "Click here for details" over a link pointing anywhere at all, and the moment before copying is the one moment the reader can see the difference. Nothing is opened, only copied, so a hostile document cannot turn a right-click into outbound navigation; Folio has no shell or opener capability at all (see `src-tauri/capabilities/`).
 
-Detection of addresses in the text is deliberately conservative. An address needs a scheme, a `www.`, or a well-known suffix, so "Fig.2", "version 1.2.3" and "report.pdf" are left alone: a menu row offering to copy something that is not an address reads as broken, which is worse than missing an unusual one. Hit-testing runs against PDF user-space geometry rather than the DOM, because the annotation layer is `pointer-events: none` between form fields and an anchor rendered for a link never receives the event.
+Detection of addresses in the text is deliberately conservative. An address needs a scheme, a `www.`, or a well-known suffix, so "Fig.2", "version 1.2.3" and "report.pdf" are left alone: a menu row offering to copy something that is not an address reads as broken, which is worse than missing an unusual one. Hit-testing runs against PDF user-space geometry rather than the DOM. One mechanism then covers all three sources, it does not depend on PDF.js having rendered an anchor for a link (clicking a link annotation navigates nowhere in Folio, by design), and the whole thing is testable with no layout at all, which is where most of its tests live.
 
 ## The text layer and screen readers
 
@@ -276,6 +276,7 @@ The table maps Folio features to the success criteria they satisfy. This is a wo
 | UI contrast in light and dark themes | 1.4.3 Contrast (Minimum) | AA |
 | Non-text/UI-component contrast, focus rings | 1.4.11 Non-text Contrast | AA |
 | Fit width and application zoom (no loss at magnification) | 1.4.4 Resize Text; 1.4.10 Reflow | AA |
+| Address hint on hover: dismissible with `Escape`, hoverable (reaching the label does not take it away), and persistent until the pointer leaves | 1.4.13 Content on Hover or Focus | AA |
 | Full keyboard operation, all actions as commands | 2.1.1 Keyboard | A |
 | No keyboard trap; overlays trap-and-release correctly | 2.1.2 No Keyboard Trap | A |
 | Shortcuts are suppressed while typing in text inputs, `textarea`, `select`, or contenteditable (except `Escape` and `Ctrl/Cmd+P`, neither of which is a printable character), avoiding printable-key conflicts | 2.1.4 Character Key Shortcuts | A |

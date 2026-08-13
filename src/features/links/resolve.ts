@@ -1,15 +1,15 @@
 /**
  * Working out what address, if any, sits under a point on a page.
  *
- * Two sources, in priority order. A `/Link` annotation is what the document's
- * author declared, so it wins over anything spotted in the text: if the two
- * disagree, the annotation is what a click would actually follow, and it is the
- * one worth putting on the clipboard.
+ * Three sources, in priority order: a `/Link` annotation, an address printed in
+ * the page's own text, and one in text recognised on a scan. The annotation is
+ * what the document's author declared, so it wins: where they disagree, that is
+ * what a click would follow, and the one worth putting on the clipboard.
  *
- * Hit-testing is done against PDF user-space geometry rather than the DOM. The
- * annotation layer is `pointer-events: none` between form fields, so an anchor
- * PDF.js rendered for a link never receives the event, and going through the
- * geometry works the same in a test with no layout.
+ * Hit-testing is done against PDF user-space geometry rather than the DOM. One
+ * mechanism then covers every source, it does not depend on PDF.js having
+ * rendered an anchor for a link (clicking one navigates nowhere in Folio, by
+ * design), and it works the same in a test with no layout.
  */
 import type { PageLink } from '@/core/pdf/types';
 

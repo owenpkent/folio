@@ -195,6 +195,27 @@ What is left is a **selection** gap rather than a manipulation one: choosing
 which text run to edit, and choosing a non-first image on a page, both still
 want a pointer. Replace and delete were already keyboard-operable.
 
+### A link's declared target is pointer-only
+
+Right-clicking an email or web address offers to copy it (see
+[accessibility.md](accessibility.md#page-text-and-link-addresses)). For an
+address printed in the page's own text this adds nothing a keyboard could not
+already reach: the text layer is selectable, so selecting the address and
+pressing `Ctrl/Cmd+C` has always worked.
+
+A `/Link` **annotation** is different. Its target is the one the document
+declared, which need not resemble the words printed over it, and there is no
+keyboard route to it at all: PDF.js's annotation layer is not focusable here,
+and no command enumerates a page's links. A sighted pointer user can therefore
+read and copy something a keyboard or screen-reader user cannot reach, which is
+a 302.1 / 502.2.1 gap rather than a convenience difference.
+
+Nothing is lost that the document itself makes available another way, and no
+navigation is involved (Folio only copies, and has no shell or opener
+capability at all), so this is a discovery gap rather than a functional one. The
+fix is a links panel listing every address in the document, reachable like any
+other sidebar tab, which would also give the feature a copy-all.
+
 ### PDF/UA export (504.2.2)
 
 > **504.2.2 PDF Export.** Authoring tools capable of exporting PDF files that

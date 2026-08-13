@@ -9,6 +9,34 @@ interface Sample {
   page: HTMLElement;
 }
 
+/** Slack around the hint, so the gap between it and its label is not a hole. */
+const HINT_PAD = 6;
+
+/**
+ * Whether the point is over the hint that is already showing, including its
+ * label, which hangs below the address rather than over it.
+ *
+ * Measured off the rendered elements rather than recomputed, so the gap and the
+ * label's size stay a stylesheet concern.
+ */
+function overHint(x: number, y: number): boolean {
+  const hint = document.querySelector('.folio-address-hint');
+  if (!hint) return false;
+
+  let { left, right, top, bottom } = hint.getBoundingClientRect();
+  for (const child of hint.children) {
+    const box = child.getBoundingClientRect();
+    left = Math.min(left, box.left);
+    right = Math.max(right, box.right);
+    top = Math.min(top, box.top);
+    bottom = Math.max(bottom, box.bottom);
+  }
+
+  return (
+    x >= left - HINT_PAD && x <= right + HINT_PAD && y >= top - HINT_PAD && y <= bottom + HINT_PAD
+  );
+}
+
 /**
  * Watch the pointer for addresses, so one can be seen without right-clicking to
  * find out whether it is there. Acrobat does the same with a hand cursor and a
@@ -33,6 +61,12 @@ export function useTrackAddressHover(scale: number, enabled: boolean) {
     const next = pending.current;
     pending.current = null;
     if (!next) return;
+
+    // Moving onto the hint keeps it up. WCAG 2.2 SC 1.4.13 asks content shown
+    // on hover to be hoverable as well as dismissible, and without this the
+    // next sample lands past the address, finds nothing, and takes the hint
+    // away as the pointer reaches it.
+    if (overHint(next.clientX, next.clientY)) return;
 
     const pageNumber = Number(next.page.dataset.pageNumber ?? 0);
     if (!pageNumber) {

@@ -113,6 +113,19 @@ test.describe('copying addresses', () => {
     await expect(page.locator('.folio-address-hint')).toContainText(ADDRESSES.link.target);
   });
 
+  test('the hint survives the pointer moving onto it', async ({ page }) => {
+    await hoverAt(page, ADDRESSES.email.x + 30, ADDRESSES.email.y + 5);
+    const hint = page.locator('.folio-address-hint');
+    await expect(hint).toBeVisible();
+
+    // WCAG 2.2 SC 1.4.13 asks for hoverable as well as dismissible: the label
+    // hangs below the address, so reaching it must not take it away.
+    const label = (await hint.locator('.folio-address-hint__label').boundingBox())!;
+    await page.mouse.move(label.x + label.width / 2, label.y + label.height / 2);
+
+    await expect(hint).toBeVisible();
+  });
+
   test('Escape dismisses the hint without moving the pointer', async ({ page }) => {
     await hoverAt(page, ADDRESSES.email.x + 30, ADDRESSES.email.y + 5);
     await expect(page.locator('.folio-address-hint')).toBeVisible();

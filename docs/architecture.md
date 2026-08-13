@@ -137,6 +137,7 @@ interface PdfEngine {
   getPageText(pageNumber: number): Promise<string>;
   getPageViewport(pageNumber: number, scale: number): Promise<PageViewport>;
   getTextItems(pageNumber: number): Promise<PageTextItems>;
+  getPageLinks(pageNumber: number): Promise<PageLink[]>;
   getOutline(): Promise<OutlineNode[]>;
   getMetadata(): Promise<PdfMetadata>;
   search(query: string, options?: { limit?: number }): Promise<SearchMatch[]>;
