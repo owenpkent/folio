@@ -34,4 +34,15 @@ describe('signature store', () => {
     useSignatureStore.getState().loadForDocument('fpS2');
     expect(useSignatureStore.getState().signatures).toHaveLength(1);
   });
+
+  it('replaceAll swaps the collection and persists it', () => {
+    useSignatureStore.getState().loadForDocument('fpS3');
+    const s = useSignatureStore.getState().add(1, dataUrl, rect);
+
+    const replacement = [{ ...s, pageNumber: 7 }];
+    useSignatureStore.getState().replaceAll(replacement);
+
+    expect(useSignatureStore.getState().signatures).toEqual(replacement);
+    expect(JSON.parse(localStorage.getItem('folio.signatures.fpS3')!)).toEqual(replacement);
+  });
 });

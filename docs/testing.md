@@ -153,14 +153,16 @@ start and sharing one would delete the exports CI feeds to veraPDF.
 
 `e2e/global-setup.ts` generates the fixtures with pdf-lib and writes them to
 `e2e/fixtures/` (gitignored, regenerated each run). Nothing binary is committed.
-There are two: `form.pdf`, a two-page PDF with an empty fillable text field, a
-checkbox, and a radio group, and `filled-form.pdf`, a single page whose only
-content is three text fields that already hold values. The latter is
-deliberately otherwise blank, so any ink on the rendered canvas is a form
-widget that should have been left to the annotation layer, which is what makes
-the doubled-text assertion below possible.
+There are three: `form.pdf`, a two-page PDF with an empty fillable text field, a
+checkbox, and a radio group; `filled-form.pdf`, a single page whose only content
+is three text fields that already hold values; and `pages.pdf`, four portrait
+pages each printing the position it started in. The second is deliberately
+otherwise blank, so any ink on the rendered canvas is a form widget that should
+have been left to the annotation layer, which is what makes the doubled-text
+assertion below possible. The third exists because after a reorder every page
+still renders and only the words on them say whether the right one moved.
 
-There are seven specs.
+There are nine specs.
 
 **`e2e/smoke.spec.ts`** covers the core document flows:
 
@@ -237,6 +239,14 @@ signature does the same with its aspect ratio locked, and two guards that matter
 more than the happy path -- arrows *inside* a text box move the caret rather than
 the box, and a nudge key moves the item **without** also scrolling the document
 out from under it.
+
+**`e2e/pages.spec.ts`** — page operations end to end: deleting a selected page
+and putting it back with **Ctrl+Z**, reordering by drag and by **Alt+↓** (with
+the live-region announcement), rotating a page (asserted through the layout box
+turning landscape, which is the part that silently did not happen until page
+geometry was re-measured on a document swap), the organizer opening over the
+document, and the selection checkboxes being operable from the keyboard. It also
+pins the refusal to delete every page, since a zero-page PDF is not a PDF.
 
 ### Tests that pin silent failures
 

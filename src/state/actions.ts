@@ -7,6 +7,7 @@ import { useEditStore } from '@/features/editing';
 import { useOcrStore } from '@/features/ocr';
 // Store only, not the feature barrel: that also exports components, which pull
 // in UI modules this low-level orchestration module has no business importing.
+import { usePageOpsStore } from '@/features/pageops/store';
 import { usePlacementStore } from '@/features/placement/store';
 import { useSignatureStore } from '@/features/signatures';
 import { detectSignatures, useSigningStore, type DetectedSignature } from '@/features/signing';
@@ -60,6 +61,9 @@ export async function loadSource(source: DocumentSource): Promise<void> {
     // Not persisted (nothing to load per fingerprint), but a fresh document is
     // never mid-edit, so any leftover session/undo history from a prior one goes.
     useTextEditStore.getState().reset();
+    // Same again for page ops: a selection and an undo stack of the last
+    // document's bytes mean nothing here, and restoring one would be a disaster.
+    usePageOpsStore.getState().reset();
     usePlacementStore.getState().cancel();
     useSigningStore.getState().setDetected(detected);
     document.title = `${info.name} · Folio`;
@@ -87,6 +91,7 @@ export async function closeDocument(): Promise<void> {
   useEditStore.getState().reset();
   useOcrStore.getState().reset();
   useTextEditStore.getState().reset();
+  usePageOpsStore.getState().reset();
   usePlacementStore.getState().cancel();
   useSigningStore.getState().setDetected([]);
   document.title = 'Folio';

@@ -70,6 +70,27 @@ const ICONS = {
   'chevron-left': <path d="M15 18l-6-6 6-6" />,
   'chevron-right': <path d="M9 18l6-6-6-6" />,
   'chevron-down': <path d="M6 9l6 6 6-6" />,
+  'chevron-up': <path d="M6 15l6-6 6 6" />,
+  undo: (
+    <>
+      <path d="M9 14L4 9l5-5" />
+      <path d="M4 9h11a5 5 0 0 1 0 10h-4" />
+    </>
+  ),
+  // Three quarters of a circle with an arrowhead on the open end, so the two
+  // read as mirrored turns of the same shape.
+  'rotate-left': (
+    <>
+      <path d="M4 12a8 8 0 1 0 2.3-5.6" />
+      <path d="M4 4v5h5" />
+    </>
+  ),
+  'rotate-right': (
+    <>
+      <path d="M20 12a8 8 0 1 1-2.3-5.6" />
+      <path d="M20 4v5h-5" />
+    </>
+  ),
   x: (
     <>
       <line x1="18" y1="6" x2="6" y2="18" />

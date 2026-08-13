@@ -616,6 +616,137 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+/* Page operations: selection, drag-to-reorder, and the organizer grid.
+   The card wraps a page's navigation button together with its selection
+   checkbox, which has to be a sibling of that button rather than inside it. */
+.folio-thumbnails-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.folio-page-card {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+.folio-page-card__check {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 2px solid var(--folio-border);
+  border-radius: 4px;
+  background: var(--folio-surface);
+  cursor: pointer;
+  /* Out of the way until it is useful: the checkbox appears on hover, on focus,
+     or once the page is picked out, so a sidebar being used for reading is not
+     covered in controls. It stays in the tab order and in the accessibility
+     tree throughout, so this is a visual affordance, not a gate. */
+  opacity: 0;
+  transition: opacity 120ms ease-in-out;
+}
+.folio-page-card:hover .folio-page-card__check,
+.folio-page-card__check:focus-visible,
+.folio-page-card.is-selected .folio-page-card__check {
+  opacity: 1;
+}
+.folio-page-card.is-selected .folio-page-card__check {
+  border-color: var(--folio-accent);
+  background: var(--folio-accent);
+}
+/* The tick, drawn rather than iconised: two strokes of a border, rotated. */
+.folio-page-card.is-selected .folio-page-card__check::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0;
+  width: 4px;
+  height: 9px;
+  border: solid var(--folio-surface);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.folio-page-card.is-selected .folio-thumb__frame {
+  border-color: var(--folio-accent);
+}
+.folio-page-card.is-dragging {
+  opacity: 0.4;
+}
+.folio-page-drop {
+  flex: 0 0 auto;
+  background: var(--folio-accent);
+  border-radius: 2px;
+}
+.folio-thumbnails .folio-page-drop {
+  width: 132px;
+  height: 3px;
+  margin: -6px 0;
+}
+.folio-page-grid .folio-page-drop {
+  width: 3px;
+  align-self: stretch;
+  margin: 0 -6px;
+}
+.folio-page-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+}
+.folio-page-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--folio-border);
+  background: var(--folio-surface);
+}
+.folio-page-actions__count {
+  margin: 0;
+  color: var(--folio-text-muted);
+  font-size: 0.85rem;
+}
+.folio-page-actions__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.folio-modal--wide {
+  width: min(1100px, 92vw);
+  max-width: none;
+}
+.folio-organize {
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+}
+.folio-organize__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+.folio-organize__footer {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+/* The organizer's own action bar sits in a footer that already has a border. */
+.folio-organize__footer .folio-page-actions {
+  flex: 1 1 auto;
+  border-top: none;
+  padding: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .folio-page-card__check {
+    transition: none;
+  }
+}
+
 /* Outline */
 .folio-outline,
 .folio-outline__children {

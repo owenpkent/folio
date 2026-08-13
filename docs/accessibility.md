@@ -31,6 +31,14 @@ Bindings are declared on the command, wherever that command lives, mostly `src/c
 | Highlight selection | `annotate.highlight` | `Ctrl+Shift+H` | `Cmd+Shift+H` |
 | Add sticky note | `annotate.addNote` | `Ctrl+Shift+M` | `Cmd+Shift+M` |
 | Toggle UI theme (light/dark) | `theme.toggle` | `Ctrl+Shift+L` | `Cmd+Shift+L` |
+| Move selected pages up | `pageops.moveUp` | `Alt+↑` | `Option+↑` |
+| Move selected pages down | `pageops.moveDown` | `Alt+↓` | `Option+↓` |
+| Rotate selected pages left | `pageops.rotateLeft` | `Ctrl+[` | `Cmd+[` |
+| Rotate selected pages right | `pageops.rotateRight` | `Ctrl+]` | `Cmd+]` |
+| Select all pages (organizer only) | `pageops.selectAll` | `Ctrl+A` | `Cmd+A` |
+| Undo page change | `pageops.undo` | `Ctrl+Z` | `Cmd+Z` |
+
+The page rows above only fire once pages are selected, so the chords are free the rest of the time. `pageops.undo` shares `Ctrl/Cmd+Z` with `textedit.undo`, which claims it only while the Edit text tool is on; the dispatcher walks past a command whose `when` says no, so the two never contend. Deleting pages is deliberately *not* globally bound: `Delete` acts on whichever page list holds focus, so a global binding would fire while the caret sat in a form field. See [page-operations.md](page-operations.md).
 
 `Page Up`/`Page Down` are dispatched as commands rather than left to the browser. Native scrolling only acts on the focused element's nearest scrollable ancestor, so it stops working the moment focus moves to the toolbar or the find box; binding the keys keeps them working wherever focus happens to be.
 
@@ -54,6 +62,8 @@ These commands exist but have **no keyboard binding**; they are reachable from t
 | Add image | `edit.addImage` | Edit menu |
 | Add check mark | `edit.addCheckmark` | Edit menu |
 | Recognize text (OCR) | `ocr.recognizeDocument` | Edit menu |
+| Organize pages | `pageops.organize` | Pages menu |
+| Delete selected pages | `pageops.delete` | Pages menu / `Delete` on a focused page / selection bar |
 | Recognize text on this page | `ocr.recognizePage` | Command |
 | Add signature | `sign.addSignature` | Sign menu / Signatures panel |
 | Digitally sign | `sign.digitallySign` | Sign menu / Signatures panel |

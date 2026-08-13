@@ -167,6 +167,18 @@ describe('edit store', () => {
     useEditStore.getState().loadForDocument('fp-bad');
     expect(useEditStore.getState().edits).toEqual([]);
   });
+
+  it('replaceAll swaps the collection and persists it', () => {
+    useEditStore.getState().loadForDocument('fp1');
+    useEditStore.getState().addText(1, rect);
+
+    const { id } = useEditStore.getState().addMark(2, rect, 'check');
+    const replacement = [{ ...useEditStore.getState().edits.find((e) => e.id === id)!, pageNumber: 5 }];
+    useEditStore.getState().replaceAll(replacement);
+
+    expect(useEditStore.getState().edits).toEqual(replacement);
+    expect(JSON.parse(localStorage.getItem('folio.edits.fp1')!)).toEqual(replacement);
+  });
 });
 
 describe('edit commands', () => {

@@ -55,6 +55,8 @@ interface EditState {
   updateText(id: string, patch: TextStylePatch): void;
   updateMark(id: string, patch: MarkStylePatch): void;
   remove(id: string): void;
+  /** Replace the whole collection: page ops rewriting page numbers in bulk, or restoring an undo snapshot. */
+  replaceAll(edits: EditItem[]): void;
 
   select(id: string | null): void;
   /** Select a text box and put the caret in it (used after a click that was not a drag). */
@@ -187,6 +189,11 @@ export const useEditStore = create<EditState>((set, get) => {
         selectedId: s.selectedId === id ? null : s.selectedId,
         focusId: s.focusId === id ? null : s.focusId,
       }));
+      persist();
+    },
+
+    replaceAll: (edits) => {
+      set({ edits });
       persist();
     },
 

@@ -19,6 +19,7 @@ import { registerExportCommands } from '@/features/export';
 import { registerFileOpen } from '@/features/fileopen';
 import { registerImageEditCommands } from '@/features/imageedit';
 import { OcrProgressModal, registerOcrCommands } from '@/features/ocr';
+import { OrganizePagesModal, registerPageOpsCommands } from '@/features/pageops';
 import { PlacementHint } from '@/features/placement';
 import { PrintProgressModal, registerPrintCommands } from '@/features/print';
 import { AboutModal } from '@/features/about';
@@ -45,6 +46,7 @@ export function App() {
     registerEditCommands();
     registerImageEditCommands();
     registerOcrCommands();
+    registerPageOpsCommands();
     registerSignatureCommands();
     registerSigningCommands();
     registerTextEditCommands();
@@ -125,6 +127,7 @@ export function App() {
       <SignatureModal />
       <SigningModal />
       <OcrProgressModal />
+      <OrganizePagesModal />
       <PrintProgressModal />
       <AboutModal />
       <ContextMenu />

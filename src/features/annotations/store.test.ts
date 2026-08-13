@@ -41,4 +41,16 @@ describe('annotation store', () => {
     useAnnotationStore.getState().remove(a.id);
     expect(useAnnotationStore.getState().annotations).toHaveLength(0);
   });
+
+  it('replaceAll swaps the collection and persists it', () => {
+    useAnnotationStore.getState().loadForDocument('fp4');
+    useAnnotationStore.getState().addHighlight(1, rects, 'x', 'y');
+
+    const a = useAnnotationStore.getState().addHighlight(1, rects, 'x', 'y');
+    const replacement = [{ ...a, pageNumber: 9 }];
+    useAnnotationStore.getState().replaceAll(replacement);
+
+    expect(useAnnotationStore.getState().annotations).toEqual(replacement);
+    expect(JSON.parse(localStorage.getItem('folio.annotations.fp4')!)).toEqual(replacement);
+  });
 });

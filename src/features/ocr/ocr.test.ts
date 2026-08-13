@@ -53,6 +53,17 @@ describe('ocr store', () => {
     expect(useOcrStore.getState().status).toBe('done');
     expect(useOcrStore.getState().pages[2]).toBeDefined();
   });
+
+  it('replaceAll swaps the collection and persists it', () => {
+    useOcrStore.getState().loadForDocument('fp3');
+    useOcrStore.getState().setPage(samplePage);
+
+    const replacement = { 5: { ...samplePage, pageNumber: 5 } };
+    useOcrStore.getState().replaceAll(replacement);
+
+    expect(useOcrStore.getState().pages).toEqual(replacement);
+    expect(JSON.parse(localStorage.getItem('folio.ocr.fp3')!)).toEqual(replacement);
+  });
 });
 
 describe('searchWithOcr', () => {

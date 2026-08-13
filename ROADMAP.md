@@ -4,7 +4,7 @@ Folio is an open-source, MIT-licensed PDF viewer aiming at Adobe Acrobat-caliber
 
 This roadmap is a direction, not a contract. Milestones ship when they are correct and accessible, not on a fixed date. Each phase lists what "done" means so progress is legible.
 
-Phase numbers name thematic milestones, not app release versions. A release ships whatever is done, so the app's version can run ahead of a phase that is still open: Folio 0.2.0 already carried early v0.4-phase editing and OCR work, and both Folio 0.4.0 and 0.5.0 ship while this phase's page operations and redaction remain planned.
+Phase numbers name thematic milestones, not app release versions. A release ships whatever is done, so the app's version can run ahead of a phase that is still open: Folio 0.2.0 already carried early v0.4-phase editing and OCR work, and both Folio 0.4.0 and 0.5.0 shipped while that phase's page operations and redaction were still open.
 
 Status legend: **Planned** (designed, not started), **In progress**, **Done**.
 
@@ -26,7 +26,7 @@ The core viewer: open a PDF and read it comfortably, fully by keyboard, fully wi
 | --- | --- | --- |
 | Open and render | Open local PDFs, render pages via PDF.js with a lazily-rendered page list | Done |
 | Navigate | Page navigation, go-to-page, continuous scroll, hand/pan tool (plus middle-click pan in any mode), and teleprompter auto-scroll (single-page mode planned) | Done |
-| Zoom and fit | Zoom in/out (snapping to clean preset levels), fit-width, fit-page, and actual-size (per-page rotation planned) | Done |
+| Zoom and fit | Zoom in/out (snapping to clean preset levels), fit-width, fit-page, and actual-size (per-page rotation ships as a page operation in v0.4) | Done |
 | Search | Full-text search with a results list and next/previous navigation | Done |
 | Thumbnails | Thumbnail sidebar panel for page navigation | Done |
 | Outline | Bookmarks/outline sidebar panel with jump-to-destination | Done |
@@ -87,7 +87,7 @@ Change document content, reorganize pages, make scans searchable, and redact.
 | Add text, images, and check marks | Place text boxes, images, and check marks on a page; baked into a saved copy | Done |
 | Edit existing content | Edit text runs already in the PDF and move, resize, replace, or delete embedded images | In progress (text runs done, including Form XObjects invoked once per page; a form invoked more than once is still refused; embedded images move/resize/replace/delete done, except rotated/skewed images, replace only, and images inside a Form XObject, not yet editable) |
 | OCR | Recognize text in scanned pages and add a searchable text layer | Done (English via tesseract.js; invisible baked layer + on-screen selection) |
-| Page operations | Insert, delete, reorder, rotate, split, and merge pages | Planned |
+| Page operations | Insert, delete, reorder, rotate, split, and merge pages | In progress (delete, reorder, and rotate done, in the thumbnail sidebar and a page organizer, with undo; deleting sweeps the page's content out of the file rather than only unlinking it. Insert, split, and merge planned) |
 | Redaction | True redaction that removes underlying content, not just a black box | Planned |
 | Accessibility | Editing operations keyboard-driven; OCR output feeds search and screen readers | In progress (OCR text feeds search; more languages planned; moving, resizing, and deleting any placed overlay is keyboard-driven, but choosing *which* text run or embedded image to edit still needs a pointer) |
 

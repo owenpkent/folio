@@ -214,7 +214,10 @@ app.
   signing time, and whether anything was appended after signing. Without the CMS
   digest it cannot tell you that the signed content itself is unmodified.
 - Signing runs in the WebView today; a Rust/OS-keychain backend is planned.
-- Visual-signature stamping assumes unrotated pages (rotation support is planned).
+- A signature placed on a page, then rotated with [page operations](page-operations.md#rotation-and-what-is-placed-on-a-page),
+  keeps its position but not its orientation: it lands in the right spot, still
+  drawn upright, in a box whose proportions have swapped rather than turning
+  with the page.
 
 ## Roadmap
 
@@ -224,6 +227,8 @@ app.
 - Move signing to a Rust backend with OS-keychain-backed key storage.
 - Optional flattening of form fields on export.
 - Creating and editing form fields (not just filling them).
-- Keyboard placement and rotation-aware stamping.
+- Keyboard placement of a signature.
+- A per-item orientation on placed overlays, so rotating the page underneath a
+  signature turns the signature with it rather than only moving it.
 
 See [ROADMAP.md](../ROADMAP.md) for how this fits the broader plan.

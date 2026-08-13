@@ -89,6 +89,12 @@ Folio rendering a two-page form PDF, in light and dark:
   leaving the original image untouched for any other page still drawing it
 - Place a **check mark** anywhere, for forms that print an empty box with no
   interactive field behind it; a placed mark can be switched to a cross
+- **Delete, reorder, and rotate pages**, from the thumbnail sidebar or a
+  full-window page organizer: drag to move, or pick pages out and use the
+  keyboard throughout. Every change is one undo step, and deleting a page sweeps
+  its content out of the file rather than only unlinking it, so the text and
+  images on it are not left behind for a parser to find. See
+  [page operations](docs/page-operations.md)
 - **OCR** scanned pages with a bundled, offline English engine (tesseract.js): the
   recognized text becomes selectable on screen, is searchable in-app, and is baked
   into the saved PDF as an invisible searchable layer
@@ -231,6 +237,7 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Accessibility](docs/accessibility.md)
 - [Section 508 conformance](docs/508-conformance.md) (what is supported, and the open gaps)
 - [Editing and OCR](docs/editing-and-ocr.md)
+- [Page operations](docs/page-operations.md)
 - [Forms and signatures](docs/forms-and-signatures.md)
 - [Theming](docs/theming.md)
 - [Writing plugins](docs/plugins.md)
