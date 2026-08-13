@@ -11,9 +11,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Copy an email or web address from the right-click menu.** Right-clicking an
   address in a page offers **Copy email address** or **Copy link address**
   instead of making you drag-select it across the text layer and hope you caught
-  the right characters. Two sources feed it: addresses printed in the page text,
-  and the `/Link` annotations an author embedded. The annotation wins where they
-  disagree, since that is the target a click would follow.
+  the right characters. Three sources feed it: the `/Link` annotations an author
+  embedded, addresses printed in the page text, and text Folio recognised itself
+  on a scan. The annotation wins where they disagree, since that is the target a
+  click would follow.
   The menu shows the target on a second line, not just the action, because a
   document can print "Click here for details" over a link pointing anywhere; that
   line is the one moment a reader can see the difference. Nothing is opened, only
@@ -22,6 +23,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   suffix), so "Fig.2", "version 1.2.3" and "report.pdf" are left alone, and an
   address PDF.js split across two text runs is rejoined only when the two
   visually touch, so "visit" and "example.com" never become one.
+  Hovering an address marks it and shows its target, so you can see it is
+  copyable without right-clicking to find out. There is no cursor change on
+  purpose: Acrobat's hand cursor is honest because its links are clickable, but
+  Folio only offers to copy, so a pointer cursor would promise a click that does
+  nothing. The hint is anchored under the address rather than following the
+  pointer, and `Escape` dismisses it (WCAG 2.2 SC 1.4.13).
+  Addresses are also found in **OCR text**, which matters because recognised
+  text lives in a sidecar until it is baked into a saved copy: without it a
+  freshly recognised scan would offer nothing at all. Acrobat's own URL
+  detection explicitly does not work on OCR text over a scan.
 
 ## [0.5.0] - 2026-08-01
 

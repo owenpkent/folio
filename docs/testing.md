@@ -246,7 +246,8 @@ The one that matters most is the `/Link` annotation case: the menu has to show
 and copy the target the document declared, not the "Click here for details"
 printed over it. It aims its right-clicks through PDF user-space geometry rather
 than at a text-layer span, so it measures the hit test rather than how PDF.js
-happens to lay its spans out.
+happens to lay its spans out. It also covers the hover affordance, including
+that `Escape` dismisses the hint without the pointer moving.
 
 ### Tests that pin silent failures
 

@@ -43,9 +43,16 @@ export interface CopyTarget {
   value: string;
   /**
    * Where it came from. An `annotation` target is the document's own declared
-   * link, which may not match the words printed over it.
+   * link, which may not match the words printed over it; `ocr` is text Folio
+   * recognised itself on a scanned page.
    */
-  source: 'annotation' | 'text';
+  source: 'annotation' | 'text' | 'ocr';
+}
+
+/** A target plus the box it occupies, in PDF user space, for the hover hint. */
+export interface ResolvedTarget {
+  target: CopyTarget;
+  rect: [number, number, number, number];
 }
 
 /**
@@ -116,7 +123,7 @@ export function targetFromText(
   items: readonly TextItemLike[],
   x: number,
   y: number,
-): CopyTarget | null {
+): ResolvedTarget | null {
   const index = pickTextItem(items, x, y);
   if (index < 0) return null;
 
@@ -133,13 +140,16 @@ export function targetFromText(
   if (found.length === 0) return null;
 
   const address = found.length === 1 ? found[0] : nearest(found, run, item, x);
-  return { kind: address.kind, value: address.value, source: 'text' };
+  return {
+    target: { kind: address.kind, value: address.value, source: 'text' },
+    rect: addressRect(run, address),
+  };
 }
 
 /** Whichever of several addresses the point fell nearest, along the item. */
 function nearest(
   found: readonly DetectedAddress[],
-  run: { text: string; start: number; end: number },
+  run: Run,
   item: TextItemLike,
   x: number,
 ): DetectedAddress {
@@ -152,30 +162,125 @@ function nearest(
   return addressAt(run.text, offset) ?? found[0];
 }
 
+interface RunPart {
+  item: TextItemLike;
+  /** Where this item's text begins in the run's text. */
+  from: number;
+  to: number;
+}
+
+interface Run {
+  text: string;
+  parts: RunPart[];
+  /** The span of the item the point actually landed on. */
+  start: number;
+  end: number;
+}
+
+/**
+ * The box an address occupies, rather than the whole line it sits on.
+ *
+ * Character advances are not available per glyph, so the address's span is
+ * mapped across each item it covers in proportion to its characters. That is an
+ * approximation, but only ever for where a highlight is drawn: which address
+ * was matched is already settled by the time this runs.
+ */
+function addressRect(run: Run, address: DetectedAddress): [number, number, number, number] {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+
+  for (const part of run.parts) {
+    if (part.to <= address.start || part.from >= address.end) continue;
+    const [px0, py0, px1, py1] = itemBox(part.item);
+    const chars = part.to - part.from;
+    const width = px1 - px0;
+    const startFraction = chars > 0 ? Math.max(0, address.start - part.from) / chars : 0;
+    const endFraction = chars > 0 ? Math.min(chars, address.end - part.from) / chars : 1;
+
+    x0 = Math.min(x0, px0 + width * startFraction);
+    x1 = Math.max(x1, px0 + width * endFraction);
+    y0 = Math.min(y0, py0);
+    y1 = Math.max(y1, py1);
+  }
+
+  return [x0, y0, x1, y1];
+}
+
 /**
  * The item joined with the neighbours it visually touches, and where the item
  * itself sits in the result. An item with no touching neighbour is its own run.
  */
-function joinRun(
-  items: readonly TextItemLike[],
-  index: number,
-): { text: string; start: number; end: number } {
-  const item = items[index];
-  let text = item.str;
-  let start = 0;
+function joinRun(items: readonly TextItemLike[], index: number): Run {
+  let first = index;
+  while (first > 0 && adjacent(items[first - 1], items[first])) first -= 1;
 
-  for (let i = index - 1; i >= 0 && adjacent(items[i], items[i + 1]); i -= 1) {
-    text = items[i].str + text;
-    start += items[i].str.length;
-  }
+  let last = index;
+  while (last + 1 < items.length && adjacent(items[last], items[last + 1])) last += 1;
 
-  const end = start + item.str.length;
-
-  for (let i = index + 1; i < items.length && adjacent(items[i - 1], items[i]); i += 1) {
+  const parts: RunPart[] = [];
+  let text = '';
+  for (let i = first; i <= last; i += 1) {
+    const from = text.length;
     text += items[i].str;
+    parts.push({ item: items[i], from, to: text.length });
   }
 
-  return { text, start, end };
+  const hit = parts[index - first];
+  return { text, parts, start: hit.from, end: hit.to };
+}
+
+/** A recognised word and where it sits, as fractions of the displayed page. */
+export interface OcrWordLike {
+  text: string;
+  rect: { x: number; y: number; width: number; height: number };
+}
+
+/** A target plus the box it occupies, as fractions of the displayed page. */
+export interface ResolvedOcrTarget {
+  target: CopyTarget;
+  rect: { x: number; y: number; width: number; height: number };
+}
+
+/**
+ * An address in text Folio recognised itself on a scanned page.
+ *
+ * OCR results live in their own sidecar, keyed to the document rather than
+ * written into it, so nothing in the PDF's own text content sees them until
+ * they are baked into a saved copy. Without this source, right-clicking an
+ * address on a freshly recognised scan would find nothing at all, which is the
+ * one case a reader most wants it in.
+ *
+ * Words are matched whole. A recogniser splits on whitespace, so an address is
+ * a single word, and joining neighbours the way the text path does would only
+ * invent ones out of adjacent words.
+ */
+export function targetFromOcr(
+  words: readonly OcrWordLike[],
+  nx: number,
+  ny: number,
+): ResolvedOcrTarget | null {
+  let best: ResolvedOcrTarget | null = null;
+  let bestArea = Infinity;
+
+  for (const word of words) {
+    const { x, y, width, height } = word.rect;
+    if (nx < x || nx > x + width || ny < y || ny > y + height) continue;
+
+    const found = findAddresses(word.text);
+    if (found.length !== 1) continue;
+
+    const area = width * height;
+    if (area >= bestArea) continue;
+    best = {
+      target: { kind: found[0].kind, value: found[0].value, source: 'ocr' },
+      rect: word.rect,
+    };
+    bestArea = area;
+  }
+
+  return best;
 }
 
 /** Whether `right` carries straight on from `left`, with no gap and no line break. */

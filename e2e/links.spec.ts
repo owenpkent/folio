@@ -26,13 +26,24 @@ async function openFixture(page: Page) {
  * measuring what the feature does (hit-test a point against the page) instead
  * of how PDF.js happens to lay its spans out.
  */
-async function rightClickAt(page: Page, pdfX: number, pdfY: number) {
+async function pointAt(page: Page, pdfX: number, pdfY: number) {
   const box = (await page.locator('.folio-page').first().boundingBox())!;
   const scale = box.width / ADDRESSES_PAGE.width;
-  await page.mouse.click(box.x + pdfX * scale, box.y + (ADDRESSES_PAGE.height - pdfY) * scale, {
-    button: 'right',
-  });
+  return {
+    x: box.x + pdfX * scale,
+    y: box.y + (ADDRESSES_PAGE.height - pdfY) * scale,
+  };
+}
+
+async function rightClickAt(page: Page, pdfX: number, pdfY: number) {
+  const { x, y } = await pointAt(page, pdfX, pdfY);
+  await page.mouse.click(x, y, { button: 'right' });
   await expect(page.getByRole('menu', { name: 'Document actions' })).toBeVisible();
+}
+
+async function hoverAt(page: Page, pdfX: number, pdfY: number) {
+  const { x, y } = await pointAt(page, pdfX, pdfY);
+  await page.mouse.move(x, y);
 }
 
 const menuItem = (page: Page, name: string) =>
@@ -81,6 +92,42 @@ test.describe('copying addresses', () => {
 
     await item.click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(ADDRESSES.link.target);
+  });
+
+  test('marks an address under the pointer, before any click', async ({ page }) => {
+    const hint = page.locator('.folio-address-hint');
+    await expect(hint).toHaveCount(0);
+
+    await hoverAt(page, ADDRESSES.email.x + 30, ADDRESSES.email.y + 5);
+
+    // The whole point of the affordance: you can see the address is copyable
+    // without right-clicking to find out.
+    await expect(hint).toBeVisible();
+    await expect(hint).toContainText(ADDRESSES.email.text);
+  });
+
+  test('shows a link annotation target on hover, not its printed words', async ({ page }) => {
+    const [x0, y0, x1, y1] = ADDRESSES.link.rect;
+    await hoverAt(page, (x0 + x1) / 2, (y0 + y1) / 2);
+
+    await expect(page.locator('.folio-address-hint')).toContainText(ADDRESSES.link.target);
+  });
+
+  test('Escape dismisses the hint without moving the pointer', async ({ page }) => {
+    await hoverAt(page, ADDRESSES.email.x + 30, ADDRESSES.email.y + 5);
+    await expect(page.locator('.folio-address-hint')).toBeVisible();
+
+    // WCAG 2.2 SC 1.4.13: content shown on hover has to be dismissible.
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.folio-address-hint')).toHaveCount(0);
+  });
+
+  test('shows no hint over blank space', async ({ page }) => {
+    await hoverAt(page, ADDRESSES.email.x + 30, ADDRESSES.email.y + 5);
+    await expect(page.locator('.folio-address-hint')).toBeVisible();
+
+    await hoverAt(page, 350, 540);
+    await expect(page.locator('.folio-address-hint')).toHaveCount(0);
   });
 
   test('offers nothing to copy on blank space', async ({ page }) => {

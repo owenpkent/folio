@@ -4,7 +4,7 @@ import { announce } from '@/a11y/announcer';
 import { getEngine } from '@/core/pdf';
 import { primePageSizeEstimate, subscribePageSizes } from '@/core/pdf/pageSizes';
 import { useContextMenu } from '@/features/contextmenu';
-import { copyTargetAt } from '@/features/links';
+import { AddressHint, copyTargetAt, useTrackAddressHover } from '@/features/links';
 import { watchDevicePixelRatio } from '@/hooks/watchDevicePixelRatio';
 import { focusViewer, setViewerElement } from '@/state/viewerElement';
 import { MAX_SCALE, MIN_SCALE, useViewerStore } from '@/state/viewerStore';
@@ -35,6 +35,9 @@ export function PdfViewer() {
   const handMode = useViewerStore((s) => s.handMode);
   const autoScroll = useViewerStore((s) => s.autoScroll);
   const openContextMenu = useContextMenu((s) => s.openMenu);
+  // Hand mode turns every drag into a pan, so a hint chasing the pointer there
+  // is noise on top of a gesture that is not about the text.
+  const addressHover = useTrackAddressHover(scale, !handMode);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const naturalRef = useRef<{ width: number; height: number } | null>(null);
@@ -387,8 +390,8 @@ export function PdfViewer() {
     // Resolved before the menu opens rather than after, so the rows do not pop
     // in under a cursor already moving toward them. Everything it reads is
     // cached per page, and it never throws.
-    void copyTargetAt(pageNumber, cssX, cssY, scale).then((address) => {
-      openContextMenu(e.clientX, e.clientY, selectionText, address);
+    void copyTargetAt(pageNumber, cssX, cssY, scale).then((hit) => {
+      openContextMenu(e.clientX, e.clientY, selectionText, hit?.target ?? null);
     });
   };
 
@@ -410,7 +413,11 @@ export function PdfViewer() {
       aria-busy={status === 'loading'}
       onMouseDownCapture={onMouseDownCapture}
       onPointerDown={onPanStart}
-      onPointerMove={onPanMove}
+      onPointerMove={(e) => {
+        onPanMove(e);
+        addressHover.onPointerMove(e);
+      }}
+      onPointerLeave={addressHover.onPointerLeave}
       onPointerUp={onPanEnd}
       onLostPointerCapture={onPanEnd}
       onContextMenu={onContextMenu}
@@ -424,6 +431,7 @@ export function PdfViewer() {
         {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNumber) => (
           <Page key={`${fingerprint}-${pageNumber}`} pageNumber={pageNumber} scale={scale} />
         ))}
+        <AddressHint />
       </div>
     </div>
   );

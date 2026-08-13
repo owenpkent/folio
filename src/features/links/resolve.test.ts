@@ -6,6 +6,7 @@ import {
   pickLink,
   pickTextItem,
   targetFromLink,
+  targetFromOcr,
   targetFromText,
   type TextItemLike,
 } from './resolve';
@@ -90,7 +91,7 @@ describe('pickTextItem', () => {
 describe('targetFromText', () => {
   it('finds an address inside a single item', () => {
     const items = [item('Write to owen@example.com today', 10, 100)];
-    expect(targetFromText(items, 60, 104)).toEqual({
+    expect(targetFromText(items, 60, 104)?.target).toEqual({
       kind: 'email',
       value: 'owen@example.com',
       source: 'text',
@@ -110,14 +111,14 @@ describe('targetFromText', () => {
     const items = [item(text, 0, 100)];
     const [x0, x1] = [0, text.length * 5];
 
-    expect(targetFromText(items, x0 + 5, 104)?.value).toBe('a@one.com');
-    expect(targetFromText(items, x1 - 5, 104)?.value).toBe('b@two.com');
+    expect(targetFromText(items, x0 + 5, 104)?.target.value).toBe('a@one.com');
+    expect(targetFromText(items, x1 - 5, 104)?.target.value).toBe('b@two.com');
   });
 
   it('joins an address PDF.js split across touching items', () => {
     // 5 units per character, so "owen@" ends exactly where "example.com" starts.
     const items = [item('owen@', 10, 100), item('example.com', 35, 100)];
-    expect(targetFromText(items, 40, 104)).toEqual({
+    expect(targetFromText(items, 40, 104)?.target).toEqual({
       kind: 'email',
       value: 'owen@example.com',
       source: 'text',
@@ -137,6 +138,71 @@ describe('targetFromText', () => {
 
   it('still finds the address when the point is on the second half of a split', () => {
     const items = [item('owen@', 10, 100), item('example.com', 35, 100)];
-    expect(targetFromText(items, 80, 104)?.value).toBe('owen@example.com');
+    expect(targetFromText(items, 80, 104)?.target.value).toBe('owen@example.com');
+  });
+});
+
+describe('targetFromText: the box it reports', () => {
+  it('covers the address, not the whole line it sits on', () => {
+    // "Write to " is 9 characters of a 31-character item starting at x=10 and
+    // 155 wide, so the address starts 45 units in and runs to the end.
+    const items = [item('Write to owen@example.com', 10, 100)];
+    const rect = targetFromText(items, 60, 104)!.rect;
+
+    expect(rect[0]).toBeCloseTo(10 + 9 * 5);
+    expect(rect[2]).toBeCloseTo(10 + 25 * 5);
+  });
+
+  it('spans every item a split address covers', () => {
+    const items = [item('owen@', 10, 100), item('example.com', 35, 100)];
+    const rect = targetFromText(items, 40, 104)!.rect;
+
+    expect(rect[0]).toBeCloseTo(10);
+    expect(rect[2]).toBeCloseTo(35 + 11 * 5);
+  });
+
+  it('stays inside the line vertically', () => {
+    const items = [item('owen@example.com', 10, 100)];
+    const [, y0, , y1] = targetFromText(items, 40, 104)!.rect;
+
+    expect(y0).toBeCloseTo(98);
+    expect(y1).toBeCloseTo(110);
+  });
+});
+
+describe('targetFromOcr', () => {
+  const word = (text: string, x: number, y: number, width = 0.2, height = 0.03) => ({
+    text,
+    rect: { x, y, width, height },
+  });
+
+  it('finds an address in a recognised word', () => {
+    const words = [word('owen@example.com', 0.1, 0.2)];
+    expect(targetFromOcr(words, 0.15, 0.21)).toEqual({
+      target: { kind: 'email', value: 'owen@example.com', source: 'ocr' },
+      rect: { x: 0.1, y: 0.2, width: 0.2, height: 0.03 },
+    });
+  });
+
+  it('finds nothing outside every word', () => {
+    expect(targetFromOcr([word('owen@example.com', 0.1, 0.2)], 0.8, 0.8)).toBeNull();
+  });
+
+  it('ignores a word that is not an address', () => {
+    expect(targetFromOcr([word('invoice', 0.1, 0.2)], 0.15, 0.21)).toBeNull();
+  });
+
+  it('strips the punctuation a recogniser leaves attached', () => {
+    expect(targetFromOcr([word('(owen@example.com)', 0.1, 0.2)], 0.15, 0.21)?.target.value).toBe(
+      'owen@example.com',
+    );
+  });
+
+  it('prefers the smaller word where two overlap', () => {
+    const words = [
+      word('a@big.com', 0.1, 0.2, 0.5, 0.1),
+      word('b@small.com', 0.2, 0.22, 0.1, 0.02),
+    ];
+    expect(targetFromOcr(words, 0.25, 0.23)?.target.value).toBe('b@small.com');
   });
 });

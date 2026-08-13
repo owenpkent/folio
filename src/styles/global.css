@@ -786,6 +786,38 @@ kbd {
   align-items: center;
   gap: 20px;
   min-height: min-content;
+  /* The address hint positions itself against this box. */
+  position: relative;
+}
+/* Highlight over the email or web address under the pointer, marking it as
+   something the right-click menu will offer to copy. Never captures the
+   pointer: it sits over the text layer, and swallowing events here would break
+   selecting the very text it is drawing attention to. */
+.folio-address-hint {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  border-bottom: 2px solid var(--folio-accent);
+  background: color-mix(in srgb, var(--folio-accent) 14%, transparent);
+  border-radius: 2px;
+}
+/* The target itself, under the address. Anchored rather than following the
+   pointer so it can be moved onto without vanishing (WCAG 2.2 SC 1.4.13). */
+.folio-address-hint__label {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  max-width: 46ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--folio-border);
+  background: var(--folio-surface);
+  color: var(--folio-text);
+  font-size: 0.8rem;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
 }
 .folio-page {
   position: relative;

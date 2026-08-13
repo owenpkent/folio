@@ -1,0 +1,42 @@
+import { useEffect } from 'react';
+
+import { useAddressHover } from './hoverStore';
+
+/**
+ * The highlight over an address the pointer is on, with its target underneath.
+ *
+ * `aria-hidden` on purpose: there is no keyboard or screen-reader route to it
+ * (a hover cannot be triggered without a pointer), and everything it says is
+ * repeated in the context menu row, which is where assistive technology meets
+ * this feature. Announcing a thing no AT user can summon would be noise.
+ *
+ * Anchored under the address rather than following the pointer, so it can be
+ * moved onto without vanishing, and dismissible with Escape: WCAG 2.2 SC 1.4.13.
+ */
+export function AddressHint() {
+  const hit = useAddressHover((s) => s.hit);
+  const box = useAddressHover((s) => s.box);
+  const dismissed = useAddressHover((s) => s.dismissed);
+  const dismiss = useAddressHover((s) => s.dismiss);
+
+  useEffect(() => {
+    if (!hit || dismissed) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') dismiss();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [hit, dismissed, dismiss]);
+
+  if (!hit || !box || dismissed) return null;
+
+  return (
+    <div
+      className="folio-address-hint"
+      aria-hidden="true"
+      style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
+    >
+      <span className="folio-address-hint__label">{hit.target.value}</span>
+    </div>
+  );
+}

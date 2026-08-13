@@ -124,6 +124,8 @@ export class PdfJsEngine implements PdfEngine {
     page.cleanup();
   });
   private textCache = new LruMap<number, string>(TEXT_CACHE_LIMIT);
+  /** Tiny per page, and hovering an address samples this on every frame. */
+  private linkCache = new LruMap<number, PageLink[]>(TEXT_CACHE_LIMIT);
   private textItemsCache = new LruMap<number, PageTextItems>(TEXT_ITEMS_CACHE_LIMIT);
   private readonly linkService = createLinkService();
 
@@ -159,6 +161,7 @@ export class PdfJsEngine implements PdfEngine {
   async closeDocument(): Promise<void> {
     this.pageCache.clear();
     this.textCache.clear();
+    this.linkCache.clear();
     this.textItemsCache.clear();
     this.doc = null;
     if (this.loadingTask) {
@@ -403,6 +406,9 @@ export class PdfJsEngine implements PdfEngine {
   }
 
   async getPageLinks(pageNumber: number): Promise<PageLink[]> {
+    const cached = this.linkCache.get(pageNumber);
+    if (cached) return cached;
+
     const page = await this.getPage(pageNumber);
     const annotations = await page.getAnnotations({ intent: 'display' });
 
@@ -416,6 +422,7 @@ export class PdfJsEngine implements PdfEngine {
       if (!Array.isArray(rect) || rect.length !== 4) continue;
       links.push({ url: annotation.url, rect: [rect[0], rect[1], rect[2], rect[3]] });
     }
+    this.linkCache.set(pageNumber, links);
     return links;
   }
 
