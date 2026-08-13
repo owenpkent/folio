@@ -329,7 +329,16 @@ Install the app first (the `.pdf` association is written by the installer, not b
 `tauri dev`), then:
 
 - **Appears as a handler:** right-click any `.pdf` -> *Open with* -> *Choose
-  another app*. **Folio** should be listed.
+  another app*. **Folio** should be listed, under that name -- not under the
+  file-type description ("Portable Document Format document"). This is the check
+  that fails when the installer's `OpenWithProgids` /
+  `Applications\folio.exe` registration is missing; see
+  `src-tauri/installer.nsh`.
+- **Browser download:** with Folio set as the `.pdf` default, download a PDF in
+  Chrome and click it in the downloads bubble. It opens in Folio. Note that this
+  exercises nothing Folio-specific -- Chrome just calls `ShellExecute`, so it
+  passes or fails purely on the Windows default -- but it is the path users
+  actually report on.
 - **Cold start:** with Folio closed, double-click a `.pdf` (or
   `Start-Process folio-set-default.pdf`). Folio launches **and renders that
   document**, not the empty state.
