@@ -4,6 +4,7 @@ import { announce } from '@/a11y/announcer';
 import { getEngine } from '@/core/pdf';
 import { primePageSizeEstimate, subscribePageSizes } from '@/core/pdf/pageSizes';
 import { useContextMenu } from '@/features/contextmenu';
+import { copyTargetAt } from '@/features/links';
 import { watchDevicePixelRatio } from '@/hooks/watchDevicePixelRatio';
 import { focusViewer, setViewerElement } from '@/state/viewerElement';
 import { MAX_SCALE, MIN_SCALE, useViewerStore } from '@/state/viewerStore';
@@ -370,7 +371,25 @@ export function PdfViewer() {
     }
     e.preventDefault();
     const selectionText = window.getSelection()?.toString() ?? '';
-    openContextMenu(e.clientX, e.clientY, selectionText);
+
+    // Where the click landed on the page, in the page element's own CSS pixels,
+    // which is what the viewport converts into PDF user space.
+    const pageEl = target.closest<HTMLElement>('.folio-page');
+    const pageNumber = Number(pageEl?.dataset.pageNumber ?? 0);
+    if (!pageEl || !pageNumber) {
+      openContextMenu(e.clientX, e.clientY, selectionText);
+      return;
+    }
+
+    const box = pageEl.getBoundingClientRect();
+    const cssX = e.clientX - box.left;
+    const cssY = e.clientY - box.top;
+    // Resolved before the menu opens rather than after, so the rows do not pop
+    // in under a cursor already moving toward them. Everything it reads is
+    // cached per page, and it never throws.
+    void copyTargetAt(pageNumber, cssX, cssY, scale).then((address) => {
+      openContextMenu(e.clientX, e.clientY, selectionText, address);
+    });
   };
 
   if (status === 'empty') return <EmptyState />;

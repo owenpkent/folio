@@ -153,14 +153,16 @@ start and sharing one would delete the exports CI feeds to veraPDF.
 
 `e2e/global-setup.ts` generates the fixtures with pdf-lib and writes them to
 `e2e/fixtures/` (gitignored, regenerated each run). Nothing binary is committed.
-There are two: `form.pdf`, a two-page PDF with an empty fillable text field, a
-checkbox, and a radio group, and `filled-form.pdf`, a single page whose only
-content is three text fields that already hold values. The latter is
+There are three: `form.pdf`, a two-page PDF with an empty fillable text field, a
+checkbox, and a radio group; `filled-form.pdf`, a single page whose only
+content is three text fields that already hold values; and `addresses.pdf`, a
+page carrying an email address, a web address, and a `/Link` annotation whose
+declared target is deliberately nothing like the words printed over it. The latter is
 deliberately otherwise blank, so any ink on the rendered canvas is a form
 widget that should have been left to the annotation layer, which is what makes
 the doubled-text assertion below possible.
 
-There are seven specs.
+There are eight specs.
 
 **`e2e/smoke.spec.ts`** covers the core document flows:
 
@@ -237,6 +239,14 @@ signature does the same with its aspect ratio locked, and two guards that matter
 more than the happy path -- arrows *inside* a text box move the caret rather than
 the box, and a nudge key moves the item **without** also scrolling the document
 out from under it.
+
+**`e2e/links.spec.ts`** — copying an email or web address from the right-click
+menu, asserted against the real clipboard rather than the announcement alone.
+The one that matters most is the `/Link` annotation case: the menu has to show
+and copy the target the document declared, not the "Click here for details"
+printed over it. It aims its right-clicks through PDF user-space geometry rather
+than at a text-layer span, so it measures the hit test rather than how PDF.js
+happens to lay its spans out.
 
 ### Tests that pin silent failures
 

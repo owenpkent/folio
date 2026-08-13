@@ -17,6 +17,7 @@ import type {
   OutlineNode,
   PageDimensions,
   PageImage,
+  PageLink,
   PdfDocumentInfo,
   PdfMetadata,
   RenderLayerOptions,
@@ -90,6 +91,14 @@ interface RawOutlineItem {
   title: string;
   dest: string | unknown[] | null;
   items?: RawOutlineItem[];
+}
+
+/** The parts of a PDF.js annotation a link needs, typed the same loose way. */
+interface RawLinkAnnotation {
+  subtype?: string;
+  /** Present only when PDF.js accepted the target's protocol. */
+  url?: string;
+  rect?: number[];
 }
 
 /** The PDF.js-backed {@link PdfEngine}. */
@@ -391,6 +400,23 @@ export class PdfJsEngine implements PdfEngine {
     const result: PageTextItems = { items, styles };
     this.textItemsCache.set(pageNumber, result);
     return result;
+  }
+
+  async getPageLinks(pageNumber: number): Promise<PageLink[]> {
+    const page = await this.getPage(pageNumber);
+    const annotations = await page.getAnnotations({ intent: 'display' });
+
+    const links: PageLink[] = [];
+    for (const annotation of annotations as RawLinkAnnotation[]) {
+      // `url` is set only when PDF.js's own protocol allow-list accepted the
+      // action's target; `unsafeUrl` is the document's unchecked original and is
+      // deliberately never read here. An internal /GoTo link has neither.
+      if (annotation.subtype !== 'Link' || !annotation.url) continue;
+      const rect = annotation.rect;
+      if (!Array.isArray(rect) || rect.length !== 4) continue;
+      links.push({ url: annotation.url, rect: [rect[0], rect[1], rect[2], rect[3]] });
+    }
+    return links;
   }
 
   async getOutline(): Promise<OutlineNode[]> {

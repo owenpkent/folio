@@ -425,6 +425,21 @@ kbd {
 }
 .folio-context-menu__label {
   flex: 1;
+  min-width: 0;
+}
+/* The address a copy row will act on, shown under its label so the user sees
+   what they are copying: a document's link is free to point somewhere its
+   visible text does not admit to. Truncated rather than wrapped, with the whole
+   thing on the row's title attribute, so one long URL cannot stretch the menu
+   across the window. */
+.folio-context-menu__detail {
+  display: block;
+  max-width: 26ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--folio-text-muted);
+  font-size: 0.8rem;
 }
 .folio-context-menu__check {
   display: inline-flex;

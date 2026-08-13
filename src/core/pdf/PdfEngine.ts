@@ -5,6 +5,7 @@ import type {
   OutlineNode,
   PageDimensions,
   PageImage,
+  PageLink,
   PdfDocumentInfo,
   PdfMetadata,
   RenderLayerOptions,
@@ -111,6 +112,13 @@ export interface PdfEngine {
    * Cached like {@link getPageText}.
    */
   getTextItems(pageNumber: number): Promise<PageTextItems>;
+
+  /**
+   * The page's `/Link` annotations that point at an external target, with their
+   * rectangles in PDF user space so a click or a right-click can be hit-tested
+   * against them. See {@link PageLink}.
+   */
+  getPageLinks(pageNumber: number): Promise<PageLink[]>;
 
   /** The document outline / bookmarks, flattened to a tree of {@link OutlineNode}. */
   getOutline(): Promise<OutlineNode[]>;

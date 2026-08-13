@@ -10,6 +10,63 @@ import { PDFDocument, PDFName, PDFString, StandardFonts } from 'pdf-lib';
 export default async function globalSetup(): Promise<void> {
   await writeFixture('e2e/fixtures/form.pdf', await buildEmptyForm());
   await writeFixture('e2e/fixtures/filled-form.pdf', await buildFilledForm());
+  await writeFixture('e2e/fixtures/addresses.pdf', await buildAddresses());
+}
+
+/** The page size every address in {@link buildAddresses} is positioned against. */
+export const ADDRESSES_PAGE = { width: 420, height: 594 };
+
+/**
+ * Where each thing sits, in PDF user space, so the spec can aim a right-click
+ * at it without depending on the text layer being laid out.
+ */
+export const ADDRESSES = {
+  email: { text: 'owen@example.com', x: 60, y: 500 },
+  url: { text: 'www.example.com', x: 60, y: 460 },
+  /** A real /Link annotation whose target is not what the page prints over it. */
+  link: {
+    text: 'Click here for details',
+    x: 60,
+    y: 400,
+    rect: [58, 394, 240, 414] as const,
+    target: 'https://declared.example.com/real-target',
+  },
+};
+
+/**
+ * A page carrying an email address, a web address, and a `/Link` annotation.
+ *
+ * The link's visible text says nothing about where it goes, which is the case
+ * the copy row exists to make legible: the menu shows the declared target, not
+ * the words printed over it.
+ */
+async function buildAddresses(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const page = doc.addPage([ADDRESSES_PAGE.width, ADDRESSES_PAGE.height]);
+
+  for (const entry of [ADDRESSES.email, ADDRESSES.url, ADDRESSES.link]) {
+    page.drawText(entry.text, { x: entry.x, y: entry.y, size: 14, font });
+  }
+
+  const { context } = doc;
+  const annot = context.register(
+    context.obj({
+      Type: 'Annot',
+      Subtype: 'Link',
+      Rect: [...ADDRESSES.link.rect],
+      // No visible border: the point is that nothing on the page says where it goes.
+      Border: [0, 0, 0],
+      A: context.obj({
+        Type: 'Action',
+        S: 'URI',
+        URI: PDFString.of(ADDRESSES.link.target),
+      }),
+    }),
+  );
+  page.node.set(PDFName.of('Annots'), context.obj([annot]));
+
+  return doc.save();
 }
 
 async function writeFixture(path: string, bytes: Uint8Array): Promise<void> {

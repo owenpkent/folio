@@ -6,6 +6,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Copy an email or web address from the right-click menu.** Right-clicking an
+  address in a page offers **Copy email address** or **Copy link address**
+  instead of making you drag-select it across the text layer and hope you caught
+  the right characters. Two sources feed it: addresses printed in the page text,
+  and the `/Link` annotations an author embedded. The annotation wins where they
+  disagree, since that is the target a click would follow.
+  The menu shows the target on a second line, not just the action, because a
+  document can print "Click here for details" over a link pointing anywhere; that
+  line is the one moment a reader can see the difference. Nothing is opened, only
+  copied, so this adds no way for a document to trigger outbound navigation.
+  Detection is conservative on purpose (a scheme, a `www.`, or a well-known
+  suffix), so "Fig.2", "version 1.2.3" and "report.pdf" are left alone, and an
+  address PDF.js split across two text runs is rejoined only when the two
+  visually touch, so "visit" and "example.com" never become one.
+
 ## [0.5.0] - 2026-08-01
 
 ### Added
