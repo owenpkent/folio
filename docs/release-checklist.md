@@ -59,6 +59,13 @@ On the EV-cert Windows host:
 - [ ] `npx tauri build` produces `Folio_<ver>_x64-setup.exe` and a matching `Folio_<ver>_x64-setup.exe.sig` in `src-tauri/target/release/bundle/nsis/`. Sidecars only appear when `TAURI_SIGNING_PRIVATE_KEY[_PASSWORD]` are set; if missing, the build **fails** because `bundle.createUpdaterArtifacts` is `true`.
 - [ ] EV signature is valid: `Get-AuthenticodeSignature <exe> | Format-List Status, SignerCertificate` shows `Status: Valid`, signer `CN=OK Studio Inc.` (or `signtool verify /pa /v <exe>`)
 - [ ] `release/latest.json` `signature` for `windows-x86_64` matches the contents of `Folio_<ver>_x64-setup.exe.sig`, and `pub_date` is the current UTC time
+- [ ] File association survived the build. Install the bundle, then confirm the keys [`src-tauri/installer.nsh`](../src-tauri/installer.nsh) writes are present — they are easy to lose silently, because Tauri regenerates the NSIS script on every build and nothing fails if the hook stops being applied:
+      ```powershell
+      (Get-Item "HKCU:\Software\Classes\.pdf\OpenWithProgids").Property        # includes "PDF Document"
+      (Get-ItemProperty "HKCU:\Software\Classes\Applications\folio.exe").FriendlyAppName   # "Folio"
+      (Get-ItemProperty "HKCU:\Software\RegisteredApplications").Folio         # "Software\Folio\Capabilities"
+      ```
+      Then right-click any `.pdf` → *Open with* → *Choose another app*: **Folio** is listed, under that name. See `docs/testing.md` → *Default PDF viewer*.
 
 ---
 
