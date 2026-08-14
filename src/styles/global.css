@@ -1671,6 +1671,14 @@ kbd {
   gap: 2px;
   flex-shrink: 0;
 }
+.folio-combine-progress {
+  margin-top: 8px;
+}
+.folio-combine-progress p {
+  margin: 0 0 4px;
+  font-size: 0.8125rem;
+  color: var(--folio-text-muted);
+}
 .folio-modal__error {
   margin: 8px 0 0;
   color: var(--folio-danger);

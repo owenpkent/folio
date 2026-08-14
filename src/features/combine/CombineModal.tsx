@@ -82,6 +82,11 @@ export function CombineModal() {
   const canCombine = files.length >= 2 && !busy && !hasBlockingFile;
   const stopping = busy && cancelRequested;
   const pct = progress.total ? Math.round((progress.current / progress.total) * 100) : 0;
+  const progressText = stopping
+    ? 'Stopping…'
+    : progress.total
+      ? `Combining ${Math.min(progress.current, progress.total)} of ${progress.total}…`
+      : 'Combining…';
 
   const handleAddFiles = () => {
     void addFilesViaPicker().then((count) => {
@@ -201,17 +206,15 @@ export function CombineModal() {
 
           {busy && (
             <div className="folio-combine-progress">
+              {/* Same text shown twice, once visible and once for a live
+                  region: a status update inside a live region is not
+                  guaranteed to be read as soon as it changes, and the
+                  progressbar's own aria-valuenow updates too fast to
+                  announce every step, so sighted and screen-reader users get
+                  the same words either way. */}
+              <p aria-hidden="true">{progressText}</p>
               <p className="folio-sr-only" aria-live="polite">
-                {stopping
-                  ? 'Stopping…'
-                  : progress.total
-                    ? `Combining ${Math.min(progress.current, progress.total)} of ${progress.total}…`
-                    : 'Combining…'}
-              </p>
-              <p aria-hidden="true">
-                {progress.total
-                  ? `Combining ${Math.min(progress.current, progress.total)} of ${progress.total}…`
-                  : 'Combining…'}
+                {progressText}
               </p>
               <div
                 className="folio-ocr-progress"
