@@ -73,6 +73,14 @@ if (manifest.options_ui?.page !== 'options.html') {
     `  options_ui.page is ${JSON.stringify(manifest.options_ui?.page ?? null)}, expected "options.html"`,
   );
 }
+// Rule 2's declarativeNetRequest responseHeaders condition needs Chrome 128+;
+// without this floor the Web Store would install the extension somewhere
+// updateDynamicRules rejects that rule outright (see background.js).
+if (manifest.minimum_chrome_version !== '128') {
+  problems.push(
+    `  minimum_chrome_version is ${JSON.stringify(manifest.minimum_chrome_version ?? null)}, expected "128"`,
+  );
+}
 
 // Every extension_pages CSP directive is pinned, not just script-src: a page
 // that frames the viewer and reads load success/failure as an oracle is the

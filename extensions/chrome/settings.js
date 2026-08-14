@@ -23,23 +23,42 @@ export const DEFAULTS = Object.freeze({
  * Reduce user input to a bare hostname, or null if there isn't one.
  * Accepts what people actually type: `example.com`, `www.example.com/docs`,
  * `https://example.com`, and tolerates surrounding whitespace.
+ *
+ * A leading `*.` (or bare `*`) is stripped rather than rejected: it is how
+ * people spell "cover subdomains", which `excludedRequestDomains` already
+ * does for the bare host (see `buildRules` in rules.js), so `*.example.com`
+ * and `example.com` mean the same thing here. Passed through unchanged,
+ * `new URL('https://*.example.com')` parses fine and returns the literal
+ * asterisk in `hostname` -- declarativeNetRequest then rejects the
+ * non-canonical domain at `updateDynamicRules` time, which is a rejection
+ * this module's caller has no reason to expect from typing the obvious thing
+ * into a "sites to leave alone" box. Any other `*` (there is no wildcard
+ * syntax `excludedRequestDomains` accepts) is refused outright, the same as
+ * any other unparseable host.
  */
 export function normalizeHost(input) {
-  const trimmed = String(input ?? '').trim();
+  const trimmed = String(input ?? '').trim().replace(/^\*\.?/, '');
   if (!trimmed) return null;
   const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
   try {
     const { hostname } = new URL(withScheme);
-    return hostname.toLowerCase() || null;
+    return hostname && !hostname.includes('*') ? hostname.toLowerCase() : null;
   } catch {
     return null;
   }
 }
 
-/** One host per line, blanks and unparseable lines dropped, de-duplicated. */
+/** Comfortably under chrome.storage.sync's 8 KB per-item quota even at the
+ * longest realistic hostnames, with headroom for JSON's per-entry overhead. */
+const MAX_EXCLUDED_SITES = 200;
+
+/** One host per line, blanks and unparseable lines dropped, de-duplicated,
+ * capped at MAX_EXCLUDED_SITES so a large paste cannot by itself exceed the
+ * storage quota `saveSettings` writes into (see storage.js). */
 export function parseSiteList(text) {
   const seen = new Set();
   for (const line of String(text ?? '').split(/[\r\n,]+/)) {
+    if (seen.size >= MAX_EXCLUDED_SITES) break;
     const host = normalizeHost(line);
     if (host) seen.add(host);
   }

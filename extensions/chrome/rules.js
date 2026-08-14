@@ -30,16 +30,44 @@ import { DEFAULTS, normalizeSettings, shouldIntercept } from './settings.js';
 export const RULE_IDS = Object.freeze({ PDF_URL: 1, PDF_CONTENT_TYPE: 2 });
 
 /**
- * URLs whose path ends in `.pdf`, with an optional query string.
- * `[^?#]*` keeps the `.pdf` test on the path, so `/page?doc=x.pdf` is not a hit.
+ * URLs whose path ends in `.pdf`, with an optional query string and an
+ * optional fragment. `[^?#]*` keeps the `.pdf` test on the path, so
+ * `/page?doc=x.pdf` is not a hit. The trailing `(#.*)?` matters only to
+ * `isPdfUrl` below, not to the declarativeNetRequest rule this regex also
+ * feeds: DNR matches the request as it goes over the wire, which never
+ * carries a fragment, so the rule condition sees no difference. `tabs.Tab.url`
+ * does keep the fragment, though (the standard Adobe deep-link form is
+ * `report.pdf#page=3`), and without this a real .pdf URL with a page anchor
+ * failed the toolbar button's and the context menu's own PDF-shape check.
  */
-export const PDF_URL_REGEX = '^https?://[^?#]*\\.pdf(\\?[^#]*)?$';
+export const PDF_URL_REGEX = '^https?://[^?#]*\\.pdf(\\?[^#]*)?(#.*)?$';
 
 /** Any http(s) navigation. Rule 2 leans on its response-header condition to narrow. */
 const ANY_HTTP_REGEX = '^https?://.*';
 
 /** Content types we treat as a PDF. Trailing `*` absorbs `; charset=...`. */
 const PDF_CONTENT_TYPES = ['application/pdf*', 'application/x-pdf*'];
+
+/**
+ * Chrome's contextMenus match patterns compare the path byte-for-byte, with
+ * no case-insensitive option -- unlike declarativeNetRequest's
+ * `isUrlFilterCaseSensitive: false` below, or `isPdfUrl`'s `i` flag (which
+ * `rules.test.js` exercises against `a.PDF`). Left as a single literal
+ * `*.pdf`, a link to `Report.PDF` would be redirected and recognised by the
+ * toolbar button, but never earn a right-click "Open in Folio (desktop)"
+ * entry. Expanding to every case permutation of the extension is the only way
+ * a match pattern can be case-insensitive.
+ */
+function caseVariants(literal) {
+  return [...literal].reduce(
+    (variants, ch) => variants.flatMap((prefix) => [prefix + ch.toLowerCase(), prefix + ch.toUpperCase()]),
+    [''],
+  );
+}
+
+// The link/page match patterns, in every casing of the extension: e.g.
+// "*://*/*.pdf" and "*://*/*.pdf?*", then the same pair for "PDF", "Pdf", ...
+export const PDF_MENU_PATTERNS = caseVariants('pdf').flatMap((ext) => [`*://*/*.${ext}`, `*://*/*.${ext}?*`]);
 
 /**
  * Build the redirect target. The matched URL is substituted verbatim by `\0`
@@ -62,12 +90,15 @@ function redirectTo(viewerUrl) {
  * loop is not reachable either.
  */
 export function buildRules(viewerUrl, settings = DEFAULTS) {
-  const { excludedSites } = normalizeSettings(settings);
+  // Normalized once and reused, rather than letting shouldIntercept below
+  // normalize the same raw settings a second time.
+  const normalized = normalizeSettings(settings);
+  const { excludedSites } = normalized;
 
   // Off, or desktop-hand-off-only: install nothing. An empty rule set is how
   // the user turns interception off, rather than leaving rules in place and
   // second-guessing them at redirect time.
-  if (!shouldIntercept(settings)) return [];
+  if (!shouldIntercept(normalized)) return [];
 
   // `excludedRequestDomains` covers subdomains, which is what a user typing
   // "example.com" into the exclusion list means. Omitted entirely when empty:
@@ -83,6 +114,12 @@ export function buildRules(viewerUrl, settings = DEFAULTS) {
         regexFilter: PDF_URL_REGEX,
         isUrlFilterCaseSensitive: false,
         resourceTypes: ['main_frame'],
+        // A PDF returned from a POST (a generated report, a search result)
+        // has no body to resend: the viewer's plain fetch of the redirect
+        // target would re-request it with no method and no body, and a
+        // POST-only endpoint answers 404/405 to that. Redirecting only a GET
+        // navigation leaves the response to render normally instead.
+        requestMethods: ['get'],
         ...excluded,
       },
     },
@@ -94,6 +131,7 @@ export function buildRules(viewerUrl, settings = DEFAULTS) {
         regexFilter: ANY_HTTP_REGEX,
         isUrlFilterCaseSensitive: false,
         resourceTypes: ['main_frame'],
+        requestMethods: ['get'],
         ...excluded,
         responseHeaders: [{ header: 'content-type', values: PDF_CONTENT_TYPES }],
         // A server that asked for a download gets its download.
@@ -115,9 +153,15 @@ export function buildRules(viewerUrl, settings = DEFAULTS) {
   ];
 }
 
+// Compiled once at module scope rather than on every call: isPdfUrl runs on
+// the tabs.onUpdated hot path (background.js re-checks the active tab on
+// every URL change), and a `new RegExp` per keystroke-adjacent event is
+// avoidable work for a pattern that never changes.
+const PDF_URL_PATTERN = new RegExp(PDF_URL_REGEX, 'i');
+
 /** Does this URL look like a PDF from its path alone? Mirrors rule 1. */
 export function isPdfUrl(url) {
-  return new RegExp(PDF_URL_REGEX, 'i').test(url ?? '');
+  return PDF_URL_PATTERN.test(url ?? '');
 }
 
 /**

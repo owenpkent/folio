@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  PDF_MENU_PATTERNS,
   RULE_IDS,
   buildRules,
   handoffUrlForTab,
@@ -22,6 +23,14 @@ describe('isPdfUrl', () => {
   it('does not match a .pdf that only appears in the query string', () => {
     // Rule 1 must not claim this: the path is a page, not a document.
     expect(isPdfUrl('https://example.com/view?doc=a.pdf')).toBe(false);
+  });
+
+  it('matches a .pdf URL carrying a fragment', () => {
+    // tabs.Tab.url keeps the fragment; the standard Adobe deep-link form
+    // (report.pdf#page=3) must still be recognised as a PDF, or the toolbar
+    // button stays disabled and the page context-menu entry never appears.
+    expect(isPdfUrl('https://example.com/report.pdf#page=3')).toBe(true);
+    expect(isPdfUrl('https://example.com/a.pdf?v=2#page=3')).toBe(true);
   });
 
   it('does not match non-http schemes or the viewer itself', () => {
@@ -76,6 +85,15 @@ describe('buildRules', () => {
   it('never matches the viewer origin, so a redirect loop is unreachable', () => {
     for (const rule of rules) {
       expect(new RegExp(rule.condition.regexFilter, 'i').test(VIEWER)).toBe(false);
+    }
+  });
+
+  it('only redirects a GET, so a POST-returned PDF is not re-requested', () => {
+    // The viewer's fetch of the redirect target has no method and no body:
+    // a PDF a POST generated (a report, a search result) would 404/405
+    // instead of rendering if this were not restricted to GET.
+    for (const rule of rules) {
+      expect(rule.condition.requestMethods).toEqual(['get']);
     }
   });
 });
@@ -141,6 +159,38 @@ describe('isHandoffableUrl', () => {
   });
 });
 
+describe('PDF_MENU_PATTERNS', () => {
+  // Chrome's match patterns compare the path byte-for-byte with no
+  // case-insensitive option, unlike isPdfUrl (the `i` flag) and both DNR
+  // rules (isUrlFilterCaseSensitive: false), so the only way a context menu
+  // catches "Report.PDF" is to list every casing of the extension.
+  const matches = (pattern, url) => {
+    // Match patterns use '*' as a wildcard over any characters; translate the
+    // literal parts and reuse RegExp rather than pull in a matcher.
+    const re = new RegExp(`^${pattern.split('*').map((s) => s.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('.*')}$`);
+    return re.test(url);
+  };
+
+  it('covers every casing of the .pdf extension', () => {
+    for (const ext of ['pdf', 'PDF', 'Pdf', 'pDf']) {
+      const url = `https://example.com/report.${ext}`;
+      expect(PDF_MENU_PATTERNS.some((p) => matches(p, url))).toBe(true);
+    }
+  });
+
+  it('covers the extension with a trailing query string', () => {
+    expect(PDF_MENU_PATTERNS.some((p) => matches(p, 'https://example.com/report.PDF?v=2'))).toBe(true);
+  });
+
+  it('is exactly the case permutations of *://*/*.pdf and its ?* form', () => {
+    expect(PDF_MENU_PATTERNS).toHaveLength(16);
+    expect(PDF_MENU_PATTERNS).toContain('*://*/*.pdf');
+    expect(PDF_MENU_PATTERNS).toContain('*://*/*.PDF');
+    expect(PDF_MENU_PATTERNS).toContain('*://*/*.pdf?*');
+    expect(PDF_MENU_PATTERNS).toContain('*://*/*.PDF?*');
+  });
+});
+
 describe('handoffUrlForTab', () => {
   it('refuses a hostile scheme parked in the viewer fragment', () => {
     // A page can navigate the user to the viewer with any fragment it likes and
@@ -157,6 +207,14 @@ describe('handoffUrlForTab', () => {
 
   it('falls back to the tab URL when the PDF was not intercepted', () => {
     expect(handoffUrlForTab('https://example.com/a.pdf', VIEWER)).toBe('https://example.com/a.pdf');
+  });
+
+  it('recognises a .pdf tab URL carrying a fragment', () => {
+    // chrome.tabs.Tab.url keeps the fragment; the standard Adobe deep-link
+    // form must still enable the toolbar button.
+    expect(handoffUrlForTab('https://example.com/report.pdf#page=3', VIEWER)).toBe(
+      'https://example.com/report.pdf#page=3',
+    );
   });
 
   it('returns null on an ordinary page, so the toolbar does nothing', () => {

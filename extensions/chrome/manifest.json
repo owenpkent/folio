@@ -4,6 +4,7 @@
   "version": "0.5.0",
   "description": "Open PDFs in Folio's viewer in the browser, or hand off to the Folio desktop app.",
   "icons": { "128": "icons/icon-128.png" },
+  "minimum_chrome_version": "128",
   "permissions": ["contextMenus", "declarativeNetRequest", "storage", "tabs"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js", "type": "module" },

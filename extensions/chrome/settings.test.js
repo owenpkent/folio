@@ -25,6 +25,23 @@ describe('normalizeHost', () => {
     expect(normalizeHost(null)).toBeNull();
     expect(normalizeHost(undefined)).toBeNull();
   });
+
+  it('strips a leading wildcard rather than storing it verbatim', () => {
+    // declarativeNetRequest's excludedRequestDomains already covers
+    // subdomains for the bare host, and rejects a literal "*.example.com" as
+    // a non-canonical domain -- passed through, that failure would only show
+    // up later, at updateDynamicRules time, not at the point the user typed
+    // the obvious thing into the exclusion box.
+    expect(normalizeHost('*.example.com')).toBe('example.com');
+    expect(normalizeHost('*example.com')).toBe('example.com');
+    expect(normalizeHost('*.EXAMPLE.com/path')).toBe('example.com');
+  });
+
+  it('rejects a wildcard that is not just "cover subdomains"', () => {
+    expect(normalizeHost('*')).toBeNull();
+    expect(normalizeHost('**.example.com')).toBeNull();
+    expect(normalizeHost('ex*mple.com')).toBeNull();
+  });
 });
 
 describe('parseSiteList', () => {
@@ -42,6 +59,11 @@ describe('parseSiteList', () => {
   it('survives junk without throwing', () => {
     expect(parseSiteList(null)).toEqual([]);
     expect(parseSiteList('   \n  ')).toEqual([]);
+  });
+
+  it('caps the list so a large paste cannot blow the storage quota', () => {
+    const many = Array.from({ length: 250 }, (_, i) => `site${i}.com`).join('\n');
+    expect(parseSiteList(many)).toHaveLength(200);
   });
 });
 
