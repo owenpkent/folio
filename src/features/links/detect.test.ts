@@ -46,6 +46,16 @@ describe('findAddresses: web addresses', () => {
     expect(kinds('https://example.com')).toEqual(['url']);
   });
 
+  it('accepts a scheme URL whatever the host looks like: a scheme is the whole signal', () => {
+    expect(values('Go to https://example.com:8443/path now')).toEqual([
+      'https://example.com:8443/path',
+    ]);
+    expect(values('See http://intranet/docs for detail')).toEqual(['http://intranet/docs']);
+    expect(values('Reach it at https://192.168.0.1/report')).toEqual([
+      'https://192.168.0.1/report',
+    ]);
+  });
+
   it('finds a www address with no scheme', () => {
     expect(values('Visit www.example.com today')).toEqual(['www.example.com']);
   });
@@ -60,6 +70,20 @@ describe('findAddresses: web addresses', () => {
     expect(values('See Fig.2 and No.4 for detail')).toEqual([]);
     expect(values('the result vs.the baseline')).toEqual([]);
     expect(values('etc.and so on')).toEqual([]);
+  });
+
+  it('leaves two sentences run together alone, even when the next word spells a suffix', () => {
+    // OCR, and a missing space after a full stop generally, routinely produce
+    // this: the next sentence's capitalized first word must not be read as a
+    // domain suffix just because it happens to spell a common TLD.
+    expect(values('Reading the total cost.It was high enough')).toEqual([]);
+    expect(values('See the appendix.At the end of the report')).toEqual([]);
+    expect(values('As we agree.In future we will not')).toEqual([]);
+    expect(values('Ask them.Us employees know better')).toEqual([]);
+    expect(values('File the report.No changes are needed')).toEqual([]);
+    expect(values('Talk to me.Me and my colleague agree')).toEqual([]);
+    expect(values('Let it be.Be that as it may')).toEqual([]);
+    expect(values('Check the price.Info about it is elsewhere')).toEqual([]);
   });
 
   it('drops a full stop that ends the sentence, not the address', () => {

@@ -92,8 +92,24 @@ export function pickLink(links: readonly PageLink[], x: number, y: number): Page
 /** A link annotation as something to copy. */
 export function targetFromLink(link: PageLink): CopyTarget {
   const mail = /^mailto:/i.exec(link.url);
-  return mail
-    ? { kind: 'email', value: link.url.slice(mail[0].length), source: 'annotation' }
+  if (!mail) return { kind: 'url', value: link.url, source: 'annotation' };
+
+  // RFC 6068: everything from the first `?` is headers (subject, body, cc...),
+  // not part of the address, and a mailto may name several recipients
+  // separated by commas -- "Copy email address" means only the first of them.
+  const recipient = link.url.slice(mail[0].length).split('?')[0].split(',')[0];
+  let decoded = recipient;
+  try {
+    decoded = decodeURIComponent(recipient);
+  } catch {
+    // An invalid escape leaves the recipient exactly as printed.
+  }
+
+  const found = findAddresses(decoded)[0];
+  // Anything that does not decode to a bare address is not worth labelling
+  // "email": fall back to the raw target, the same as any other link.
+  return found?.kind === 'email' && found.value === decoded
+    ? { kind: 'email', value: found.value, source: 'annotation' }
     : { kind: 'url', value: link.url, source: 'annotation' };
 }
 
@@ -134,32 +150,28 @@ export function targetFromText(
   const item = items[index];
   const run = joinRun(items, index);
 
-  const found = findAddresses(run.text).filter(
-    (address) => address.end > run.start && address.start < run.end,
-  );
-  if (found.length === 0) return null;
+  // The point has to land ON an address, not merely share a line (or a joined
+  // run) with one. PDF.js usually emits one item per line, so without this a
+  // whole paragraph containing exactly one address anywhere in it would offer
+  // to copy that address from wherever the pointer happened to be.
+  const offset = pointToOffset(run, item, x);
+  const address = addressAt(run.text, offset);
+  if (!address) return null;
 
-  const address = found.length === 1 ? found[0] : nearest(found, run, item, x);
   return {
     target: { kind: address.kind, value: address.value, source: 'text' },
     rect: addressRect(run, address),
   };
 }
 
-/** Whichever of several addresses the point fell nearest, along the item. */
-function nearest(
-  found: readonly DetectedAddress[],
-  run: Run,
-  item: TextItemLike,
-  x: number,
-): DetectedAddress {
+/** Where the point falls along the item, as a character offset into the run's text. */
+function pointToOffset(run: Run, item: TextItemLike, x: number): number {
   const [x0, , x1] = itemBox(item);
   const across = x1 > x0 ? Math.min(1, Math.max(0, (x - x0) / (x1 - x0))) : 0;
-  // Characters are not evenly spaced, so this only ever chooses between
-  // candidates that are already addresses; being a character or two out cannot
-  // change which one is closest.
-  const offset = run.start + Math.round(across * item.str.length);
-  return addressAt(run.text, offset) ?? found[0];
+  // Characters are not evenly spaced, so this is only ever a character or two
+  // out -- enough to land inside the right address when an item holds more
+  // than one, not enough to land inside the wrong one.
+  return run.start + Math.round(across * item.str.length);
 }
 
 interface RunPart {

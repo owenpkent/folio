@@ -77,9 +77,12 @@ const COMMON_SUFFIXES = new Set([
 ]);
 
 const EMAIL = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}$/;
-const SCHEME_URL = /^https?:\/\/[^\s/?#]+\.[A-Za-z]{2,24}(?:[/?#]\S*)?$/i;
+// A scheme alone is the signal: no requirement on what follows, so a port
+// (example.com:8443), an IP host (192.168.0.1), or a single-label host
+// (intranet) all still count.
+const SCHEME_URL = /^https?:\/\/\S+$/i;
 const WWW_URL = /^www\.[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}(?:[/?#]\S*)?$/i;
-const BARE_URL = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.([A-Za-z]{2,24})(?:[/?#]\S*)?$/;
+const BARE_URL = /^([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)\.([A-Za-z]{2,24})(?:[/?#]\S*)?$/;
 
 /** Characters a document wraps an address in, which are not part of it. */
 const OPENERS = '([{<"\'“‘«';
@@ -120,7 +123,20 @@ function classify(text: string): AddressKind | null {
   if (SCHEME_URL.test(text) || WWW_URL.test(text)) return 'url';
 
   const bare = BARE_URL.exec(text);
-  return bare && COMMON_SUFFIXES.has(bare[1].toLowerCase()) ? 'url' : null;
+  if (!bare) return null;
+  const [, domain, suffix] = bare;
+  if (!COMMON_SUFFIXES.has(suffix.toLowerCase())) return null;
+
+  // A dropped space between two sentences reads the same as a bare domain:
+  // "the total cost.It was high" tokenises to "cost.It", whose suffix is in the
+  // list above. What separates the two is capitalisation -- a real domain's
+  // suffix is never written the way a sentence's next word is, so a
+  // lowercase-ending label immediately followed by a Capitalized one is read as
+  // prose, not an address. OCR drops the space after a full stop routinely,
+  // which is where this matters most.
+  if (/[a-z]$/.test(domain) && /^[A-Z][a-z]*$/.test(suffix)) return null;
+
+  return 'url';
 }
 
 function stripMailto(text: string): string {

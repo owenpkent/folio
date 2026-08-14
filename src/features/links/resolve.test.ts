@@ -69,6 +69,35 @@ describe('targetFromLink', () => {
       source: 'annotation',
     });
   });
+
+  it('strips RFC 6068 headers off a mailto target', () => {
+    const url = 'mailto:owen@example.com?subject=Hello%20there&body=hi';
+    expect(targetFromLink(link(url, [0, 0, 1, 1]))).toEqual({
+      kind: 'email',
+      value: 'owen@example.com',
+      source: 'annotation',
+    });
+  });
+
+  it('takes only the first recipient of a mailto naming several', () => {
+    expect(targetFromLink(link('mailto:a@x.com,b@y.com', [0, 0, 1, 1]))?.value).toBe('a@x.com');
+  });
+
+  it('decodes a percent-encoded mailto address', () => {
+    expect(targetFromLink(link('mailto:owen%40example.com', [0, 0, 1, 1]))).toEqual({
+      kind: 'email',
+      value: 'owen@example.com',
+      source: 'annotation',
+    });
+  });
+
+  it('falls back to the raw target when a mailto has no address to offer', () => {
+    expect(targetFromLink(link('mailto:', [0, 0, 1, 1]))).toEqual({
+      kind: 'url',
+      value: 'mailto:',
+      source: 'annotation',
+    });
+  });
 });
 
 describe('pickTextItem', () => {
@@ -113,6 +142,24 @@ describe('targetFromText', () => {
 
     expect(targetFromText(items, x0 + 5, 104)?.target.value).toBe('a@one.com');
     expect(targetFromText(items, x1 - 5, 104)?.target.value).toBe('b@two.com');
+  });
+
+  it('finds nothing in the gap between two addresses on the same item', () => {
+    // The midpoint sits in " and ", clear of both addresses either side of it:
+    // it must resolve to neither, not fall back to the leftmost.
+    const text = 'a@one.com and b@two.com';
+    const items = [item(text, 0, 100)];
+
+    expect(targetFromText(items, (text.length * 5) / 2, 104)).toBeNull();
+  });
+
+  it('finds nothing elsewhere on a line that holds exactly one address', () => {
+    // A whole line is commonly one PDF.js text item, so without a real point-
+    // to-offset check, a paragraph containing exactly one address anywhere in
+    // it would offer to copy that address from wherever the pointer landed.
+    const items = [item('For questions please contact owen@example.com', 10, 100)];
+
+    expect(targetFromText(items, 15, 104)).toBeNull();
   });
 
   it('joins an address PDF.js split across touching items', () => {
