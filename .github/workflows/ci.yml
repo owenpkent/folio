@@ -60,6 +60,57 @@ jobs:
       - name: Unit tests
         run: npm run test
 
+  # The browser extension ships to the Chrome Web Store, where a widened
+  # permission is a re-review and an unbuildable package is a wasted cycle.
+  # Both are cheap to catch here and expensive to catch there.
+  browser-extension:
+    name: Chrome extension (manifest & package)
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fails if the manifest's permission surface drifted from the approved
+      # set, or if its version no longer matches package.json.
+      - name: Check manifest and version
+        run: npm run check:extension
+
+      - name: Build and package
+        run: npm run package:chrome
+
+      # The package is only reproducible if the build is a function of the
+      # commit. Building twice and comparing is the only honest way to know:
+      # a wall-clock date baked into the bundle already broke this once.
+      - name: Verify the package is reproducible
+        run: |
+          FIRST=$(sha256sum extensions/chrome/*.zip | cut -d' ' -f1)
+          npm run package:chrome
+          SECOND=$(sha256sum extensions/chrome/*.zip | cut -d' ' -f1)
+          if [ "$FIRST" != "$SECOND" ]; then
+            echo "::error::Extension package is not reproducible: $FIRST != $SECOND"
+            exit 1
+          fi
+          echo "Reproducible: $FIRST"
+
+      - name: Upload the store package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: folio-chrome-extension
+          path: extensions/chrome/*.zip
+          if-no-files-found: error
+
   # Property/fuzz tests over the parsers a hostile document reaches on open.
   # Two shapes out of the same files (the settings live in src/test/setup.ts):
   # a short seeded pass that gates every PR, and a long unseeded one nightly.

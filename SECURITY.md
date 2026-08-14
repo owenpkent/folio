@@ -85,6 +85,15 @@ action against researchers who follow this policy.
   React/TypeScript frontend), including issues such as memory-safety bugs,
   sandbox or Tauri IPC escapes, path traversal, code execution via crafted PDF
   files, and unsafe handling of untrusted document content.
+- **The browser and editor extensions.** The
+  [Chrome extension](extensions/chrome/README.md) and the
+  [VS Code extension](extensions/vscode/README.md) are in scope, including their
+  handling of untrusted input. The Chrome extension is worth singling out: it
+  holds broad host permissions, and its viewer is reachable by navigation from
+  any page, which chooses the document URL. Issues such as bypassing the
+  viewer's scheme allowlist, reaching extension resources that should not be
+  web-accessible, escalating through the `folio://` hand-off, or making the
+  redirect rules act on something other than a PDF navigation are in scope.
 - **Plugin trust model.** Folio's plugin system is designed to be
   least-privilege. Vulnerabilities in the plugin host itself, for example a
   first-party plugin API that lets a plugin exceed its granted permissions,

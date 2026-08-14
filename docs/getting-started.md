@@ -144,7 +144,10 @@ A map of the top-level directories. See `docs/architecture.md` for how they fit 
 folio/
 ├─ .github/                 # CI, issue/PR templates, dependabot, CODEOWNERS
 ├─ docs/                    # documentation (this file lives here)
+├─ e2e/                     # Playwright end-to-end suite (fixtures are generated)
+├─ extensions/              # chrome/ (browser extension), vscode/ (preview)
 ├─ public/                  # static assets served by Vite
+├─ scripts/                 # build, release, and version/manifest parity checks
 ├─ src/                     # React + TypeScript frontend
 │  ├─ ai/                   # AI layer: providers/ (Claude, experimental), mcp/ (stubs)
 │  ├─ a11y/                 # accessibility utils (announcer, focus mgmt, shortcuts help)
