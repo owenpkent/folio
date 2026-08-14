@@ -1674,7 +1674,11 @@ kbd {
 .folio-combine-progress {
   margin-top: 8px;
 }
-.folio-combine-progress p {
+/* Not a bare `p` selector: that would also match the sibling .folio-sr-only
+   paragraph, and this rule's specificity would win over .folio-sr-only's own
+   `margin: -1px` (part of how it clips itself out of the visible layout),
+   nudging that paragraph's invisible 1x1px box out of position. */
+.folio-combine-progress__text {
   margin: 0 0 4px;
   font-size: 0.8125rem;
   color: var(--folio-text-muted);

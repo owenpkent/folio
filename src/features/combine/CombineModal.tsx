@@ -212,7 +212,9 @@ export function CombineModal() {
                   progressbar's own aria-valuenow updates too fast to
                   announce every step, so sighted and screen-reader users get
                   the same words either way. */}
-              <p aria-hidden="true">{progressText}</p>
+              <p className="folio-combine-progress__text" aria-hidden="true">
+                {progressText}
+              </p>
               <p className="folio-sr-only" aria-live="polite">
                 {progressText}
               </p>
