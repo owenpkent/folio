@@ -35,7 +35,7 @@ describe('openFromQueryParam', () => {
     withHash(`#file=${url}`);
     await openFromQueryParam();
 
-    expect(fetchSpy).toHaveBeenCalledWith(url);
+    expect(fetchSpy).toHaveBeenCalledWith(url, { redirect: 'error' });
     expect(originalDocumentUrl()).toBe(url);
   });
 
@@ -47,7 +47,7 @@ describe('openFromQueryParam', () => {
     window.history.replaceState(null, '', `/?file=${encodeURIComponent('https://example.com/a.pdf')}`);
     await openFromQueryParam();
 
-    expect(fetchSpy).toHaveBeenCalledWith('https://example.com/a.pdf');
+    expect(fetchSpy).toHaveBeenCalledWith('https://example.com/a.pdf', { redirect: 'error' });
   });
 
   it('refuses schemes it will not fetch', async () => {
@@ -61,6 +61,49 @@ describe('openFromQueryParam', () => {
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(loadSource).not.toHaveBeenCalled();
+  });
+
+  it('refuses loopback, private, link-local, and metadata hosts', async () => {
+    // A hostile page can navigate here with any fragment it likes; the
+    // extension's host permissions make the fetch CORS-exempt, so this is the
+    // browser-side counterpart to the desktop `fetch_pdf` SSRF guard.
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const hostile = [
+      'http://127.0.0.1/secret',
+      'http://127.0.0.1:8080/secret', // a port does not change the host check
+      'http://[::1]/secret',
+      'http://localhost/secret',
+      'http://sub.localhost/secret',
+      'http://10.0.0.5/internal',
+      'http://172.16.0.1/internal',
+      'http://192.168.1.1/internal',
+      'http://169.254.169.254/latest/meta-data/', // cloud metadata
+      'http://metadata.google.internal/computeMetadata/v1/',
+      'http://[fe80::1]/internal', // link-local IPv6
+      'http://[::ffff:127.0.0.1]/secret', // IPv4-mapped IPv6 loopback
+      'http://foo.local/internal', // mDNS
+      'http://0/secret', // 0.0.0.0
+      'http://0177.0.0.1/secret', // octal-encoded loopback; URL normalizes this to 127.0.0.1
+    ];
+    for (const url of hostile) {
+      withHash(`#file=${url}`);
+      await openFromQueryParam();
+    }
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(loadSource).not.toHaveBeenCalled();
+  });
+
+  it('still allows an ordinary public host', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(PDF_BYTES, { status: 200 }));
+
+    withHash('#file=https://example.com/a.pdf');
+    await openFromQueryParam();
+
+    expect(fetchSpy).toHaveBeenCalledWith('https://example.com/a.pdf', { redirect: 'error' });
   });
 
   it('does nothing without a file parameter', async () => {

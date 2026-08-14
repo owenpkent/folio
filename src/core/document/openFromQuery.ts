@@ -23,11 +23,97 @@ function readFileParam(): string | null {
   return new URLSearchParams(search).get('file');
 }
 
-/** Resolve against the page and confirm the scheme is one we are willing to fetch. */
+/**
+ * True if `hostname` (as `URL.hostname` returns it: IPv4 already normalized to
+ * canonical dotted-decimal, IPv6 literals bracketed, e.g. `[::1]`) names a
+ * loopback, private, link-local, or well-known cloud-metadata address, or a
+ * `.local`/`.localhost` name.
+ *
+ * This is the browser-side counterpart to `is_disallowed_ip` in
+ * `src-tauri/src/lib.rs`, which the desktop `fetch_pdf` command uses to block
+ * SSRF against internal services and metadata endpoints. It cannot do what
+ * that command does: resolve the host itself, then pin the connection to the
+ * validated address. `fetch` resolves and connects in one step with nothing
+ * in between to hook, so a hostname that resolves to a public address now and
+ * a private one moments later (DNS rebinding) is not caught by this, or by
+ * anything else reachable from here. What this closes is the direct case: a
+ * literal private/loopback/link-local/metadata address or hostname, typed or
+ * navigated to by whoever chose the `#file=` URL.
+ */
+function isDisallowedHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
+  // GCP's metadata hostname; AWS/Azure/DigitalOcean expose metadata only at
+  // the link-local address the IPv4 check below already covers.
+  if (host === 'metadata.google.internal') return true;
+
+  if (host.startsWith('[') && host.endsWith(']')) return isDisallowedIPv6(host.slice(1, -1));
+  const v4 = parseIPv4(host);
+  return v4 ? isDisallowedIPv4(v4) : false;
+}
+
+/** Parse a canonical dotted-decimal IPv4 address. This is the only form
+ * `URL.hostname` produces for an IPv4 host, whatever base (decimal, hex,
+ * octal) the original text used, so no other form needs handling here. */
+function parseIPv4(host: string): [number, number, number, number] | null {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!m) return null;
+  const octets = m.slice(1).map(Number);
+  return octets.every((o) => o <= 255) ? (octets as [number, number, number, number]) : null;
+}
+
+/** Mirrors the IPv4 arm of `is_disallowed_ip` in `src-tauri/src/lib.rs`. */
+function isDisallowedIPv4([a, b]: readonly [number, number, number, number]): boolean {
+  return (
+    a === 0 || // 0.0.0.0/8: unspecified + "this network"
+    a === 127 || // loopback
+    a === 10 || // private
+    (a === 172 && b >= 16 && b <= 31) || // private
+    (a === 192 && b === 168) || // private
+    (a === 169 && b === 254) || // link-local -- includes the 169.254.169.254 cloud metadata address
+    (a === 100 && b >= 64 && b <= 127) || // 100.64.0.0/10 carrier-grade NAT
+    (a === 198 && (b === 18 || b === 19)) || // 198.18.0.0/15 benchmarking
+    a >= 240 // reserved, including 255.255.255.255 broadcast
+  );
+}
+
+/**
+ * Mirrors the IPv6 arm of `is_disallowed_ip`. `URL.hostname` always
+ * serializes an IPv6 literal to its canonical compressed form, so an
+ * IPv4-mapped address always reads as `::ffff:HHHH:HHHH` (two hex groups)
+ * here, never dotted -- that is the one shape this function assumes rather
+ * than checks for.
+ */
+function isDisallowedIPv6(addr: string): boolean {
+  const host = addr.toLowerCase();
+  if (host === '::' || host === '::1') return true;
+
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+  if (mapped) {
+    const hi = parseInt(mapped[1], 16);
+    const lo = parseInt(mapped[2], 16);
+    return isDisallowedIPv4([hi >> 8, hi & 0xff, lo >> 8, lo & 0xff]);
+  }
+
+  // Every range checked below has a non-zero first hextet, so a leading "::"
+  // (a run of zero groups) never lands in one and needs no unpacking here.
+  const firstGroup = host.startsWith('::') ? '0' : host.slice(0, host.indexOf(':'));
+  const first = parseInt(firstGroup, 16) || 0;
+  return (
+    (first & 0xfe00) === 0xfc00 || // fc00::/7 unique local
+    (first & 0xffc0) === 0xfe80 || // fe80::/10 link-local
+    (first & 0xff00) === 0xff00 // ff00::/8 multicast
+  );
+}
+
+/** Resolve against the page, and confirm the scheme and host are ones we are
+ * willing to fetch. */
 function safeUrl(raw: string): URL | null {
   try {
     const url = new URL(raw, window.location.href);
-    return ALLOWED_SCHEMES.has(url.protocol) ? url : null;
+    if (!ALLOWED_SCHEMES.has(url.protocol)) return null;
+    if (isDisallowedHost(url.hostname)) return null;
+    return url;
   } catch {
     return null;
   }
@@ -56,10 +142,16 @@ function basename(url: URL): string {
  * the target's CORS policy.
  *
  * The URL arrives from a page navigation and is therefore untrusted: any site
- * can link to the viewer with a fragment of its choosing. It is scheme-checked
- * before it reaches `fetch`, which keeps `javascript:`, `data:`, and `file:` out.
- * `file:` is refused deliberately rather than by oversight -- local PDFs are not
- * handled yet, and would need their own interception path.
+ * can link to the viewer with a fragment of its choosing. Before it reaches
+ * `fetch`, `safeUrl` checks the scheme (keeping `javascript:`, `data:`, and
+ * `file:` out -- `file:` is refused deliberately rather than by oversight,
+ * since local PDFs are not handled yet and would need their own interception
+ * path) and the host (keeping literal loopback/private/link-local/metadata
+ * addresses out, the class of target the desktop app's `fetch_pdf` blocks by
+ * resolving and pinning; see `isDisallowedHost` for what the browser can and
+ * cannot do here). The fetch itself passes `redirect: 'error'`, so a target
+ * that starts allowed and 3xx-bounces to one that is not gets refused rather
+ * than followed.
  */
 /**
  * The URL this document was fetched from, when it arrived via `#file=`.
@@ -90,7 +182,7 @@ export async function downloadOriginal(): Promise<boolean> {
   if (!url) return false;
   let objectUrl: string | null = null;
   try {
-    const res = await fetch(url.href);
+    const res = await fetch(url.href, { redirect: 'error' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     objectUrl = URL.createObjectURL(await res.blob());
     const a = document.createElement('a');
@@ -123,7 +215,7 @@ export async function openFromQueryParam(): Promise<void> {
   // already sees a URL to offer back.
   originalUrl = url.href;
   try {
-    const res = await fetch(url.href);
+    const res = await fetch(url.href, { redirect: 'error' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const source: DocumentSource = {
       kind: 'bytes',
