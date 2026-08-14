@@ -1,4 +1,4 @@
-import { PDFDocument } from 'pdf-lib';
+import { PDFDict, PDFDocument, PDFName } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 
 import { CombineCancelledError, combinePdfs, stagePdf } from './combineDocuments';
@@ -19,6 +19,29 @@ async function pdfWithTextField(name: string, value: string): Promise<Uint8Array
   const field = doc.getForm().createTextField(name);
   field.setText(value);
   field.addToPage(page, { x: 10, y: 10, width: 60, height: 20 });
+  return doc.save();
+}
+
+/**
+ * Same as {@link pdfWithTextField}, but with an extra `/DR` key forced onto
+ * the AcroForm so that combining two of these is guaranteed to collide on
+ * it. Empirically, pdf-lib's own default-font registration (what addToPage
+ * uses when no font is given) does not collide across two independently
+ * built documents, so the formsDegraded test forces the case deliberately
+ * rather than relying on that.
+ */
+async function pdfWithTextFieldAndDrCollision(name: string, value: string): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([100, 100]);
+  const field = doc.getForm().createTextField(name);
+  field.setText(value);
+  field.addToPage(page, { x: 10, y: 10, width: 60, height: 20 });
+
+  const acroForm = doc.catalog.getOrCreateAcroForm();
+  const dr = acroForm.dict.lookupMaybe(PDFName.of('DR'), PDFDict) ?? doc.context.obj({});
+  dr.set(PDFName.of('Marker'), PDFName.of('shared'));
+  acroForm.dict.set(PDFName.of('DR'), dr);
+
   return doc.save();
 }
 
@@ -266,6 +289,38 @@ describe('combinePdfs', () => {
       expect(names).toHaveLength(2);
       expect(new Set(names).size).toBe(2);
       expect(names).toContain('Name');
+    });
+
+    it('reports formsDegraded when merging cannot reconcile the /DR resources of two inputs', async () => {
+      const a = await pdfWithTextFieldAndDrCollision('Name', 'Alice');
+      const b = await pdfWithTextFieldAndDrCollision('Email', 'Bob');
+
+      const result = await combinePdfs([
+        { name: 'a.pdf', bytes: a },
+        { name: 'b.pdf', bytes: b },
+      ]);
+
+      // Both fields still merged in, with their values intact -- degraded
+      // means the merge lost a resource mapping, not that it failed.
+      expect(result.formsMerged).toBe(true);
+      expect(result.formsDegraded).toBe(true);
+      const merged = await PDFDocument.load(result.bytes);
+      const form = merged.getForm();
+      expect(form.getTextField('Name').getText()).toBe('Alice');
+      expect(form.getTextField('Email').getText()).toBe('Bob');
+    });
+
+    it('does not report formsDegraded when only one input has form fields', async () => {
+      const a = await pdfWithTextField('Name', 'Alice');
+      const b = await pdfBytes([100]);
+
+      const result = await combinePdfs([
+        { name: 'a.pdf', bytes: a },
+        { name: 'b.pdf', bytes: b },
+      ]);
+
+      expect(result.formsMerged).toBe(true);
+      expect(result.formsDegraded).toBe(false);
     });
 
     it('does not duplicate a field nested under a non-terminal group field', async () => {
