@@ -788,12 +788,19 @@ kbd {
   min-height: min-content;
   /* The address hint positions itself against this box. */
   position: relative;
-  /* The hint's label is absolutely positioned and up to 46ch wide, so near a
-     page's edge it can extend past this box. Without a clip boundary here,
-     that overhang grows .folio-viewer's own scrollable region and pops a
-     scrollbar, which in fit-page mode shrinks the computed scale, which tears
-     the hint down through its own clear-on-scale effect. */
-  overflow: hidden;
+  /* Deliberately NOT overflow: hidden. This is a block box with an auto width
+     (fills .folio-viewer's content box) holding flex items that are not
+     stretched on the cross axis (align-items: center): at any zoom above
+     fit-width, .folio-page is wider than this box by design and overflows it,
+     centered, on purpose -- that overflow is what .folio-viewer's own
+     overflow: auto turns into the horizontal scroll range zooming in and the
+     hand tool both depend on. Clipping it here starves .folio-viewer of that
+     overflow entirely: no scrollbar, scrollLeft stuck at zero range, zoom-in
+     silently unreachable past fit-width. The hint's label is kept from
+     overhanging this box in the first place instead (see .is-flipped-x/y
+     below), which is what the overflow-hidden version of this comment was
+     really trying to fix.
+  */
 }
 /* Highlight over the email or web address under the pointer, marking it as
    something the right-click menu will offer to copy. Never captures the
@@ -808,7 +815,12 @@ kbd {
   border-radius: 2px;
 }
 /* The target itself, under the address. Anchored rather than following the
-   pointer so it can be moved onto without vanishing (WCAG 2.2 SC 1.4.13). */
+   pointer so it can be moved onto without vanishing (WCAG 2.2 SC 1.4.13).
+   Defaults to hanging below-and-right of the address; useTrackAddressHover
+   flips it per axis (see .is-flipped-x/y) when the address sits far enough
+   into the right or bottom portion of its page that the default position
+   would overhang the page box, so the label never grows .folio-pages' own
+   scrollable region. */
 .folio-address-hint__label {
   position: absolute;
   top: calc(100% + 4px);
@@ -824,6 +836,17 @@ kbd {
   color: var(--folio-text);
   font-size: 0.8rem;
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
+}
+/* Hangs from the address's right edge, extending back over the page, instead
+   of from its left edge extending off it. */
+.folio-address-hint__label.is-flipped-x {
+  left: auto;
+  right: 0;
+}
+/* Hangs above the address instead of below it. */
+.folio-address-hint__label.is-flipped-y {
+  top: auto;
+  bottom: calc(100% + 4px);
 }
 .folio-page {
   position: relative;

@@ -8,6 +8,17 @@ export interface HintBox {
   top: number;
   width: number;
   height: number;
+  /**
+   * Which edge the label hangs from, per axis, so it extends back over the
+   * page instead of past its edge: the label is anchored under the address's
+   * own box, and left-anchored-extending-right (the default) overhangs a page
+   * whose right edge is close by. Flipping is what keeps the label from ever
+   * growing .folio-pages' own scrollable region -- see the comment on
+   * .folio-pages in global.css for why that region has to stay exactly what
+   * the pages themselves contribute.
+   */
+  flipX: boolean;
+  flipY: boolean;
 }
 
 interface AddressHoverState {
@@ -66,7 +77,14 @@ export const useAddressHover = create<AddressHoverState>((set, get) => ({
 }));
 
 function sameBox(a: HintBox, b: HintBox): boolean {
-  return a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
+  return (
+    a.left === b.left &&
+    a.top === b.top &&
+    a.width === b.width &&
+    a.height === b.height &&
+    a.flipX === b.flipX &&
+    a.flipY === b.flipY
+  );
 }
 
 function sameRegion(a: AddressRegion, b: AddressRegion): boolean {

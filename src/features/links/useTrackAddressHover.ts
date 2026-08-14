@@ -95,11 +95,24 @@ export function useTrackAddressHover(scale: number, enabled: boolean) {
       // into pixels here keeps the hint itself free of geometry. Measured
       // against .folio-pages, which is what the hint renders inside, so it
       // scrolls with the document rather than needing repositioning.
+      //
+      // Past the midpoint of the page on either axis, the label flips to hang
+      // from the opposite edge instead: a page can be wider or taller than
+      // .folio-pages (zoomed in past fit), and .folio-pages must never clip
+      // that -- .folio-viewer's scroll range for zoom and the hand tool
+      // depends on seeing all of it -- so the label has to stay off the
+      // page's own edge by construction rather than being clipped there. This
+      // is a cheap position-based estimate, not an exact fit against the
+      // label's actual rendered width; it is not meant to be perfect, only to
+      // keep the common case (an address genuinely near an edge) from ever
+      // growing the scrollable region.
       show(hit, {
         left: pageBox.left - (containerBox?.left ?? 0) + hit.region.x * pageBox.width,
         top: pageBox.top - (containerBox?.top ?? 0) + hit.region.y * pageBox.height,
         width: hit.region.width * pageBox.width,
         height: hit.region.height * pageBox.height,
+        flipX: hit.region.x > 0.5,
+        flipY: hit.region.y > 0.5,
       });
     });
   }, [scale, clear, show]);

@@ -37,13 +37,25 @@ export function AddressHint() {
 
   if (!hit || !box || dismissed) return null;
 
+  // Flipped per axis when the default below-and-right position would overhang
+  // the page (see the flipX/flipY doc on HintBox): the class names, not the
+  // position, are what changes -- overHint() measures the rendered rect
+  // either way, so which side the label hangs from does not affect it.
+  const labelClass = [
+    'folio-address-hint__label',
+    box.flipX && 'is-flipped-x',
+    box.flipY && 'is-flipped-y',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <div
       className="folio-address-hint"
       aria-hidden="true"
       style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
     >
-      <span className="folio-address-hint__label">{hit.target.value}</span>
+      <span className={labelClass}>{hit.target.value}</span>
     </div>
   );
 }
