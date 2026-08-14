@@ -15,7 +15,7 @@
 
 import { execSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { zipSync } from './zip.mjs';
@@ -115,11 +115,21 @@ writeFileSync(join(out, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\
 
 // The viewer. Source maps are development artefacts: they roughly double the
 // payload and hand a reviewer 5 MB of noise to scan.
-cpSync(join(repo, 'dist'), join(out, 'dist'), {
+const distDir = join(repo, 'dist');
+cpSync(distDir, join(out, 'dist'), {
   recursive: true,
   filter: (src) => {
     if (src.endsWith('.map')) return false;
-    if (!withOcr && src.includes(`${'tesseract'}`)) return false;
+    // cpSync's filter runs on the absolute path, starting with distDir itself
+    // (the very first call). Testing that string for "tesseract" -- as this
+    // used to -- prunes the whole tree, silently producing no out/dist at
+    // all, on any checkout under a directory whose name happens to contain
+    // "tesseract" anywhere in it, including an ancestor. The OCR runtime
+    // Vite copies from public/tesseract/ always lands at the top level of
+    // dist/, so matching the *first path segment relative to dist/* is both
+    // narrower (an unrelated file merely named "...tesseract...") and
+    // immune to what the checkout's own path happens to contain.
+    if (!withOcr && relative(distDir, src).split(sep)[0] === 'tesseract') return false;
     return true;
   },
 });
