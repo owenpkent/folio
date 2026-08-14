@@ -788,6 +788,12 @@ kbd {
   min-height: min-content;
   /* The address hint positions itself against this box. */
   position: relative;
+  /* The hint's label is absolutely positioned and up to 46ch wide, so near a
+     page's edge it can extend past this box. Without a clip boundary here,
+     that overhang grows .folio-viewer's own scrollable region and pops a
+     scrollbar, which in fit-page mode shrinks the computed scale, which tears
+     the hint down through its own clear-on-scale effect. */
+  overflow: hidden;
 }
 /* Highlight over the email or web address under the pointer, marking it as
    something the right-click menu will offer to copy. Never captures the
@@ -974,6 +980,12 @@ kbd {
   border-radius: var(--folio-radius);
   color: var(--folio-text-muted);
   box-shadow: var(--folio-shadow);
+  /* .folio-pages is a positioned element (the address hint anchors against
+     it), which without this paints its pages -- later in tree order -- on top
+     of this message while a replacement document is loading and the previous
+     one's pages are still mounted underneath. Clear of every z-index inside
+     .folio-page (highest currently 8). */
+  z-index: 10;
 }
 
 /* Empty state */

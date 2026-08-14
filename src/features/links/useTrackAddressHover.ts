@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import { copyTargetAt } from './copyTarget';
-import { useAddressHover } from './hoverStore';
+import { useAddressHover } from './store';
 
 interface Sample {
   clientX: number;

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-import { useAddressHover } from './hoverStore';
+import { useAddressHover } from './store';
 
 /**
  * The highlight over an address the pointer is on, with its target underneath.

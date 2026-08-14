@@ -7,7 +7,7 @@ import { useEditStore } from '@/features/editing';
 // Store only, not the feature barrel: it also exports AddressHint and
 // useTrackAddressHover, UI modules this low-level orchestration module has no
 // business importing.
-import { useAddressHover } from '@/features/links/hoverStore';
+import { useAddressHover } from '@/features/links/store';
 import { useOcrStore } from '@/features/ocr';
 // Store only, not the feature barrel: that also exports components, which pull
 // in UI modules this low-level orchestration module has no business importing.

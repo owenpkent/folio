@@ -1,4 +1,4 @@
-import { convertToViewportRectangle, getEngine } from '@/core/pdf';
+import { convertToViewportRectangle, getEngine, type PageViewport } from '@/core/pdf';
 import { useOcrStore } from '@/features/ocr';
 
 import {
@@ -7,7 +7,6 @@ import {
   targetFromOcr,
   targetFromText,
   type CopyTarget,
-  type TextItemLike,
 } from './resolve';
 
 /** A box as fractions (0..1) of the displayed page, top-left origin. */
@@ -62,10 +61,11 @@ export async function copyTargetAt(
     const link = pickLink(links, x, y);
     if (link) return { target: targetFromLink(link), region: toRegion(link.rect) };
 
-    // Widened to unknown[] first: PDF.js types the list as a union with
-    // marked-content markers, which the guard below is what separates out.
-    const items = textItems.items as unknown[];
-    const inText = targetFromText(items.filter(isTextItem), x, y);
+    // Pre-filtered and cached by the engine: this runs on every animation
+    // frame while hovering, and filtering the page's whole item list fresh
+    // each time was allocation churn for a result that never changes between
+    // calls for the same page.
+    const inText = targetFromText(textItems.textItems, x, y);
     if (inText) return { target: inText.target, region: toRegion(inText.rect) };
 
     // Already in fractions of the displayed page, so no conversion.
@@ -83,14 +83,8 @@ export async function copyTargetAt(
  * Goes through the viewport rather than dividing by the page's own size,
  * because the viewport is what has already applied the page's `/Rotate`.
  */
-function normalize(
-  viewport: { width: number; height: number },
-  rect: [number, number, number, number],
-): AddressRegion {
-  const [vx0, vy0, vx1, vy1] = convertToViewportRectangle(
-    viewport as Parameters<typeof convertToViewportRectangle>[0],
-    rect,
-  );
+function normalize(viewport: PageViewport, rect: [number, number, number, number]): AddressRegion {
+  const [vx0, vy0, vx1, vy1] = convertToViewportRectangle(viewport, rect);
   const left = Math.min(vx0, vx1);
   const top = Math.min(vy0, vy1);
   return {
@@ -99,10 +93,4 @@ function normalize(
     width: Math.abs(vx1 - vx0) / viewport.width,
     height: Math.abs(vy1 - vy0) / viewport.height,
   };
-}
-
-/** PDF.js mixes marked-content markers into the item list; those carry no text. */
-function isTextItem(item: unknown): item is TextItemLike {
-  const candidate = item as Partial<TextItemLike>;
-  return typeof candidate?.str === 'string' && Array.isArray(candidate.transform);
 }

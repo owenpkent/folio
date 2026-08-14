@@ -1,15 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+// From the leaf module, not the @/core/pdf barrel: see resolve.ts for why.
+import { pickTextItem, type TextItemLike } from '@/core/pdf/textHit';
 import type { PageLink } from '@/core/pdf/types';
 
-import {
-  pickLink,
-  pickTextItem,
-  targetFromLink,
-  targetFromOcr,
-  targetFromText,
-  type TextItemLike,
-} from './resolve';
+import { pickLink, targetFromLink, targetFromOcr, targetFromText } from './resolve';
 
 /**
  * A text item on a baseline at `y`, starting at `x`, 10 units tall. Widths are

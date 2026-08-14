@@ -1,7 +1,13 @@
 import { useEffect, useRef, type MouseEvent } from 'react';
 
 import { pushToast } from '@/components/common';
-import { convertToViewportRectangle, getEngine, type PageTextItems } from '@/core/pdf';
+import {
+  convertToViewportRectangle,
+  getEngine,
+  itemBox,
+  pickTextItem,
+  type PageTextItems,
+} from '@/core/pdf';
 import { reloadEditedBytes } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
 import { formWidgetAt } from '@/state/formsLayer';
@@ -13,44 +19,21 @@ import { commitTextEdit, TexteditError } from './mutate';
 import { useTextEditStore, type EditingSession } from './store';
 import type { RunColor } from './types';
 
-/** A PDF.js text-content item that carries a string (excludes marked-content markers). */
+/**
+ * A PDF.js text-content item that carries a string (excludes marked-content
+ * markers). Kept as the real item type, not the links feature's minimal
+ * TextItemLike, because this needs `fontName` off it too.
+ */
 type PdfTextItem = Extract<PageTextItems['items'][number], { str: string }>;
 
 const hasStr = (item: PageTextItems['items'][number]): item is PdfTextItem => 'str' in item;
 
-/**
- * A couple of PDF user-space units of slack around each item's box, so a click
- * does not have to land pixel-perfectly on a glyph.
- */
-const HIT_PAD = 2;
-
-/**
- * The item's box in PDF user space: [x0, y0, x1, y1]. The 0.2*height allowance
- * below the baseline covers descenders without inflating the box so much that
- * adjacent lines start to overlap.
- */
-function itemBox(item: PdfTextItem): [number, number, number, number] {
-  const transform = item.transform as number[];
-  const tx = transform[4];
-  const ty = transform[5];
-  return [tx, ty - 0.2 * item.height, tx + item.width, ty + item.height];
-}
-
-/** The smallest item box containing (x, y): the PDF.js-item side of the hit test. */
+/** The item under (x, y): the PDF.js-item side of the hit test. Same geometry
+ *  the links feature hit-tests an address with, deliberately. */
 function findBestItem(items: PageTextItems['items'], x: number, y: number): PdfTextItem | null {
-  let best: PdfTextItem | null = null;
-  let bestArea = Infinity;
-  for (const raw of items) {
-    if (!hasStr(raw) || raw.str.length === 0) continue;
-    const [x0, y0, x1, y1] = itemBox(raw);
-    if (x < x0 - HIT_PAD || x > x1 + HIT_PAD || y < y0 - HIT_PAD || y > y1 + HIT_PAD) continue;
-    const area = (x1 - x0) * (y1 - y0);
-    if (area < bestArea) {
-      best = raw;
-      bestArea = area;
-    }
-  }
-  return best;
+  const withStr = items.filter(hasStr);
+  const index = pickTextItem(withStr, x, y);
+  return index < 0 ? null : withStr[index];
 }
 
 const rgbCss = (c: RunColor) =>

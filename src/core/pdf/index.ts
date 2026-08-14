@@ -17,6 +17,7 @@ export * from './types';
 export { convertToViewportRectangle } from './viewportRect';
 export type { Rect4 } from './viewportRect';
 export { setPdfWasmUrl } from './setupWorker';
+export { HIT_PAD, isTextItem, itemBox, pickTextItem, type TextItemLike } from './textHit';
 // Re-exported so callers of getPageViewport can name its return type without
 // importing pdfjs-dist themselves, which would breach the rule that PDF.js
 // stays behind this barrel (see docs/architecture.md).

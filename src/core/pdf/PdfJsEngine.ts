@@ -12,6 +12,7 @@ import { LruMap } from '@/core/lru';
 
 import type { PageTextItems, PdfEngine } from './PdfEngine';
 import { ensureWorker, pdfWasmUrl } from './setupWorker';
+import { isTextItem } from './textHit';
 import type {
   DocumentSource,
   OutlineNode,
@@ -94,6 +95,10 @@ const TEXT_ITEMS_CACHE_LIMIT = 24;
 /** Plain per-page strings, a few KB each, but whole-document consumers (search,
  *  word count, the AI context builder) walk every page, so keep this generous. */
 const TEXT_CACHE_LIMIT = 512;
+/** One viewport per page per scale is tiny, and every zoom level in a session
+ *  adds a fresh set, so this is generous enough that normal use never evicts a
+ *  page still on screen at the current scale. */
+const VIEWPORT_CACHE_LIMIT = 64;
 
 // PDF.js raw outline items, typed loosely to avoid depending on internals.
 interface RawOutlineItem {
@@ -136,6 +141,9 @@ export class PdfJsEngine implements PdfEngine {
   /** Tiny per page, and hovering an address samples this on every frame. */
   private linkCache = new LruMap<number, PageLink[]>(TEXT_CACHE_LIMIT);
   private textItemsCache = new LruMap<number, PageTextItems>(TEXT_ITEMS_CACHE_LIMIT);
+  /** Keyed on page and scale together: a viewport is only valid at the scale
+   *  it was built for. */
+  private viewportCache = new LruMap<string, PageViewport>(VIEWPORT_CACHE_LIMIT);
   private readonly linkService = createLinkService();
 
   get isReady(): boolean {
@@ -172,6 +180,7 @@ export class PdfJsEngine implements PdfEngine {
     this.textCache.clear();
     this.linkCache.clear();
     this.textItemsCache.clear();
+    this.viewportCache.clear();
     this.doc = null;
     if (this.loadingTask) {
       // Null the field first: destroy() awaits the worker round-trip, and a
@@ -300,9 +309,14 @@ export class PdfJsEngine implements PdfEngine {
   ): Promise<void> {
     const { scale, signal } = options;
     await serializePerContainer(container, async () => {
-      const page = await this.getPage(pageNumber);
-      const viewport = page.getViewport({ scale });
-      const textContentSource = await page.getTextContent();
+      // Routed through the same cache copyTargetAt reads, rather than calling
+      // page.getTextContent() again: the visible text layer is built from
+      // exactly this data, so the first right-click or hover on a page used to
+      // re-extract the whole content stream a second time for no reason.
+      const [viewport, textContentSource] = await Promise.all([
+        this.getPageViewport(pageNumber, scale),
+        this.getTextItems(pageNumber),
+      ]);
       if (signal?.aborted) return;
 
       container.replaceChildren();
@@ -399,8 +413,18 @@ export class PdfJsEngine implements PdfEngine {
   }
 
   async getPageViewport(pageNumber: number, scale: number): Promise<PageViewport> {
+    // The one thing on the hover path with no cache of its own constructed a
+    // fresh PageViewport every animation frame; a viewport is cheap on its
+    // own, but it is also the first of the three awaits every hover and
+    // right-click resolve makes.
+    const key = `${pageNumber}:${scale}`;
+    const cached = this.viewportCache.get(key);
+    if (cached) return cached;
+
     const page = await this.getPage(pageNumber);
-    return page.getViewport({ scale });
+    const viewport = page.getViewport({ scale });
+    this.viewportCache.set(key, viewport);
+    return viewport;
   }
 
   async getTextItems(pageNumber: number): Promise<PageTextItems> {
@@ -408,8 +432,13 @@ export class PdfJsEngine implements PdfEngine {
     if (cached) return cached;
 
     const page = await this.getPage(pageNumber);
-    const { items, styles } = await page.getTextContent();
-    const result: PageTextItems = { items, styles };
+    const { items, styles, lang } = await page.getTextContent();
+    // Widened to unknown[] first: PDF.js types the list as a union with
+    // marked-content markers, which isTextItem is what separates out. Filtered
+    // once here rather than by every caller: the hover path filters this same
+    // list on every animation frame.
+    const textItems = (items as unknown[]).filter(isTextItem);
+    const result: PageTextItems = { items, styles, lang, textItems };
     this.textItemsCache.set(pageNumber, result);
     return result;
   }

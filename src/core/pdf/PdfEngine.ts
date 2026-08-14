@@ -1,5 +1,6 @@
 import type { PageViewport, PDFPageProxy } from 'pdfjs-dist';
 
+import type { TextItemLike } from './textHit';
 import type {
   DocumentSource,
   OutlineNode,
@@ -29,6 +30,17 @@ type PageTextContent = Awaited<ReturnType<PDFPageProxy['getTextContent']>>;
 export interface PageTextItems {
   items: PageTextContent['items'];
   styles: PageTextContent['styles'];
+  /** Carried only so this can serve as `TextLayer`'s `textContentSource`, which
+   *  requires it; nothing here reads it. */
+  lang: PageTextContent['lang'];
+  /**
+   * {@link items} filtered down to the entries that carry a string, cached
+   * alongside them rather than recomputed by each caller: the hover path
+   * scans this list on every animation frame, and a fresh `.filter()` over a
+   * page's whole item list on every one of those was allocation churn for a
+   * result that never changes between calls for the same page.
+   */
+  textItems: TextItemLike[];
 }
 
 /**

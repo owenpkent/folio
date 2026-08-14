@@ -11,15 +11,14 @@
  * rendered an anchor for a link (clicking one navigates nowhere in Folio, by
  * design), and it works the same in a test with no layout.
  */
+// From the leaf module, not the @/core/pdf barrel: the barrel also re-exports
+// getEngine, which pulls in pdf.js and its worker setup, and this module's
+// whole reason for being testable with no layout is that it has no such
+// dependency. type PageLink below is the same story.
+import { HIT_PAD, itemBox, pickTextItem, type TextItemLike } from '@/core/pdf/textHit';
 import type { PageLink } from '@/core/pdf/types';
 
 import { addressAt, findAddresses, type AddressKind, type DetectedAddress } from './detect';
-
-/**
- * Slack around a box, in PDF units, so a right-click near an address still
- * finds it. Mirrors the allowance textedit's own hit test uses.
- */
-const HIT_PAD = 2;
 
 /**
  * How close two items have to sit before they are treated as one run of text.
@@ -28,14 +27,6 @@ const HIT_PAD = 2;
  * "example.com".
  */
 const JOIN_GAP = 0.5;
-
-/** The parts of a PDF.js text item this needs, named so tests can build one. */
-export interface TextItemLike {
-  str: string;
-  transform: number[];
-  width: number;
-  height: number;
-}
 
 export interface CopyTarget {
   kind: AddressKind;
@@ -53,17 +44,6 @@ export interface CopyTarget {
 export interface ResolvedTarget {
   target: CopyTarget;
   rect: [number, number, number, number];
-}
-
-/**
- * The item's box in PDF user space, `[x0, y0, x1, y1]`. The allowance below the
- * baseline covers descenders without inflating the box enough for neighbouring
- * lines to overlap. Same shape textedit uses, deliberately.
- */
-export function itemBox(item: TextItemLike): [number, number, number, number] {
-  const x = item.transform[4];
-  const y = item.transform[5];
-  return [x, y - 0.2 * item.height, x + item.width, y + item.height];
 }
 
 /** The smallest link rect containing the point. */
@@ -111,27 +91,6 @@ export function targetFromLink(link: PageLink): CopyTarget {
   return found?.kind === 'email' && found.value === decoded
     ? { kind: 'email', value: found.value, source: 'annotation' }
     : { kind: 'url', value: link.url, source: 'annotation' };
-}
-
-/** The index of the smallest item box containing the point. */
-export function pickTextItem(items: readonly TextItemLike[], x: number, y: number): number {
-  let best = -1;
-  let bestArea = Infinity;
-
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
-    if (!item.str) continue;
-    const [x0, y0, x1, y1] = itemBox(item);
-    if (x < x0 - HIT_PAD || x > x1 + HIT_PAD || y < y0 - HIT_PAD || y > y1 + HIT_PAD) continue;
-
-    const area = (x1 - x0) * (y1 - y0);
-    if (area < bestArea) {
-      best = index;
-      bestArea = area;
-    }
-  }
-
-  return best;
 }
 
 /** An address printed in the page text, under the point. */

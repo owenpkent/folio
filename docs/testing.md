@@ -240,7 +240,7 @@ more than the happy path -- arrows *inside* a text box move the caret rather tha
 the box, and a nudge key moves the item **without** also scrolling the document
 out from under it.
 
-**`e2e/links.spec.ts`** — copying an email or web address from the right-click
+**`e2e/links.spec.ts`**: copying an email or web address from the right-click
 menu, asserted against the real clipboard rather than the announcement alone.
 The one that matters most is the `/Link` annotation case: the menu has to show
 and copy the target the document declared, not the "Click here for details"
