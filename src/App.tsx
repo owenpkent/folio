@@ -13,6 +13,7 @@ import { PdfViewer } from '@/components/Viewer/PdfViewer';
 import { isTauri, readPath } from '@/core/document/openDocument';
 import { openFromQueryParam } from '@/core/document/openFromQuery';
 import { registerAnnotationCommands } from '@/features/annotations';
+import { CombineModal, registerCombineCommands, useCombineStore } from '@/features/combine';
 import { registerDeepLinks } from '@/features/deeplink';
 import { registerEditCommands } from '@/features/editing';
 import { registerExportCommands } from '@/features/export';
@@ -42,6 +43,7 @@ export function App() {
   useEffect(() => {
     registerDefaultCommands();
     registerAnnotationCommands();
+    registerCombineCommands();
     registerEditCommands();
     registerImageEditCommands();
     registerOcrCommands();
@@ -90,7 +92,17 @@ export function App() {
       .onDragDropEvent(async (event) => {
         const payload = event.payload as { type: string; paths?: string[] };
         if (payload.type !== 'drop' || !payload.paths) return;
-        const path = payload.paths.find((p) => p.toLowerCase().endsWith('.pdf'));
+        const pdfPaths = payload.paths.filter((p) => p.toLowerCase().endsWith('.pdf'));
+        // Two or more PDFs dropped at once opens the combine modal seeded with
+        // them; a single PDF keeps the ordinary open behavior unchanged.
+        if (pdfPaths.length >= 2) {
+          const sources = await Promise.all(pdfPaths.map((p) => readPath(p)));
+          useCombineStore
+            .getState()
+            .open(sources.map((s) => ({ name: s.name ?? 'Untitled.pdf', bytes: s.data })));
+          return;
+        }
+        const path = pdfPaths[0];
         if (path) await loadSource(await readPath(path));
       })
       .then((fn) => {
@@ -126,6 +138,7 @@ export function App() {
       <SigningModal />
       <OcrProgressModal />
       <PrintProgressModal />
+      <CombineModal />
       <AboutModal />
       <ContextMenu />
       <ToastHost />

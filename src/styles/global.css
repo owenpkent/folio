@@ -1623,6 +1623,54 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Combine PDFs ---- */
+.folio-combine-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.folio-combine-list__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--folio-border);
+  border-radius: var(--folio-radius-sm);
+}
+.folio-combine-list__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.folio-combine-list__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.folio-combine-list__meta {
+  color: var(--folio-text-muted);
+  font-size: 0.8125rem;
+}
+.folio-combine-list__meta.is-error {
+  color: var(--folio-danger);
+}
+.folio-combine-list__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.folio-modal__error {
+  margin: 8px 0 0;
+  color: var(--folio-danger);
+  font-size: 0.8125rem;
+}
+
 /* ---- Signing (modal fields + digital signatures) ---- */
 .folio-field {
   display: flex;
