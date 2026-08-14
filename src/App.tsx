@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 
+import { announce } from '@/a11y/announcer';
 import { SkipLink } from '@/a11y/SkipLink';
 import { useKeyboardShortcuts } from '@/a11y/useKeyboardShortcuts';
 import { registerDefaultCommands } from '@/commands';
-import { ToastHost } from '@/components/common';
+import { pushToast, ToastHost } from '@/components/common';
 import { MenuBar } from '@/components/MenuBar/MenuBar';
 import { SearchBar } from '@/components/Search/SearchBar';
 import { Sidebar } from '@/components/Sidebar/Sidebar';
@@ -13,7 +14,7 @@ import { PdfViewer } from '@/components/Viewer/PdfViewer';
 import { isTauri, readPath } from '@/core/document/openDocument';
 import { openFromQueryParam } from '@/core/document/openFromQuery';
 import { registerAnnotationCommands } from '@/features/annotations';
-import { CombineModal, registerCombineCommands, useCombineStore } from '@/features/combine';
+import { CombineModal, registerCombineCommands } from '@/features/combine';
 import { registerDeepLinks } from '@/features/deeplink';
 import { registerEditCommands } from '@/features/editing';
 import { registerExportCommands } from '@/features/export';
@@ -29,7 +30,7 @@ import { registerSigningCommands, SigningModal } from '@/features/signing';
 import { registerTextEditCommands } from '@/features/textedit';
 import { checkForUpdates } from '@/features/updates';
 import { activateBuiltinPlugins } from '@/plugins';
-import { loadSource } from '@/state/actions';
+import { openDroppedPdfs } from '@/state/actions';
 import { useViewerStore } from '@/state/viewerStore';
 
 export function App() {
@@ -93,17 +94,21 @@ export function App() {
         const payload = event.payload as { type: string; paths?: string[] };
         if (payload.type !== 'drop' || !payload.paths) return;
         const pdfPaths = payload.paths.filter((p) => p.toLowerCase().endsWith('.pdf'));
-        // Two or more PDFs dropped at once opens the combine modal seeded with
-        // them; a single PDF keeps the ordinary open behavior unchanged.
-        if (pdfPaths.length >= 2) {
+        if (pdfPaths.length === 0) return;
+        // A failure reading any one dropped file must not silently discard the
+        // whole drop: without this, one unreadable file among several threw an
+        // unhandled rejection and nothing was opened, with no toast or
+        // announcement to say why.
+        try {
           const sources = await Promise.all(pdfPaths.map((p) => readPath(p)));
-          useCombineStore
-            .getState()
-            .open(sources.map((s) => ({ name: s.name ?? 'Untitled.pdf', bytes: s.data })));
-          return;
+          // Single vs. multi (and whether to seed or extend the combine modal)
+          // is decided in one shared place; see openDroppedPdfs.
+          await openDroppedPdfs(sources);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Could not read the file';
+          pushToast(`Could not open: ${message}`, 'error');
+          announce(`Could not open the dropped file: ${message}`, true);
         }
-        const path = pdfPaths[0];
-        if (path) await loadSource(await readPath(path));
       })
       .then((fn) => {
         unlisten = fn;
