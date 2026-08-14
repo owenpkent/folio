@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-import { PageActionBar, PageList } from '@/features/pageops';
+import { PageActionBar, PageList, usePageOpsStore } from '@/features/pageops';
 import { useViewerStore } from '@/state/viewerStore';
 import { isNarrowViewport } from '@/theme/breakpoints';
 
@@ -13,6 +13,11 @@ export function Thumbnails() {
   const numPages = useViewerStore((s) => s.numPages);
   const currentPage = useViewerStore((s) => s.currentPage);
   const setSidebarOpen = useViewerStore((s) => s.setSidebarOpen);
+  // The organizer modal mounts its own PageActionBar in its footer while it
+  // is open. Mounting this one too would put two "Actions for the selected
+  // pages" groups and two role="status" counts in the accessibility tree at
+  // once, both announcing the same selection.
+  const organizing = usePageOpsStore((s) => s.organizing);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastUserScrollRef = useRef(0);
 
@@ -71,7 +76,7 @@ export function Thumbnails() {
           if (isNarrowViewport()) setSidebarOpen(false);
         }}
       />
-      <PageActionBar />
+      {!organizing && <PageActionBar />}
     </div>
   );
 }

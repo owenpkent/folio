@@ -626,6 +626,13 @@ kbd {
 }
 .folio-page-card {
   position: relative;
+  /* Forms a stacking context (position: relative + an explicit z-index, even
+     0) so the check button's z-index below is scoped to this card instead of
+     competing directly with .folio-page-actions, which is position: sticky
+     and so forms one of its own regardless of z-index. Without this the
+     check's z-index: 1 escapes to whichever ancestor context is nearest and
+     paints on top of the sticky action bar instead of under it. */
+  z-index: 0;
   display: flex;
   justify-content: center;
 }
@@ -695,6 +702,14 @@ kbd {
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 16px;
+}
+/* The organizer exists precisely because one column of small thumbnails is a
+   poor place to move page 4 to page 90, but without this override its cards
+   render at the sidebar's own 132px and the 1100px dialog just wraps more of
+   the same postage stamps. See OrganizePagesModal's GRID_SCALE for how the
+   rasterisation size is kept matched to this. */
+.folio-page-grid .folio-thumb__frame {
+  width: 210px;
 }
 .folio-page-actions {
   position: sticky;

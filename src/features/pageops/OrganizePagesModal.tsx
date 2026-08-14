@@ -8,7 +8,13 @@ import { PageActionBar } from './PageActionBar';
 import { PageList } from './PageList';
 import { usePageOpsStore } from './store';
 
-/** Rasterisation scale for the grid: larger than a sidebar thumb, still cheap. */
+/**
+ * Rasterisation scale for the grid: larger than a sidebar thumb, still cheap.
+ * Matched to `.folio-page-grid .folio-thumb__frame`'s width in global.css --
+ * on a US Letter page that is roughly 612 * 0.35 =~ 210px of backing store
+ * for a 210px frame, rather than rasterising bytes only to downscale them
+ * straight back out again.
+ */
 const GRID_SCALE = 0.35;
 
 /**
@@ -71,6 +77,10 @@ export function OrganizePagesModal() {
             scrollRoot=".folio-organize__body"
             scale={GRID_SCALE}
             rootMargin="600px 0px"
+            // A plain click means "take me there": without this the viewer
+            // navigates behind the still-open modal and nothing closes,
+            // leaving the click looking like it did nothing at all.
+            onNavigate={close}
           />
         </div>
 

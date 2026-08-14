@@ -96,7 +96,13 @@ export function useKeyboardShortcuts(): void {
         if (command.when && !command.when()) continue;
         // Swallow a held key rather than letting it fall through: the browser
         // acting on a repeated Ctrl+P is the native dialog we are replacing.
-        if (e.repeat && !REPEATABLE_KEYS.has(e.key) && !REPEATABLE_CHORDS.has(binding)) {
+        // REPEATABLE_KEYS matches on the bare key, which also matches an
+        // Arrow key held with Alt (pageops' move-page commands) even though
+        // that is a different, one-shot command: without the altKey check, OS
+        // key repeat fires a page move roughly every 33ms for as long as
+        // Alt+ArrowUp/Down is held, rather than moving it once per press.
+        const repeatable = (REPEATABLE_KEYS.has(e.key) && !e.altKey) || REPEATABLE_CHORDS.has(binding);
+        if (e.repeat && !repeatable) {
           e.preventDefault();
           return;
         }

@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useSyncExternalStore } from 'react';
 
 import { getEngine } from '@/core/pdf';
-import { getIntrinsicSize, subscribePageSizes } from '@/core/pdf/pageSizes';
+import { getIntrinsicSize, measurePage, subscribePageSizes } from '@/core/pdf/pageSizes';
 import { useNearViewport } from '@/hooks/useNearViewport';
 import { useDocumentStore } from '@/state/documentStore';
 import { DARK_SCHEME_TINT, useThemeStore } from '@/theme/themeStore';
@@ -99,6 +99,14 @@ export const PageThumb = memo(function PageThumb({
       canvas.height = 0;
       return;
     }
+
+    // measurePage is a no-op once a page has a measurement, so this is cheap
+    // on every page that already has one, but it is what gives a thumbnail
+    // its own correct aspect ratio when the main viewer has not scrolled near
+    // that page itself -- after a rotation, the intrinsic-size cache was just
+    // cleared (see resetPageSizes in operations.ts's swapInDocument), and
+    // nothing else here would ask for this page's size again.
+    measurePage(pageNumber);
 
     const controller = new AbortController();
     getEngine()

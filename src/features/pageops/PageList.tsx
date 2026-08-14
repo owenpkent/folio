@@ -60,22 +60,32 @@ export function PageList({ layout, scrollRoot, scale, rootMargin, onNavigate }: 
     [onNavigate],
   );
 
-  const handleKeyDown = useCallback((event: React.KeyboardEvent, pageNumber: number) => {
-    if (event.key === 'Delete' || event.key === 'Backspace') {
-      event.preventDefault();
-      const ops = usePageOpsStore.getState();
-      // Pressing Delete on a page nobody has picked out means that page.
-      if (ops.selection.size === 0) ops.select(pageNumber);
-      void deleteSelectedPages();
-      return;
-    }
-    if (event.key === ' ') {
-      // Space picks the page out instead of opening it, the way it does in a
-      // file list. Enter still goes to the page.
-      event.preventDefault();
-      usePageOpsStore.getState().toggle(pageNumber);
-    }
-  }, []);
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent, pageNumber: number) => {
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        // Delete and Backspace are gated to the organizer grid: this button's
+        // accessible name is "Go to page N", and in the reading sidebar that
+        // reads exactly like any other "go back" control browser-back muscle
+        // memory reaches for. The organizer is where the user came
+        // specifically to reorganise pages, so a destructive key there is
+        // expected rather than a trap.
+        if (!grid) return;
+        event.preventDefault();
+        const ops = usePageOpsStore.getState();
+        // Pressing Delete on a page nobody has picked out means that page.
+        if (ops.selection.size === 0) ops.select(pageNumber);
+        void deleteSelectedPages();
+        return;
+      }
+      if (event.key === ' ') {
+        // Space picks the page out instead of opening it, the way it does in a
+        // file list. Enter still goes to the page.
+        event.preventDefault();
+        usePageOpsStore.getState().toggle(pageNumber);
+      }
+    },
+    [grid],
+  );
 
   if (!numPages) {
     return <p className="folio-sidebar__empty">No document open.</p>;

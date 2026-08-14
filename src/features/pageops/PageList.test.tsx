@@ -33,6 +33,11 @@ const renderList = () =>
     />,
   );
 
+const renderGrid = () =>
+  render(
+    <PageList layout="grid" scrollRoot=".folio-organize__body" scale={0.35} rootMargin="600px 0px" />,
+  );
+
 const selection = () => [...usePageOpsStore.getState().selection].sort((a, b) => a - b);
 const checkbox = (page: number) => screen.getByRole('checkbox', { name: `Select page ${page}` });
 const thumb = (page: number) => screen.getByRole('button', { name: `Go to page ${page}` });
@@ -138,9 +143,65 @@ describe('PageList', () => {
     expect(useViewerStore.getState().currentPage).toBe(1);
   });
 
-  it('deletes the selection on Delete', async () => {
+  it('does not delete on Delete in the reading sidebar', async () => {
+    // Backspace and Delete are exactly the keys browser-back muscle memory
+    // reaches for, and this button's accessible name is "Go to page N" --
+    // indistinguishable from any other "go back" control. The sidebar is for
+    // reading, not reorganising, so a destructive key here has to be inert.
     const user = userEvent.setup();
     renderList();
+
+    await user.click(checkbox(2));
+    thumb(2).focus();
+    await user.keyboard('{Delete}');
+
+    expect(deleteSelectedPages).not.toHaveBeenCalled();
+    expect(selection()).toEqual([2]);
+  });
+
+  it('does not select an unpicked page on Delete in the reading sidebar either', async () => {
+    const user = userEvent.setup();
+    renderList();
+
+    thumb(4).focus();
+    await user.keyboard('{Delete}');
+
+    expect(selection()).toEqual([]);
+    expect(deleteSelectedPages).not.toHaveBeenCalled();
+  });
+
+  it('says so when there is no document', () => {
+    useViewerStore.setState({ numPages: 0 });
+    renderList();
+
+    expect(screen.getByText('No document open.')).toBeInTheDocument();
+  });
+});
+
+describe('PageList in the organizer grid', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
+    );
+    useViewerStore.setState({ numPages: 5 });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+    useViewerStore.getState().reset();
+    usePageOpsStore.getState().reset();
+    resetPageSizes();
+  });
+
+  it('deletes the selection on Delete', async () => {
+    const user = userEvent.setup();
+    renderGrid();
 
     await user.click(checkbox(2));
     thumb(2).focus();
@@ -151,7 +212,7 @@ describe('PageList', () => {
 
   it('treats Delete on an unpicked page as meaning that page', async () => {
     const user = userEvent.setup();
-    renderList();
+    renderGrid();
 
     thumb(4).focus();
     await user.keyboard('{Delete}');
@@ -160,10 +221,22 @@ describe('PageList', () => {
     expect(deleteSelectedPages).toHaveBeenCalledTimes(1);
   });
 
-  it('says so when there is no document', () => {
-    useViewerStore.setState({ numPages: 0 });
-    renderList();
+  it('navigates and calls onNavigate on a plain click, closing the organizer', async () => {
+    const user = userEvent.setup();
+    const onNavigate = vi.fn();
+    render(
+      <PageList
+        layout="grid"
+        scrollRoot=".folio-organize__body"
+        scale={0.35}
+        rootMargin="600px 0px"
+        onNavigate={onNavigate}
+      />,
+    );
 
-    expect(screen.getByText('No document open.')).toBeInTheDocument();
+    await user.click(thumb(3));
+
+    expect(useViewerStore.getState().currentPage).toBe(3);
+    expect(onNavigate).toHaveBeenCalledWith(3);
   });
 });
