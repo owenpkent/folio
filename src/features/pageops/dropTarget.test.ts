@@ -80,4 +80,18 @@ describe('dropIndexFromRects in a grid', () => {
     ];
     expect(dropIndexFromRects(spaced, 50, 110, true)).toBe(1);
   });
+
+  it('reads a short cell as still part of a row taller cells keep open', () => {
+    // align-items: flex-start lets a row's cells differ in height -- a
+    // landscape thumbnail is shorter than the portrait ones beside it. The
+    // pointer sits under the short middle cell but below its own bottom,
+    // still inside the row because its taller neighbours are not done yet.
+    const unevenRow: ItemRect[] = [
+      { left: 0, right: 100, top: 0, bottom: 300 },
+      { left: 100, right: 200, top: 0, bottom: 220 },
+      { left: 200, right: 300, top: 0, bottom: 300 },
+      { left: 0, right: 100, top: 316, bottom: 616 },
+    ];
+    expect(dropIndexFromRects(unevenRow, 120, 260, true)).toBe(1);
+  });
 });

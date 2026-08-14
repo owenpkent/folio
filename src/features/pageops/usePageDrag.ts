@@ -45,6 +45,16 @@ export function usePageDrag({ containerRef, itemSelector, grid }: PageDragOption
   const gesture = useRef<{ page: number; x: number; y: number; dragging: boolean } | null>(null);
   const rects = useRef<ItemRect[]>([]);
   const target = useRef<number | null>(null);
+  /**
+   * Removes whatever window listeners the in-flight gesture installed, or
+   * null between gestures. A second startDrag before the first one's onUp
+   * (a second pointer device, in practice), and this hook unmounting
+   * mid-drag (Escape closes the organizer), both need to tear a gesture's
+   * listeners down without waiting for a pointerup that may never come --
+   * otherwise they leak, and an unmount's listeners can go on to call
+   * moveSelectionTo for a drag nothing on screen shows happening any more.
+   */
+  const detach = useRef<(() => void) | null>(null);
 
   const measure = useCallback(() => {
     const container = containerRef.current;
@@ -59,6 +69,14 @@ export function usePageDrag({ containerRef, itemSelector, grid }: PageDragOption
   // something scrolls or resizes, so measure then instead.
   useEffect(() => {
     if (draggingPage === null) return;
+    // The gesture that set draggingPage measured before dropIndex existed, so
+    // before React had inserted <DropMarker /> as a real flex child. In
+    // .folio-page-grid the marker's own width plus the gap it opens is enough
+    // to wrap the last card of a row onto the next one, so the layout this
+    // effect commits into is already different from what that measurement
+    // saw; re-measure once against the real thing rather than carry it
+    // forward until the next scroll or resize.
+    measure();
     const remeasure = () => measure();
     window.addEventListener('scroll', remeasure, { capture: true, passive: true });
     window.addEventListener('resize', remeasure, { passive: true });
@@ -68,9 +86,19 @@ export function usePageDrag({ containerRef, itemSelector, grid }: PageDragOption
     };
   }, [draggingPage, measure]);
 
+  // A drag left running when this unmounts must not go on to reorder the
+  // document once the pointer is finally released; there is nothing left
+  // here to show it happening, and Escape closing the organizer mid-drag is
+  // exactly that.
+  useEffect(() => () => detach.current?.(), []);
+
   const startDrag = useCallback(
     (event: React.PointerEvent, page: number) => {
       if (event.button !== 0 || event.pointerType === 'touch') return;
+      // A second press landing before the first released: drop its listeners
+      // rather than adding a second set on top of them.
+      detach.current?.();
+
       gesture.current = { page, x: event.clientX, y: event.clientY, dragging: false };
 
       const onMove = (e: PointerEvent) => {
@@ -92,10 +120,9 @@ export function usePageDrag({ containerRef, itemSelector, grid }: PageDragOption
         setDropIndex(target.current);
       };
 
-      const onUp = () => {
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
-        window.removeEventListener('pointercancel', onUp);
+      const end = (commit: boolean) => {
+        detach.current?.();
+        detach.current = null;
 
         const g = gesture.current;
         const dropAt = target.current;
@@ -105,15 +132,28 @@ export function usePageDrag({ containerRef, itemSelector, grid }: PageDragOption
         setDropIndex(null);
 
         if (!g?.dragging) return;
-        // The click that follows the release would otherwise navigate to
-        // whatever page the drag happened to finish over.
-        swallowNextClick();
-        if (dropAt !== null) void moveSelectionTo(dropAt);
+        if (commit) {
+          // The click that follows the release would otherwise navigate to
+          // whatever page the drag happened to finish over.
+          swallowNextClick();
+          if (dropAt !== null) void moveSelectionTo(dropAt);
+        }
       };
+
+      const onUp = () => end(true);
+      // A genuine pointercancel (the pen switches out, the OS takes the
+      // gesture for something else) is not a release over a drop target, so
+      // it discards the drag instead of committing wherever it last measured.
+      const onCancel = () => end(false);
 
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
-      window.addEventListener('pointercancel', onUp);
+      window.addEventListener('pointercancel', onCancel);
+      detach.current = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onCancel);
+      };
     },
     [grid, measure],
   );
