@@ -41,7 +41,13 @@ interface CombineState {
   busy: boolean;
   error: string | null;
   progress: CombineProgress;
-  /** Polled by the in-flight merge; see commands.ts's runCombine. */
+  /**
+   * Polled by the in-flight merge; see commands.ts's runCombine. Cleared by
+   * startRun, not by the run itself finishing: a cancelled run leaves the
+   * modal open (nothing calls close(), which is the other place this
+   * resets) so the user can pick up where they left off, and this must not
+   * still read true the next time they click Combine.
+   */
   cancelRequested: boolean;
 
   /** Open the modal, optionally pre-loaded with files (e.g. from a drop). */
@@ -56,6 +62,13 @@ interface CombineState {
   setError(message: string | null): void;
   setProgress(current: number, total: number): void;
   requestCancel(): void;
+  /** Enter the busy state for a fresh run: clears any error and, critically,
+   * any cancelRequested left over from a previous run that was cancelled
+   * (see the note on that field above -- cancelling never calls close(), so
+   * nothing else clears it before the next run starts). */
+  startRun(total: number): void;
+  /** Leave the busy state once a run (successful, failed, or cancelled) is done. */
+  endRun(): void;
 }
 
 /**
@@ -156,4 +169,8 @@ export const useCombineStore = create<CombineState>((set, get) => ({
   setError: (error) => set({ error }),
   setProgress: (current, total) => set({ progress: { current, total } }),
   requestCancel: () => set({ cancelRequested: true }),
+
+  startRun: (total) =>
+    set({ busy: true, error: null, cancelRequested: false, progress: { current: 0, total } }),
+  endRun: () => set({ busy: false, progress: IDLE_PROGRESS }),
 }));

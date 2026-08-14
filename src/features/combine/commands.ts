@@ -87,9 +87,12 @@ export async function runCombine(): Promise<void> {
   const inputs = store.files.map((f) => ({ name: f.name, bytes: f.bytes, doc: f.doc }));
   const total = inputs.length;
 
-  store.setProgress(0, total);
-  store.setBusy(true);
-  store.setError(null);
+  // Also clears cancelRequested: a run that was cancelled leaves the modal
+  // open with nothing else resetting that flag (see the field's own doc
+  // comment in store.ts), and without this a second Combine click would
+  // poll isCancelled() below and see it still true from the last run,
+  // cancelling itself before doing any work.
+  store.startRun(total);
   try {
     const result = await combinePdfs(inputs, {
       onProgress: (done) => useCombineStore.getState().setProgress(done, total),
@@ -133,8 +136,7 @@ export async function runCombine(): Promise<void> {
     }
   } finally {
     inFlight = false;
-    useCombineStore.getState().setBusy(false);
-    useCombineStore.getState().setProgress(0, 0);
+    useCombineStore.getState().endRun();
   }
 }
 

@@ -12,9 +12,18 @@ async function pdfBytes(pages = 1): Promise<Uint8Array> {
 /** Let the async page-count patches queued by addFiles land. */
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+const IDLE_STATE = {
+  modalOpen: false,
+  files: [],
+  busy: false,
+  error: null,
+  progress: { current: 0, total: 0 },
+  cancelRequested: false,
+};
+
 describe('combine store', () => {
   beforeEach(() => {
-    useCombineStore.setState({ modalOpen: false, files: [], busy: false, error: null });
+    useCombineStore.setState(IDLE_STATE);
   });
 
   it('opens empty and closes back to empty', () => {
@@ -102,5 +111,37 @@ describe('combine store', () => {
 
     useCombineStore.getState().setError('nope');
     expect(useCombineStore.getState().error).toBe('nope');
+  });
+
+  it('requestCancel sets cancelRequested; endRun does not clear it', () => {
+    useCombineStore.getState().startRun(2);
+    useCombineStore.getState().requestCancel();
+    expect(useCombineStore.getState().cancelRequested).toBe(true);
+
+    // endRun is what a cancelled run's own cleanup calls (see commands.ts's
+    // runCombine finally block) -- it must not clear cancelRequested itself,
+    // or a run that legitimately finishes while a cancel is *also* pending
+    // (a narrow race, but the guard should not depend on winning it) would
+    // silently swallow the request.
+    useCombineStore.getState().endRun();
+    expect(useCombineStore.getState().cancelRequested).toBe(true);
+    expect(useCombineStore.getState().busy).toBe(false);
+  });
+
+  it('startRun clears a cancelRequested left over from a previous, cancelled run', () => {
+    // Reproduces the bug this guards: a cancelled run leaves the modal open
+    // (nothing calls close(), the only other place that resets the flag)
+    // with cancelRequested still true, and nothing cleared it before this
+    // fix, so clicking Combine again would poll isCancelled() and cancel
+    // itself immediately, before doing any work.
+    useCombineStore.getState().startRun(2);
+    useCombineStore.getState().requestCancel();
+    useCombineStore.getState().endRun();
+    expect(useCombineStore.getState().cancelRequested).toBe(true);
+
+    useCombineStore.getState().startRun(2);
+    expect(useCombineStore.getState().cancelRequested).toBe(false);
+    expect(useCombineStore.getState().busy).toBe(true);
+    expect(useCombineStore.getState().progress).toEqual({ current: 0, total: 2 });
   });
 });
