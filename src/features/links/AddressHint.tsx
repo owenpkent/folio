@@ -18,15 +18,22 @@ export function AddressHint() {
   const box = useAddressHover((s) => s.box);
   const dismissed = useAddressHover((s) => s.dismissed);
   const dismiss = useAddressHover((s) => s.dismiss);
+  // The effect below only ever reads whether a hit exists, not what it is, so
+  // it depends on this boolean rather than `hit` itself: `hit` gets a new
+  // object identity every time the hovered address changes (a different
+  // address, or the same one at a new point), which would otherwise tear the
+  // listener down and re-register it on every one of those changes instead of
+  // only on the transitions that matter.
+  const hasHit = hit != null;
 
   useEffect(() => {
-    if (!hit || dismissed) return;
+    if (!hasHit || dismissed) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') dismiss();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [hit, dismissed, dismiss]);
+  }, [hasHit, dismissed, dismiss]);
 
   if (!hit || !box || dismissed) return null;
 

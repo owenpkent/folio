@@ -62,19 +62,25 @@ export function useTrackAddressHover(scale: number, enabled: boolean) {
     pending.current = null;
     if (!next) return;
 
-    // Moving onto the hint keeps it up. WCAG 2.2 SC 1.4.13 asks content shown
-    // on hover to be hoverable as well as dismissible, and without this the
-    // next sample lands past the address, finds nothing, and takes the hint
-    // away as the pointer reaches it.
-    if (overHint(next.clientX, next.clientY)) return;
-
     const pageNumber = Number(next.page.dataset.pageNumber ?? 0);
     if (!pageNumber) {
       clear();
       return;
     }
 
+    // Moving onto the hint must not make it flicker away, but it must still
+    // update if the pointer has reached a genuinely different address inside
+    // that box (the next line down, say): what the hint claims and what a
+    // right-click would resolve must never disagree. WCAG 2.2 SC 1.4.13 asks
+    // content shown on hover to be hoverable as well as dismissible, so only a
+    // resolve that finds nothing at all is suppressed here.
+    const inKeepAliveZone = overHint(next.clientX, next.clientY);
+
+    // Read together, both before the await below: two reads split across an
+    // await risk a second, forced layout pass if anything else touches the DOM
+    // in between.
     const pageBox = next.page.getBoundingClientRect();
+    const containerBox = next.page.closest('.folio-pages')?.getBoundingClientRect();
     const cssX = next.clientX - pageBox.left;
     const cssY = next.clientY - pageBox.top;
 
@@ -82,14 +88,13 @@ export function useTrackAddressHover(scale: number, enabled: boolean) {
     void copyTargetAt(pageNumber, cssX, cssY, scale).then((hit) => {
       if (mine !== generation.current) return;
       if (!hit) {
-        clear();
+        if (!inKeepAliveZone) clear();
         return;
       }
       // The region is a fraction of the page, so it survives zoom; turning it
       // into pixels here keeps the hint itself free of geometry. Measured
       // against .folio-pages, which is what the hint renders inside, so it
       // scrolls with the document rather than needing repositioning.
-      const containerBox = next.page.closest('.folio-pages')?.getBoundingClientRect();
       show(hit, {
         left: pageBox.left - (containerBox?.left ?? 0) + hit.region.x * pageBox.width,
         top: pageBox.top - (containerBox?.top ?? 0) + hit.region.y * pageBox.height,
@@ -110,7 +115,13 @@ export function useTrackAddressHover(scale: number, enabled: boolean) {
 
       const page = (event.target as Element).closest<HTMLElement>('.folio-page');
       if (!page) {
-        clear();
+        // The hint's label can overhang past the page box -- an address near
+        // the page's right or bottom edge, or on its last line, puts the label
+        // in .folio-pages' margin or the inter-page gap -- and
+        // closest('.folio-page') is null exactly there. Clearing on that alone
+        // took the hint away right at the boundary WCAG 2.2 SC 1.4.13 exists to
+        // cover; only clear once the pointer is truly away from the hint too.
+        if (!overHint(event.clientX, event.clientY)) clear();
         return;
       }
 
@@ -133,11 +144,23 @@ export function useTrackAddressHover(scale: number, enabled: boolean) {
   }, [clear]);
 
   // A zoom or a mode change moves or invalidates the box under the pointer.
+  // Bumped here too, or a resolve already in flight from before the change can
+  // land afterwards and call show(), undoing the clear.
   useEffect(() => {
+    generation.current += 1;
     clear();
   }, [scale, enabled, clear]);
 
-  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+  useEffect(
+    () => () => {
+      // Without this, a resolve still in flight when the viewer unmounts can
+      // land afterwards and repopulate this module-level store for a viewer
+      // that is gone.
+      generation.current += 1;
+      cancelAnimationFrame(frame.current);
+    },
+    [],
+  );
 
   return { onPointerMove, onPointerLeave };
 }

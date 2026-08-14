@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import type { AddressHit } from './copyTarget';
+import type { AddressHit, AddressRegion } from './copyTarget';
 
 /** Where to draw the hint, in CSS pixels relative to the page container. */
 export interface HintBox {
@@ -32,11 +32,29 @@ export const useAddressHover = create<AddressHoverState>((set, get) => ({
   dismissed: false,
 
   show: (hit, box) => {
-    const current = get().hit;
-    // Moving within the same address must not undo a dismissal, or Escape
-    // would only hold until the next mouse tremor.
-    const same = current?.target.value === hit.target.value;
-    set({ hit, box, dismissed: same ? get().dismissed : false });
+    const current = get();
+
+    // Skip the write when nothing actually changed: AddressHint's Escape
+    // effect depends on this object's identity, so an identical write on every
+    // animation frame would tear the listener down and re-register it
+    // roughly 60 times a second while the pointer sits still.
+    if (
+      current.hit?.target.value === hit.target.value &&
+      current.box != null &&
+      sameBox(current.box, box)
+    ) {
+      return;
+    }
+
+    // Moving within the same occurrence must not undo a dismissal, or Escape
+    // would only hold until the next mouse tremor. Judged by where the address
+    // sits rather than what it says: two occurrences of the same text are
+    // different content on the page, and dismissing one must not silence
+    // every other one -- a repeated footer URL, say, or a support email
+    // repeated down a table. The same occurrence always resolves to the same
+    // region, whatever point within it the pointer is on.
+    const same = current.hit != null && sameRegion(current.hit.region, hit.region);
+    set({ hit, box, dismissed: same ? current.dismissed : false });
   },
 
   clear: () => {
@@ -46,3 +64,11 @@ export const useAddressHover = create<AddressHoverState>((set, get) => ({
 
   dismiss: () => set({ dismissed: true }),
 }));
+
+function sameBox(a: HintBox, b: HintBox): boolean {
+  return a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
+}
+
+function sameRegion(a: AddressRegion, b: AddressRegion): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}

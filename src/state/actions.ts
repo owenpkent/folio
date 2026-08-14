@@ -4,6 +4,10 @@ import { resetPageSizes } from '@/core/pdf/pageSizes';
 import { announce } from '@/a11y/announcer';
 import { useAnnotationStore } from '@/features/annotations';
 import { useEditStore } from '@/features/editing';
+// Store only, not the feature barrel: it also exports AddressHint and
+// useTrackAddressHover, UI modules this low-level orchestration module has no
+// business importing.
+import { useAddressHover } from '@/features/links/hoverStore';
 import { useOcrStore } from '@/features/ocr';
 // Store only, not the feature barrel: that also exports components, which pull
 // in UI modules this low-level orchestration module has no business importing.
@@ -61,6 +65,9 @@ export async function loadSource(source: DocumentSource): Promise<void> {
     // never mid-edit, so any leftover session/undo history from a prior one goes.
     useTextEditStore.getState().reset();
     usePlacementStore.getState().cancel();
+    // Also not persisted: a hint resolved against the previous document's page
+    // geometry must not survive into this one.
+    useAddressHover.getState().clear();
     useSigningStore.getState().setDetected(detected);
     document.title = `${info.name} · Folio`;
 
@@ -88,6 +95,7 @@ export async function closeDocument(): Promise<void> {
   useOcrStore.getState().reset();
   useTextEditStore.getState().reset();
   usePlacementStore.getState().cancel();
+  useAddressHover.getState().clear();
   useSigningStore.getState().setDetected([]);
   document.title = 'Folio';
   announce('Closed document');
