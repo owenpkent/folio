@@ -17,8 +17,11 @@ import type { Signature } from '@/features/signatures/types';
 // state/actions.ts reaches past the barrel for placement and textedit.
 import { useAnnotationStore } from '@/features/annotations/store';
 import { useEditStore } from '@/features/editing/store';
+import { useImageEditStore } from '@/features/imageedit/store';
 import { useOcrStore } from '@/features/ocr/store';
+import { usePlacementStore } from '@/features/placement/store';
 import { useSignatureStore } from '@/features/signatures/store';
+import { useTextEditStore } from '@/features/textedit/store';
 
 /** Everything a page operation disturbs, as it was just before it ran. */
 export interface PageOpsSnapshot {
@@ -55,6 +58,24 @@ export function restorePageState(snapshot: PageOpsSnapshot): void {
   useAnnotationStore.getState().replaceAll(snapshot.annotations);
   useSignatureStore.getState().replaceAll(snapshot.signatures);
   useOcrStore.getState().replaceAll(snapshot.ocrPages);
+}
+
+/**
+ * Clear page-keyed UI state that a plan cannot carry across and that is not
+ * worth restoring on undo either: a pending placement, an image mid-selection,
+ * and an open text-edit session are all aimed at a page number, a page's
+ * content, or both, and any of those might mean something else entirely one
+ * line down (or be gone outright). `usePageOpsStore`'s own selection is exempt
+ * -- {@link remapSelection} moves it to where its pages landed instead.
+ *
+ * Called from both a commit and an undo, so this is the one place that has to
+ * remember every page-keyed store that is not one of the ones above, which is
+ * what the module doc comment means by knowing the full list.
+ */
+export function clearTransientPageState(): void {
+  usePlacementStore.getState().cancel();
+  useImageEditStore.getState().select(null);
+  useTextEditStore.getState().endSession();
 }
 
 /**

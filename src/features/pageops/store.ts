@@ -39,6 +39,14 @@ interface PageOpsState {
   markSignaturesWarned(): void;
   pushUndo(snapshot: PageOpsSnapshot): void;
   popUndo(): PageOpsSnapshot | null;
+  /**
+   * Drop the whole undo stack without restoring anything. Text editing keeps
+   * its own separate undo stack bound to the same Mod+z chord (see
+   * commands.ts); once either one commits or undoes, the other's snapshots
+   * are byte-states from before that change, so they get invalidated here
+   * rather than left around to silently discard it later.
+   */
+  clearUndo(): void;
   reset(): void;
 }
 
@@ -114,6 +122,8 @@ export const usePageOpsStore = create<PageOpsState>((set, get) => ({
     set({ undoStack: undoStack.slice(0, -1) });
     return popped;
   },
+
+  clearUndo: () => set({ undoStack: [] }),
 
   reset: () =>
     set({

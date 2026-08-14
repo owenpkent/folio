@@ -10,6 +10,9 @@ const ready = () => useDocumentStore.getState().status === 'ready';
 /** Ready, and not already part-way through rewriting the file. */
 const idle = () => ready() && !usePageOpsStore.getState().busy;
 const hasSelection = () => idle() && usePageOpsStore.getState().selection.size > 0;
+/** hasSelection, and the selection is not the whole document — deleting that would leave none. */
+const canDelete = () =>
+  hasSelection() && usePageOpsStore.getState().selection.size < useViewerStore.getState().numPages;
 
 let registered = false;
 
@@ -32,7 +35,7 @@ export function registerPageOpsCommands(): void {
     category: 'Pages',
     // No keybinding: Delete belongs to whichever page list has focus, and a
     // global binding would fire while the caret sat in a form field.
-    when: hasSelection,
+    when: canDelete,
     run: deleteSelectedPages,
   });
 

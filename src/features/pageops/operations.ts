@@ -10,13 +10,21 @@ import { announce } from '@/a11y/announcer';
 import { pushToast } from '@/components/common';
 import { getEngine } from '@/core/pdf';
 import { resetPageSizes } from '@/core/pdf/pageSizes';
-import { usePlacementStore } from '@/features/placement/store';
+import { useTextEditStore } from '@/features/textedit/store';
 import { useSigningStore } from '@/features/signing';
 import { reloadEditedBytes } from '@/state/actions';
+import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
 
 import { applyPagePlan, PageOpsError } from './mutate';
-import { capturePageState, remapPageState, restorePageState, type PageTurns } from './pageState';
+import {
+  capturePageState,
+  clearTransientPageState,
+  remapPageState,
+  restorePageState,
+  type PageOpsSnapshot,
+  type PageTurns,
+} from './pageState';
 import { deletePlan, movePlan, nudgePlan, QUARTER_TURN, rotatePlan } from './plans';
 import { usePageOpsStore } from './store';
 import type { PagePlan } from './types';
@@ -62,26 +70,38 @@ export async function commitPagePlan(plan: PagePlan, announcement: string): Prom
   ops.setBusy(true);
   warnIfSigned();
 
+  let snapshot: PageOpsSnapshot | undefined;
   try {
     const wasOn = useViewerStore.getState().currentPage;
     const before = await getEngine().saveDocument();
     // These bytes stay ours: pdf-lib parses a copy, and only reloadEditedBytes
     // hands an array to pdf.js, which detaches it.
-    const snapshot = capturePageState(before, useViewerStore.getState().numPages);
+    snapshot = capturePageState(before, useViewerStore.getState().numPages);
     const result = await applyPagePlan({ pdfBytes: before, plan });
 
-    remapPageState(result.pageMap, turnsByPageNumber(plan));
+    // Persisting the remap (each store's replaceAll writes straight through to
+    // localStorage) has to wait until the swap it is describing has actually
+    // landed. reloadEditedBytes can still reject after applyPagePlan
+    // succeeds, and remapping first would leave every highlight, signature,
+    // text box, and OCR page one page ahead of a document that never changed,
+    // saved to disk, with nothing in the undo stack to put it back.
     await swapInDocument(result.bytes, result.numPages, wasOn, result.pageMap);
+    remapPageState(result.pageMap, turnsByPageNumber(plan));
 
     usePageOpsStore.getState().pushUndo(snapshot);
     usePageOpsStore.getState().remapSelection(result.pageMap);
     announce(announcement);
     return true;
   } catch (error) {
+    // Nothing to put back if the failure happened before the swap, but if
+    // swapInDocument itself is what failed, capturePageState's snapshot is
+    // the only record of the (still current) sidecar state.
+    if (snapshot) restorePageState(snapshot);
     const message =
       error instanceof PageOpsError
         ? error.message
         : 'Could not change the pages of this document.';
+    pushToast(message, 'error');
     announce(message, true);
     return false;
   } finally {
@@ -98,12 +118,23 @@ export async function undoPageOp(): Promise<boolean> {
   ops.setBusy(true);
 
   try {
-    restorePageState(snapshot);
     const wasOn = useViewerStore.getState().currentPage;
+    // The byte swap first: swapInDocument hands snapshot.bytes to pdf.js,
+    // which detaches the buffer, so a snapshot is good for exactly one
+    // attempt and there are no bytes left to retry with if this rejects.
+    // Restoring the sidecar stores only once it has actually landed keeps a
+    // failed attempt from leaving every highlight, signature, text box, and
+    // OCR page pointed at a document that never went back.
     await swapInDocument(snapshot.bytes, snapshot.numPages, wasOn, null);
+    restorePageState(snapshot);
     usePageOpsStore.getState().clearSelection();
     announce('Page change undone');
     return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not undo the page change.';
+    pushToast(message, 'error');
+    announce(message, true);
+    return false;
   } finally {
     usePageOpsStore.getState().setBusy(false);
   }
@@ -115,9 +146,15 @@ async function swapInDocument(
   wasOn: number,
   pageMap: Map<number, number> | null,
 ): Promise<void> {
-  // A pending placement is aimed at a page number that is about to mean
-  // something else.
-  usePlacementStore.getState().cancel();
+  // A pending placement, an open text-edit session, and a selected image are
+  // all aimed at page state that is about to mean something else; see
+  // pageState.ts.
+  clearTransientPageState();
+  // Page ops and text edits keep separate undo stacks bound to the same Mod+z
+  // chord (see commands.ts); once this reload lands, the other stack's
+  // snapshots describe bytes from before it, and using one would silently
+  // discard whatever this swap just did.
+  useTextEditStore.getState().clearUndo();
 
   await reloadEditedBytes(bytes);
   // Page geometry is cached per page number, and the count, the order, and any
@@ -129,6 +166,17 @@ async function swapInDocument(
   // Follow the page the user was reading. If it was deleted, stay where it sat
   // rather than jumping back to the top of the document.
   viewer.goToPage(pageMap?.get(wasOn) ?? Math.min(wasOn, numPages));
+
+  // Bookmarks resolve to absolute page numbers against the page tree at load
+  // time (see loadSource), and a page op is the first thing that can change
+  // that tree after load: without this the Outline sidebar keeps navigating
+  // to where a bookmark's target used to sit.
+  try {
+    useDocumentStore.getState().setOutline(await getEngine().getOutline());
+  } catch {
+    // Best-effort: the page operation itself already succeeded, and a stale
+    // outline is a smaller loss than failing it over a sidebar convenience.
+  }
 }
 
 export async function deleteSelectedPages(): Promise<void> {
@@ -137,6 +185,7 @@ export async function deleteSelectedPages(): Promise<void> {
 
   const plan = deletePlan(useViewerStore.getState().numPages, selection);
   if (!plan) {
+    pushToast('A document has to keep at least one page.', 'error');
     announce('A document has to keep at least one page.', true);
     return;
   }
@@ -149,8 +198,14 @@ export async function deleteSelectedPages(): Promise<void> {
 export async function nudgeSelection(delta: -1 | 1): Promise<void> {
   const { selection } = usePageOpsStore.getState();
   const plan = nudgePlan(useViewerStore.getState().numPages, selection, delta);
-  // Null means the selection is already against that end of the document.
-  if (!plan) return;
+  if (!plan) {
+    // Null means the selection is already against that end of the document.
+    // PageActionBar disables the button for this, but the keybinding
+    // (Alt+ArrowUp/Down) has no such guard, so this still needs to say
+    // something rather than do nothing silently.
+    announce(`Already at the ${delta === -1 ? 'start' : 'end'} of the document`);
+    return;
+  }
 
   const count = selection.size;
   await commitPagePlan(plan, `Moved ${count} ${pageWord(count)} ${delta === -1 ? 'up' : 'down'}`);

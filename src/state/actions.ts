@@ -113,11 +113,19 @@ export async function reloadEditedBytes(bytes: Uint8Array): Promise<void> {
   // Same ordering rule as loadSource: read the bytes before the engine takes
   // (and detaches) them. Callers must not touch `bytes` after this returns.
   const detected = detectSignaturesSafely({ kind: 'bytes', data: bytes });
-  await engine.loadDocument({ kind: 'bytes', data: bytes, name: doc.info.name });
+  const info = await engine.loadDocument({ kind: 'bytes', data: bytes, name: doc.info.name });
   useDocumentStore.getState().bumpDocVersion();
   // Pages repaint in place on a docVersion bump (Page.tsx re-runs its canvas /
   // text-layer / annotation-layer effects rather than remounting), so scroll
   // position is never disturbed and needs no explicit preservation here.
+
+  // Page operations are the only feature that can change the page count, but
+  // nothing else here refreshes it: without this, info.numPages keeps the
+  // open-time count and anything that loops over "every page" (the Word Count
+  // plugin, ai/documentText.ts) runs past the end of a document that just
+  // lost pages. The fingerprint is deliberately left alone -- see the doc
+  // comment above.
+  useDocumentStore.getState().setNumPages(info.numPages);
 
   useSigningStore.getState().setDetected(detected);
 }
