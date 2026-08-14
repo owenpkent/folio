@@ -5,6 +5,7 @@ import { PDFDocument, PDFHexString, type PDFPage } from 'pdf-lib';
 import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { pushToast } from '@/components/common';
+import { downloadBytes } from '@/core/document/downloadBytes';
 import { isTauri } from '@/core/document/openDocument';
 import { getEngine } from '@/core/pdf';
 import { MIN_PDF_BYTES, PDF_HEADER } from '@/core/pdf/pdfHeader';
@@ -246,19 +247,6 @@ export async function saveBytes(bytes: Uint8Array, suggested: string): Promise<b
     pushToast('Could not save the document', 'error');
     return false;
   }
-}
-
-function downloadBytes(bytes: Uint8Array, filename: string): void {
-  // Copy into a fresh ArrayBuffer-backed view so the type is a valid BlobPart.
-  const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 let registered = false;

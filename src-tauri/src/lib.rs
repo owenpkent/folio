@@ -332,6 +332,13 @@ fn open_default_apps_settings() -> Result<(), String> {
         // the generic Default apps page on Windows builds that don't honor the
         // query. Fixed URI, no user input -> no injection surface.
         //
+        // `registeredAppUser` (not `registeredAppMachine`) only resolves against
+        // HKCU\Software\RegisteredApplications, which is where the installer
+        // writes it because `bundle.windows.nsis.installMode` is pinned to
+        // "currentUser" in tauri.conf.json. If that ever changes to `perMachine`
+        // or `both`, this query param needs to change with it (or be chosen at
+        // runtime), or this silently falls back to the generic Default apps page.
+        //
         // Launched via `cmd /C start`, which routes the URI through
         // ShellExecute and reliably lands in the Settings app. Handing the URI
         // to explorer.exe (the previous approach) drops the `?query` on some

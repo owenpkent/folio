@@ -24,7 +24,25 @@ try {
 } catch {
   /* not a git checkout; leave "unknown" */
 }
-const buildDate = new Date().toISOString();
+/**
+ * Baked into the bundle for the About dialog, which also makes it the one input
+ * that stops two builds of the same commit from producing identical output.
+ * `SOURCE_DATE_EPOCH` (the reproducible-builds convention, in seconds) pins it;
+ * the Chrome extension build sets it from the commit timestamp so a store
+ * package can be reproduced and diffed. Unset, this is just the wall clock.
+ */
+const sourceDateEpoch = Number(process.env.SOURCE_DATE_EPOCH);
+// >= 0, not > 0: the Unix epoch itself (SOURCE_DATE_EPOCH=0) is a value the
+// reproducible-builds convention allows, and build.mjs honours it (the env
+// var is a non-empty string, "0", which is truthy) -- rejecting it here while
+// build.mjs's own log still says "Reproducible: ... SOURCE_DATE_EPOCH=0" was
+// a silent contradiction between the two. An unset var stays wall-clock:
+// Number(undefined) is NaN, which fails isFinite regardless of the operator.
+const buildDate = (
+  Number.isFinite(sourceDateEpoch) && sourceDateEpoch >= 0
+    ? new Date(sourceDateEpoch * 1000)
+    : new Date()
+).toISOString();
 
 // Must match PDFJS_WASM_PATH in src/core/pdf/setupWorker.ts, which is what gets
 // handed to getDocument as `wasmUrl`.
@@ -100,6 +118,10 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_DATE__: JSON.stringify(buildDate),
     __COMMIT_HASH__: JSON.stringify(commitHash),
+    // The Chrome extension package leaves the OCR runtime out (it was 77% of
+    // the payload), so the feature has to be absent from the UI rather than
+    // present and failing on a missing asset. Set by extensions/chrome/build.mjs.
+    __OCR_BUNDLED__: JSON.stringify(process.env.FOLIO_NO_OCR !== '1'),
   },
 
   // Prevent Vite from obscuring Rust errors during `tauri dev`.
@@ -133,7 +155,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    include: ['src/**/*.{test,spec}.{ts,tsx}', 'extensions/chrome/**/*.{test,spec}.js'],
     css: false,
     // Comfortably above the 30s `interruptAfterTimeLimit` the fast-check setup
     // uses as its DoS backstop. At vitest's 5s default the test was killed
