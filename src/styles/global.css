@@ -1631,6 +1631,12 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* Same convention as .folio-search__results: an unbounded list inside a
+     modal/dropdown gets its own scroll region rather than pushing the
+     header and footer off-screen. Without this, a dozen-plus staged files
+     clipped the close button off the top and Cancel/Combine off the bottom. */
+  max-height: 320px;
+  overflow-y: auto;
 }
 .folio-combine-list__item {
   display: flex;
@@ -1683,6 +1689,9 @@ kbd {
   color: var(--folio-text-muted);
 }
 .folio-link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   align-self: flex-start;
   margin-bottom: 12px;
   padding: 0;
@@ -1692,8 +1701,12 @@ kbd {
   cursor: pointer;
   font: inherit;
 }
-.folio-link-button:hover {
+.folio-link-button:hover:not(:disabled) {
   text-decoration: underline;
+}
+.folio-link-button:disabled {
+  color: var(--folio-text-muted);
+  cursor: default;
 }
 .folio-add-identity {
   border: 1px solid var(--folio-border);
@@ -1853,13 +1866,15 @@ kbd {
 /* Scrollbars */
 .folio-viewer::-webkit-scrollbar,
 .folio-sidebar__body::-webkit-scrollbar,
-.folio-search__results::-webkit-scrollbar {
+.folio-search__results::-webkit-scrollbar,
+.folio-combine-list::-webkit-scrollbar {
   width: 12px;
   height: 12px;
 }
 .folio-viewer::-webkit-scrollbar-thumb,
 .folio-sidebar__body::-webkit-scrollbar-thumb,
-.folio-search__results::-webkit-scrollbar-thumb {
+.folio-search__results::-webkit-scrollbar-thumb,
+.folio-combine-list::-webkit-scrollbar-thumb {
   background: var(--folio-border);
   border: 3px solid transparent;
   background-clip: content-box;
