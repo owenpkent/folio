@@ -26,6 +26,9 @@ import {
   type PDFObject,
 } from 'pdf-lib';
 
+const NUMS = PDFName.of('Nums');
+const NAMES = PDFName.of('Names');
+
 export interface SweepResult {
   /** Indirect objects unregistered from the context. */
   deleted: number;
@@ -51,7 +54,7 @@ export function sweepDroppedPages(
   let scrubbed = 0;
   for (const ref of live) {
     const object = context.lookup(ref);
-    if (object) scrubbed += scrub(object, dropped);
+    if (object) scrubbed += scrub(object, dropped, context);
   }
 
   let deleted = 0;
@@ -65,12 +68,17 @@ export function sweepDroppedPages(
 }
 
 /**
- * Every ref reachable from the trailer without passing through a dropped page.
+ * Every ref reachable from the trailer without passing through a `skip`ped
+ * one, optionally reporting refs that do not resolve to a real object.
  *
- * `PDFRef` interns its instances, so a `Set<PDFRef>` compares by identity and
- * by object number at the same time.
+ * An explicit worklist rather than recursion: page trees and structure trees
+ * in a large document nest deeply enough to matter.
  */
-function mark(context: PDFContext, dropped: Set<PDFRef>): Set<PDFRef> {
+function walkReachable(
+  context: PDFContext,
+  skip: Set<PDFRef>,
+  onDangling?: (ref: PDFRef) => void,
+): Set<PDFRef> {
   const live = new Set<PDFRef>();
   const queue: PDFObject[] = [];
 
@@ -79,16 +87,15 @@ function mark(context: PDFContext, dropped: Set<PDFRef>): Set<PDFRef> {
     if (root) queue.push(root);
   }
 
-  // An explicit worklist rather than recursion: page trees and structure trees
-  // in a large document nest deeply enough to matter.
   while (queue.length > 0) {
     const object = queue.pop() as PDFObject;
 
     if (object instanceof PDFRef) {
-      if (dropped.has(object) || live.has(object)) continue;
+      if (skip.has(object) || live.has(object)) continue;
       live.add(object);
       const target = context.lookup(object);
       if (target) queue.push(target);
+      else onDangling?.(object);
       continue;
     }
 
@@ -106,31 +113,39 @@ function mark(context: PDFContext, dropped: Set<PDFRef>): Set<PDFRef> {
   return live;
 }
 
+/** Every ref reachable from the trailer without passing through a dropped page. */
+function mark(context: PDFContext, dropped: Set<PDFRef>): Set<PDFRef> {
+  return walkReachable(context, dropped);
+}
+
+/**
+ * Every ref reachable from the trailer that does not resolve to a real
+ * indirect object: a saved file that still has one of these can crash or
+ * mis-render in another reader even though every page is present and
+ * `getPageCount()` alone would not notice.
+ */
+export function findDanglingRefs(context: PDFContext): PDFRef[] {
+  const dangling: PDFRef[] = [];
+  walkReachable(context, new Set(), (ref) => dangling.push(ref));
+  return dangling;
+}
+
 /**
  * Drop references to dropped pages from one surviving object and the direct
  * (non-indirect) containers nested inside it. Indirect children are reached
  * through the live set instead, so this never follows a ref.
  */
-function scrub(object: PDFObject, dropped: Set<PDFRef>): number {
+function scrub(object: PDFObject, dropped: Set<PDFRef>, context: PDFContext): number {
   let scrubbed = 0;
-  const stack: PDFObject[] = [object];
+  const stack: Array<{ node: PDFObject; pairs: boolean }> = [{ node: object, pairs: false }];
 
   while (stack.length > 0) {
-    const node = stack.pop() as PDFObject;
+    const { node, pairs } = stack.pop() as { node: PDFObject; pairs: boolean };
 
     if (node instanceof PDFArray) {
-      // Backwards: removing an element shifts everything after it down.
-      for (let i = node.size() - 1; i >= 0; i -= 1) {
-        const item = node.get(i);
-        if (item instanceof PDFRef) {
-          if (dropped.has(item)) {
-            node.remove(i);
-            scrubbed += 1;
-          }
-          continue;
-        }
-        if (isContainer(item)) stack.push(item);
-      }
+      scrubbed += pairs
+        ? scrubPairs(node, dropped, context, stack)
+        : scrubList(node, dropped, stack);
       continue;
     }
 
@@ -139,7 +154,7 @@ function scrub(object: PDFObject, dropped: Set<PDFRef>): number {
 
     for (const [key, value] of dict.entries()) {
       if (value instanceof PDFRef) {
-        if (dropped.has(value)) {
+        if (dropped.has(value) || isDeadDestinationRef(value, dropped, context)) {
           dict.delete(key);
           scrubbed += 1;
         }
@@ -152,10 +167,82 @@ function scrub(object: PDFObject, dropped: Set<PDFRef>): number {
         scrubbed += 1;
         continue;
       }
-      if (isContainer(value)) stack.push(value);
+      if (isContainer(value)) {
+        // A number tree's `/Nums` (`/ParentTree`, `/PageLabels`, …) and a name
+        // tree's `/Names` (`/Dests`, …) hold their entries as one flat
+        // [key, value, key, value, …] array, where position is the only thing
+        // pairing a key with its value: compacting a single dropped slot out
+        // of one of these shifts every later value under the wrong key. Every
+        // other array here (`/Kids`, `/Annots`, a destination's own operands)
+        // carries no such meaning.
+        const isPairs = value instanceof PDFArray && (key === NUMS || key === NAMES);
+        stack.push({ node: value, pairs: isPairs });
+      }
     }
   }
 
+  return scrubbed;
+}
+
+/** Scrub a plain array, where removing an element is safe: order carries no meaning. */
+function scrubList(
+  node: PDFArray,
+  dropped: Set<PDFRef>,
+  stack: Array<{ node: PDFObject; pairs: boolean }>,
+): number {
+  let scrubbed = 0;
+  // Backwards: removing an element shifts everything after it down.
+  for (let i = node.size() - 1; i >= 0; i -= 1) {
+    const item = node.get(i);
+    if (item instanceof PDFRef) {
+      if (dropped.has(item)) {
+        node.remove(i);
+        scrubbed += 1;
+      }
+      continue;
+    }
+    // Same reasoning as the dict branch: a destination array reached as an
+    // element (a `/Names /Dests` name tree's value, for instance) has to be
+    // dropped whole, not sliced down to `[/XYZ null 700 null]`.
+    if (item instanceof PDFArray && isDeadDestination(item, dropped)) {
+      node.remove(i);
+      scrubbed += 1;
+      continue;
+    }
+    if (isContainer(item)) stack.push({ node: item, pairs: false });
+  }
+  return scrubbed;
+}
+
+/**
+ * Scrub a number/name tree's flat `[key, value, key, value, …]` array. A dead
+ * entry drops both slots of its pair together, so every pair before and after
+ * it keeps its position — see the header comment for what happens if it does
+ * not.
+ */
+function scrubPairs(
+  node: PDFArray,
+  dropped: Set<PDFRef>,
+  context: PDFContext,
+  stack: Array<{ node: PDFObject; pairs: boolean }>,
+): number {
+  let scrubbed = 0;
+  // Backwards, and by pairs: removing one shifts every later pair down.
+  for (let key = node.size() - 2; key >= 0; key -= 2) {
+    const valueIndex = key + 1;
+    const value = node.get(valueIndex);
+    const dead =
+      (value instanceof PDFRef && (dropped.has(value) || isDeadDestinationRef(value, dropped, context))) ||
+      (value instanceof PDFArray && isDeadDestination(value, dropped));
+
+    if (dead) {
+      node.remove(valueIndex);
+      node.remove(key);
+      scrubbed += 1;
+      continue;
+    }
+    if (isContainer(value)) stack.push({ node: value, pairs: false });
+  }
   return scrubbed;
 }
 
@@ -171,6 +258,16 @@ function isDeadDestination(array: PDFArray, dropped: Set<PDFRef>): boolean {
   const target = array.get(0);
   if (!(target instanceof PDFRef) || !dropped.has(target)) return false;
   return array.get(1) instanceof PDFName;
+}
+
+/**
+ * Whether `ref` points (indirectly) at a destination array aimed at a dropped
+ * page — the shape a `/Dest`, or a name tree's value, takes when the writer
+ * gave the destination its own indirect object instead of writing it inline.
+ */
+function isDeadDestinationRef(ref: PDFRef, dropped: Set<PDFRef>, context: PDFContext): boolean {
+  const target = context.lookup(ref);
+  return target instanceof PDFArray && isDeadDestination(target, dropped);
 }
 
 function isContainer(object: PDFObject): boolean {

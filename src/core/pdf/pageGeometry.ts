@@ -49,33 +49,65 @@ export interface UserBox {
 }
 
 interface PageGeometry {
-  /** MediaBox size, which is the space pdf-lib draws into. */
-  mediaWidth: number;
-  mediaHeight: number;
+  /** The box's size, which is the space pdf-lib draws into. */
+  boxWidth: number;
+  boxHeight: number;
+  /** That box's own lower-left corner, in absolute PDF user space. */
+  originX: number;
+  originY: number;
   /** Displayed size, with the sides swapped on a quarter turn. */
   viewWidth: number;
   viewHeight: number;
   rotation: number;
 }
 
+/**
+ * Fold any angle onto a valid `/Rotate` value (a multiple of 90, in 0..359).
+ * Rounds to the nearest quarter turn rather than truncating, so a malformed
+ * existing rotation (not itself a multiple of 90) still lands somewhere sane
+ * instead of carrying its fractional part forward indefinitely.
+ */
 export function normalizeAngle(angle: number): number {
   return (((Math.round(angle / 90) * 90) % 360) + 360) % 360;
 }
 
 /**
- * Note this reads the MediaBox, matching every existing caller. A document
- * whose CropBox differs from its MediaBox is offset by that difference on
- * screen, which is a separate, pre-existing gap.
+ * The box pdf.js actually sizes its viewport from: the CropBox intersected
+ * with the MediaBox (PDF 32000-1 7.7.3.3 has a CropBox that extends beyond the
+ * MediaBox clipped to it), falling back to the MediaBox when the two do not
+ * overlap at all. pdf-lib's own `getCropBox()` already falls back to the
+ * MediaBox when there is no CropBox.
+ */
+function effectiveBox(page: PDFPage): { x: number; y: number; width: number; height: number } {
+  const media = page.getMediaBox();
+  const crop = page.getCropBox();
+  const x0 = Math.max(media.x, crop.x);
+  const y0 = Math.max(media.y, crop.y);
+  const x1 = Math.min(media.x + media.width, crop.x + crop.width);
+  const y1 = Math.min(media.y + media.height, crop.y + crop.height);
+  if (x1 <= x0 || y1 <= y0) return media;
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
+/**
+ * Both the box's extent (for scaling) and its own lower-left corner (for
+ * placement): a `/MediaBox` or `/CropBox` that does not start at (0, 0) — a
+ * press-ready file, LaTeX output with crop marks, a scanner-trimmed page — has
+ * pdf-lib drawing in absolute user space, not box-relative space, so every
+ * placement below has to add that corner back in or land offset by exactly
+ * the box's own origin.
  */
 function geometryOf(page: PDFPage): PageGeometry {
-  const { width, height } = page.getSize();
+  const box = effectiveBox(page);
   const rotation = normalizeAngle(page.getRotation().angle);
   const quarterTurned = rotation === 90 || rotation === 270;
   return {
-    mediaWidth: width,
-    mediaHeight: height,
-    viewWidth: quarterTurned ? height : width,
-    viewHeight: quarterTurned ? width : height,
+    boxWidth: box.width,
+    boxHeight: box.height,
+    originX: box.x,
+    originY: box.y,
+    viewWidth: quarterTurned ? box.height : box.width,
+    viewHeight: quarterTurned ? box.width : box.height,
     rotation,
   };
 }
@@ -86,18 +118,26 @@ function geometryOf(page: PDFPage): PageGeometry {
  *
  * Read the cases as "where did the paper's corners go": turning a page 90°
  * clockwise puts its bottom-left corner at the top left of the screen, so
- * screen-x runs along user-y and screen-y runs along user-x.
+ * screen-x runs along user-y and screen-y runs along user-x. Working this out
+ * first in coordinates local to the box (both axes 0..their own extent) keeps
+ * that rotation math independent of where the box itself sits, so the origin
+ * only has to be added back in once, the same way regardless of rotation.
  */
 function toUserSpace(g: PageGeometry, x: number, y: number): [number, number] {
+  const [localX, localY] = toBoxLocalSpace(g, x, y);
+  return [localX + g.originX, localY + g.originY];
+}
+
+function toBoxLocalSpace(g: PageGeometry, x: number, y: number): [number, number] {
   switch (g.rotation) {
     case 90:
       return [y, x];
     case 180:
-      return [g.mediaWidth - x, y];
+      return [g.boxWidth - x, y];
     case 270:
-      return [g.mediaWidth - y, g.mediaHeight - x];
+      return [g.boxWidth - y, g.boxHeight - x];
     default:
-      return [x, g.mediaHeight - y];
+      return [x, g.boxHeight - y];
   }
 }
 

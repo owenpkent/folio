@@ -11,9 +11,21 @@
  * outline, the AcroForm, document metadata), and losing a document's bookmarks
  * because the user moved page 4 above page 3 is not a trade worth making.
  */
-import { PDFArray, PDFDict, PDFName, PDFRef, PDFDocument, degrees, type PDFPage } from 'pdf-lib';
+import {
+  degrees,
+  PDFArray,
+  PDFDict,
+  PDFName,
+  PDFNumber,
+  PDFRef,
+  PDFDocument,
+  type PDFObject,
+  type PDFPage,
+} from 'pdf-lib';
 
-import { sweepDroppedPages } from './gc';
+import { normalizeAngle } from '@/core/pdf/pageGeometry';
+
+import { findDanglingRefs, sweepDroppedPages } from './gc';
 import type { ApplyPagePlanParams, PageOpsErrorCode, PagePlan, PagePlanResult } from './types';
 
 export class PageOpsError extends Error {
@@ -45,6 +57,7 @@ export async function applyPagePlan({
   // indices still address the document.
   const droppedAnnots = collectAnnots(sourcePages, droppedIndices);
 
+  renumberPageLabels(doc, plan.order);
   reorder(doc, plan.order, sourceRefs, sourcePages);
 
   if (droppedIndices.length > 0) {
@@ -65,7 +78,10 @@ export async function applyPagePlan({
   }
 
   const bytes = await doc.save({ updateFieldAppearances: false });
-  await verifyResult(bytes, plan.order.length);
+  // The graph-integrity pass below is only worth its cost on the path that can
+  // actually shred the object graph: a plan that only reorders or rotates
+  // never deletes an indirect object.
+  await verifyResult(bytes, plan.order.length, droppedIndices.length > 0);
   return { bytes, numPages: plan.order.length, pageMap: buildPageMap(plan.order) };
 }
 
@@ -80,10 +96,14 @@ export async function applyPagePlan({
  * one pass over bytes that were just serialised, and turns silent corruption
  * into a refused operation with the document untouched.
  */
-export async function verifyResult(bytes: Uint8Array, expectedPages: number): Promise<void> {
-  let pageCount: number;
+export async function verifyResult(
+  bytes: Uint8Array,
+  expectedPages: number,
+  checkGraph = false,
+): Promise<void> {
+  let doc: PDFDocument;
   try {
-    pageCount = (await PDFDocument.load(bytes)).getPageCount();
+    doc = await PDFDocument.load(bytes);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new PageOpsError(
@@ -92,11 +112,28 @@ export async function verifyResult(bytes: Uint8Array, expectedPages: number): Pr
     );
   }
 
+  const pageCount = doc.getPageCount();
   if (pageCount !== expectedPages) {
     throw new PageOpsError(
       'unreadable-result',
       `The rewritten document has ${pageCount} pages instead of ${expectedPages}, so it was not applied.`,
     );
+  }
+
+  // Page count alone only exercises the page tree, the structure the sweep is
+  // least likely to get wrong: a corrupted /ParentTree pairing or an orphaned
+  // structure element leaves it untouched. Re-walk the graph the sweep just
+  // produced and refuse a result that leaves anything reachable pointing at an
+  // object that no longer exists — which also covers every surviving page's
+  // /Resources, since those are reached the same way as everything else.
+  if (checkGraph) {
+    const dangling = findDanglingRefs(doc.context);
+    if (dangling.length > 0) {
+      throw new PageOpsError(
+        'unreadable-result',
+        `The rewritten document has ${dangling.length} broken reference${dangling.length === 1 ? '' : 's'} after removing pages, so it was not applied.`,
+      );
+    }
   }
 }
 
@@ -137,12 +174,13 @@ function rotatePages(pages: PDFPage[], rotateBy: PagePlan['rotateBy']): void {
     const page = pages[Number(key)];
     // getRotation() resolves /Rotate through the page tree, so a page that
     // inherits its rotation turns from where it actually sits, not from zero.
+    // normalizeAngle rounds to the nearest quarter turn rather than
+    // truncating, so a page whose existing /Rotate is not itself a multiple
+    // of 90 (malformed, or just a tool that did not care) still lands on a
+    // value setRotation accepts instead of throwing and failing every rotate
+    // on that document.
     page.setRotation(degrees(normalizeAngle(page.getRotation().angle + turn)));
   }
-}
-
-function normalizeAngle(angle: number): number {
-  return ((angle % 360) + 360) % 360;
 }
 
 /**
@@ -154,6 +192,14 @@ function reorder(
   sourceRefs: PDFRef[],
   sourcePages: PDFPage[],
 ): void {
+  // insertLeafNode grafts a moved page onto whichever intermediate /Pages
+  // node covers its new index, and setParent then repoints the page's whole
+  // inheritance chain at that node. A page that relied on an ancestor for its
+  // Resources, MediaBox, CropBox, or Rotate would silently start inheriting
+  // the new parent's instead the moment that happens, so every kept page's
+  // resolved values are pinned onto it directly before anything moves.
+  for (const sourceIndex of order) materializeInheritedAttributes(sourcePages[sourceIndex]);
+
   // A mirror of the page tree's ref order, maintained by hand. pdf-lib's
   // removePage does not invalidate the document's page cache the way insertPage
   // does, so getPages() reports a stale list the moment a page comes out;
@@ -177,6 +223,27 @@ function reorder(
   for (let index = current.length - 1; index >= order.length; index -= 1) {
     doc.removePage(index);
   }
+}
+
+/**
+ * Copy a page's resolved Resources, MediaBox, CropBox, and Rotate — pdf-lib's
+ * own `PDFPageLeaf.InheritableEntries` — directly onto it, so it no longer
+ * depends on which `/Pages` node it happens to sit under for any of them.
+ */
+function materializeInheritedAttributes(page: PDFPage): void {
+  const node = page.node;
+
+  const resources = node.Resources();
+  if (resources) node.set(PDFName.of('Resources'), resources);
+
+  const mediaBox = node.MediaBox();
+  if (mediaBox) node.set(PDFName.of('MediaBox'), mediaBox);
+
+  const cropBox = node.CropBox();
+  if (cropBox) node.set(PDFName.of('CropBox'), cropBox);
+
+  const rotate = node.Rotate();
+  if (rotate) node.set(PDFName.of('Rotate'), rotate);
 }
 
 function collectAnnots(pages: PDFPage[], indices: number[]): Set<PDFRef> {
@@ -256,10 +323,16 @@ function doomedStructElements(doc: PDFDocument, droppedPages: Set<PDFRef>): PDFR
 
   const doomed: PDFRef[] = [];
   const seen = new Set<PDFRef>();
-  const stack = structKids(doc, root);
+  // `/Pg` is inheritable (PDF 32000-1 14.7.4.2): InDesign and LibreOffice set
+  // it once on a `/Sect` or `/Document` container and leave the leaves under
+  // it without one, so each stack entry carries the nearest ancestor's page
+  // down for a leaf that omits it.
+  const stack: Array<{ ref: PDFRef; inheritedPg: PDFRef | undefined }> = structKids(doc, root).map(
+    (ref) => ({ ref, inheritedPg: undefined }),
+  );
 
   while (stack.length > 0) {
-    const ref = stack.pop() as PDFRef;
+    const { ref, inheritedPg } = stack.pop() as { ref: PDFRef; inheritedPg: PDFRef | undefined };
     // Guards against a malformed tree whose nodes point back at each other.
     if (seen.has(ref)) continue;
     seen.add(ref);
@@ -267,17 +340,19 @@ function doomedStructElements(doc: PDFDocument, droppedPages: Set<PDFRef>): PDFR
     const element = doc.context.lookupMaybe(ref, PDFDict);
     if (!element) continue;
 
+    const ownPg = element.get(PDFName.of('Pg'));
+    const page = ownPg instanceof PDFRef ? ownPg : inheritedPg;
+
     let hasElementChild = false;
     for (const kid of structKids(doc, element)) {
       // `/S` (the structure type) is what separates a real structure element
       // from the `/OBJR` and `/MCR` leaves that point at content.
       if (doc.context.lookupMaybe(kid, PDFDict)?.get(PDFName.of('S'))) {
         hasElementChild = true;
-        stack.push(kid);
+        stack.push({ ref: kid, inheritedPg: page });
       }
     }
 
-    const page = element.get(PDFName.of('Pg'));
     if (!hasElementChild && page instanceof PDFRef && droppedPages.has(page)) doomed.push(ref);
   }
 
@@ -288,10 +363,108 @@ function doomedStructElements(doc: PDFDocument, droppedPages: Set<PDFRef>): PDFR
 function structKids(doc: PDFDocument, node: PDFDict): PDFRef[] {
   const kids = node.get(PDFName.of('K'));
   if (!kids) return [];
-  // `/K` is a single kid, an array of them, or a reference to either.
-  const array = doc.context.lookupMaybe(kids, PDFArray);
-  if (array) return array.asArray().filter((kid): kid is PDFRef => kid instanceof PDFRef);
+  // `/K` is a single kid, an array of them, or a reference to either — and it
+  // may also be a direct MCID (a bare integer) or an inline `/MCR`/`/OBJR`
+  // content reference, neither of which is a structure-element kid.
+  // `lookupMaybe` throws rather than returning undefined when the object
+  // exists but is the wrong type, which every one of those non-array shapes
+  // is, so resolve by hand instead of trusting it to fail soft: Word and
+  // Acrobat both write `/K` as a single indirect ref, which used to throw here
+  // and make every delete on those documents fail.
+  const resolved = kids instanceof PDFRef ? doc.context.lookup(kids) : kids;
+  if (resolved instanceof PDFArray) {
+    return resolved.asArray().filter((kid): kid is PDFRef => kid instanceof PDFRef);
+  }
   return kids instanceof PDFRef ? [kids] : [];
+}
+
+/**
+ * Renumber `/Root /PageLabels`, if there is one, to match `order`.
+ *
+ * It is a number tree exactly like `/StructTreeRoot /ParentTree`: a flat
+ * `[pageIndex, labelDict, pageIndex, labelDict, …]` array (or one sharded
+ * across `/Kids`), read by a viewer as "starting at this page index, use this
+ * numbering style until the next entry". A plan can renumber, reorder, or drop
+ * pages out from under it, and none of that is a reason to fail the plan
+ * itself — page labels are cosmetic — so any unexpected shape here leaves the
+ * existing (now stale) tree alone rather than throwing.
+ */
+function renumberPageLabels(doc: PDFDocument, order: number[]): void {
+  try {
+    const root = doc.catalog.lookupMaybe(PDFName.of('PageLabels'), PDFDict);
+    if (!root) return;
+
+    const entries = readNumberTree(doc, root);
+    if (entries.length === 0) return;
+
+    const nums = doc.context.obj([]) as PDFArray;
+    let previous: PDFObject | undefined;
+    for (let newIndex = 0; newIndex < order.length; newIndex += 1) {
+      const resolved = labelFor(entries, order[newIndex]);
+      // Only emit an entry where the applicable label actually changes from
+      // the page before it: a number tree's key marks where a run *starts*,
+      // so re-emitting an unchanged one at every index would still be read
+      // correctly but every key in between would too, which defeats
+      // rebuilding this as a flat tree in the first place.
+      if (resolved !== undefined && resolved !== previous) {
+        nums.push(doc.context.obj(newIndex));
+        nums.push(resolved);
+      }
+      previous = resolved;
+    }
+
+    root.delete(PDFName.of('Kids'));
+    root.delete(PDFName.of('Limits'));
+    root.set(PDFName.of('Nums'), nums);
+  } catch {
+    // Best-effort: a page-labels tree too malformed to read leaves the
+    // document exactly as unrenumbered as it was before this ran.
+  }
+}
+
+/** The label in effect for `oldIndex`, per number-tree "nearest key below" rules. */
+function labelFor(entries: Array<[number, PDFObject]>, oldIndex: number): PDFObject | undefined {
+  let result: PDFObject | undefined;
+  for (const [key, value] of entries) {
+    if (key > oldIndex) break;
+    result = value;
+  }
+  return result;
+}
+
+/**
+ * Every entry of a number tree, resolving `/Kids` regardless of how many
+ * levels the writer sharded it across, sorted by key.
+ */
+function readNumberTree(doc: PDFDocument, root: PDFDict): Array<[number, PDFObject]> {
+  const entries: Array<[number, PDFObject]> = [];
+  const seen = new Set<PDFDict>();
+  const stack: PDFDict[] = [root];
+
+  while (stack.length > 0) {
+    const node = stack.pop() as PDFDict;
+    // Guards against a malformed tree whose /Kids cycle back on themselves.
+    if (seen.has(node)) continue;
+    seen.add(node);
+
+    const kids = node.lookupMaybe(PDFName.of('Kids'), PDFArray);
+    if (kids) {
+      for (const kid of kids.asArray()) {
+        const kidDict = doc.context.lookupMaybe(kid, PDFDict);
+        if (kidDict) stack.push(kidDict);
+      }
+      continue;
+    }
+
+    const nums = node.lookupMaybe(PDFName.of('Nums'), PDFArray);
+    if (!nums) continue;
+    for (let index = 0; index + 1 < nums.size(); index += 2) {
+      const key = nums.get(index);
+      if (key instanceof PDFNumber) entries.push([key.asNumber(), nums.get(index + 1)]);
+    }
+  }
+
+  return entries.sort(([a], [b]) => a - b);
 }
 
 function buildPageMap(order: number[]): Map<number, number> {
