@@ -22,8 +22,20 @@ export async function loadSettings() {
   }
 }
 
+/**
+ * Normalize and persist. Returns the normalized settings that were actually
+ * written, so a caller that wants to show the user what was stored (rather
+ * than what they typed) does not have to normalize a second time itself.
+ *
+ * Not wrapped in a try/catch here the way `loadSettings` is: `chrome.storage`
+ * can reject this (quota, or sync disabled by policy), and unlike a read,
+ * there is no safe fallback to substitute for a write that did not happen --
+ * the caller has to know it failed. `options.js` is the only caller today.
+ */
 export async function saveSettings(settings) {
-  await chrome.storage.sync.set({ [KEY]: normalizeSettings(settings) });
+  const normalized = normalizeSettings(settings);
+  await chrome.storage.sync.set({ [KEY]: normalized });
+  return normalized;
 }
 
 /** Call `fn` with the new settings whenever they change, from any surface. */
