@@ -53,8 +53,9 @@ function PageActionBarContent({ selection, busy, numPages }: PageActionBarConten
   // Nudging past either end of the document is a no-op. Disabling the button
   // for it matches how Delete already handles "there is nothing this can do
   // right now" instead of leaving it clickable for no effect.
-  const atTop = Math.min(...selection) === 1;
-  const atBottom = Math.max(...selection) === numPages;
+  const { min, max } = selectionExtent(selection);
+  const atTop = min === 1;
+  const atBottom = max === numPages;
 
   return (
     <div className="folio-page-actions" role="group" aria-label="Actions for the selected pages">
@@ -97,4 +98,20 @@ function PageActionBarContent({ selection, busy, numPages }: PageActionBarConten
       </div>
     </div>
   );
+}
+
+/**
+ * The lowest and highest page number in the selection. A loop rather than
+ * `Math.min(...selection)`: spreading a selection with enough pages into a
+ * function call risks the engine's own argument-count limit, which a plain
+ * loop has no version of.
+ */
+function selectionExtent(selection: ReadonlySet<number>): { min: number; max: number } {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const page of selection) {
+    if (page < min) min = page;
+    if (page > max) max = page;
+  }
+  return { min, max };
 }
