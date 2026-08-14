@@ -16,8 +16,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   while the content-type rule can only fire once the response has arrived, so
   the PDF is fetched, discarded, and fetched again. The URL rule takes priority
   and the content-type rule is the catch-all underneath it.
-- **An options page for the extension**, with three modes — open PDFs in Folio's
-  viewer, leave them to the browser, or turn the extension off — plus a per-site
+- **An options page for the extension**, with three modes -- open PDFs in Folio's
+  viewer, leave them to the browser, or turn the extension off -- plus a per-site
   exclusion list covering subdomains. Turning interception off removes the
   redirect rules rather than leaving them installed and second-guessing them.
   Keyboard-operable and screen-reader-labeled, and it follows the OS colour

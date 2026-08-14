@@ -238,7 +238,7 @@ more than the happy path -- arrows *inside* a text box move the caret rather tha
 the box, and a nudge key moves the item **without** also scrolling the document
 out from under it.
 
-**`e2e/browser-extension.spec.ts`** — the contract the Chrome extension depends
+**`e2e/browser-extension.spec.ts`** -- the contract the Chrome extension depends
 on, exercised through the viewer rather than through the extension (branded
 Chrome will not side-load one from the command line). It renders a PDF named by
 `#file=`, **keeps a query string intact** rather than truncating at the first
@@ -310,7 +310,7 @@ and CI builds the package and checks the manifest's permission surface. What no
 automation covers is the extension actually installed in a browser: that the
 redirect rules fire, that the options page saves, and that the toolbar button
 tracks the tab. Branded Chrome has ignored `--load-extension` since Chrome 137,
-so loading it must be done by hand — `chrome://extensions` → Developer mode →
+so loading it must be done by hand: `chrome://extensions` → Developer mode →
 **Load unpacked** → `extensions/chrome/build` (after `npm run build:chrome`).
 
 ### Run the app

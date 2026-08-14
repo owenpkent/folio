@@ -80,11 +80,11 @@ Right-click the extension → **Options**, or `chrome://extensions` → Details 
 Extension options. Stored in `chrome.storage.sync`, so they follow the browser
 profile between machines.
 
-- **Open it in Folio's viewer** (default) — replaces Chrome's PDF reader.
-- **Leave PDFs to Chrome** — no redirect; the toolbar button and right-click
+- **Open it in Folio's viewer** (default): replaces Chrome's PDF reader.
+- **Leave PDFs to Chrome**: no redirect; the toolbar button and right-click
   entry still hand the current PDF to the desktop app.
-- **Turn the extension off** — no rules, no menus, nothing.
-- **Sites to leave alone** — one host per line. Subdomains are included, so
+- **Turn the extension off**: no rules, no menus, nothing.
+- **Sites to leave alone**: one host per line. Subdomains are included, so
   `example.com` also covers `docs.example.com`.
 
 Turning interception off genuinely uninstalls the redirect rules rather than

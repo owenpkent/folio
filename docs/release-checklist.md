@@ -19,8 +19,8 @@ issue or defer the release.
 - [ ] `npm run lint` — no ESLint errors
 - [ ] `npm run typecheck` — no type errors
 - [ ] `npm run check:versions` — `tauri` crate and `@tauri-apps/api` share the same major.minor (also enforced in CI)
-- [ ] `npm audit` — no high/critical
-- [ ] `cargo audit --manifest-path src-tauri/Cargo.toml` — **zero vulnerabilities**. The
+- [ ] `npm audit`: no high/critical
+- [ ] `cargo audit --manifest-path src-tauri/Cargo.toml`: **zero vulnerabilities**. The
       standing warning count is unmaintained/unsound advisories on transitive crates,
       most of them Tauri's Linux GTK stack, which Windows builds never compile. Treat a
       *new* warning as worth reading and any actual vulnerability as blocking
@@ -39,7 +39,7 @@ issue or defer the release.
       heading with a fresh empty `## [Unreleased]` above, and the compare links updated
 - [ ] Versions match across `package.json`, `src-tauri/tauri.conf.json`,
       `src-tauri/Cargo.toml`, `extensions/chrome/manifest.json`, and the `folio`
-      entry in `src-tauri/Cargo.lock` — and match the planned tag `v<ver>`
+      entry in `src-tauri/Cargo.lock` -- and match the planned tag `v<ver>`
       (`npm run check:extension` covers the manifest)
 - [ ] `ROADMAP.md` — rows that shipped this cycle flipped to Done
 - [ ] README — feature list still accurate, screenshots not stale
@@ -77,9 +77,9 @@ On the EV-cert Windows host:
 
 ### Chrome extension (only if shipping an extension update this release)
 
-- [ ] `npm run check:extension` — manifest version matches `package.json` and the
+- [ ] `npm run check:extension`: manifest version matches `package.json` and the
       permission surface has not drifted
-- [ ] `npm run package:chrome` — builds `extensions/chrome/folio-chrome-<ver>.zip`
+- [ ] `npm run package:chrome`: builds `extensions/chrome/folio-chrome-<ver>.zip`
 - [ ] Loaded unpacked from `extensions/chrome/build` in **branded** Chrome and smoke
       tested by hand: a `.pdf` URL and a content-type-only PDF both open in the viewer,
       the options page saves, and the toolbar button tracks the tab. None of this is

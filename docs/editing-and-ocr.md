@@ -386,7 +386,7 @@ rather than appearing and failing.
 Two reasons, and the second is the blocking one.
 
 The runtime is 8.4 MB, which was 77% of the extension's packed size, and the
-Chrome Web Store bans remote code, so it cannot be fetched on demand — it either
+Chrome Web Store bans remote code, so it cannot be fetched on demand: it either
 ships in the package or it does not exist there.
 
 More importantly, it would not work as written. The paths above are **absolute**

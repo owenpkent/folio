@@ -1,4 +1,4 @@
-# Privacy policy — Folio PDF Viewer browser extension
+# Privacy policy: Folio PDF Viewer browser extension
 
 **Last updated: 2 August 2026**
 
@@ -53,8 +53,8 @@ removes it.
 
 ## What syncs between your devices
 
-Your **extension settings** — which of the three modes you chose, and the list of
-sites you asked Folio to leave alone — are stored using your browser's settings
+Your **extension settings** (which of the three modes you chose, and the list of
+sites you asked Folio to leave alone) are stored using your browser's settings
 sync. If you have browser sync turned on, your browser (not Folio) copies them
 between your signed-in devices under your own account, subject to your browser
 vendor's privacy policy. If sync is off, they stay local.
