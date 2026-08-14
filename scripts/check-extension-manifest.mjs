@@ -60,8 +60,50 @@ for (const [key, expected] of Object.entries(EXPECTED)) {
 if (manifest.background?.type !== 'module') {
   problems.push('  background.type is not "module"; the worker uses ES imports');
 }
-if (!manifest.content_security_policy?.extension_pages?.includes("script-src 'self'")) {
-  problems.push("  extension_pages CSP no longer pins script-src to 'self'");
+if (manifest.background?.service_worker !== 'background.js') {
+  problems.push(
+    `  background.service_worker is ${JSON.stringify(manifest.background?.service_worker ?? null)}, expected "background.js"`,
+  );
+}
+if (manifest.manifest_version !== 3) {
+  problems.push(`  manifest_version is ${JSON.stringify(manifest.manifest_version ?? null)}, expected 3`);
+}
+if (manifest.options_ui?.page !== 'options.html') {
+  problems.push(
+    `  options_ui.page is ${JSON.stringify(manifest.options_ui?.page ?? null)}, expected "options.html"`,
+  );
+}
+
+// Every extension_pages CSP directive is pinned, not just script-src: a page
+// that frames the viewer and reads load success/failure as an oracle is the
+// materially worse variant frame-ancestors 'none' closes (see
+// docs/architecture.md), and object-src has the same "why is this here"
+// review burden as any other permission if it were ever loosened.
+const EXPECTED_CSP_DIRECTIVES = {
+  'script-src': ["'self'", "'wasm-unsafe-eval'"],
+  'object-src': ["'self'"],
+  'frame-ancestors': ["'none'"],
+};
+
+function parseCsp(csp) {
+  const directives = {};
+  for (const part of csp.split(';')) {
+    const tokens = part.trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) continue;
+    directives[tokens[0]] = tokens.slice(1);
+  }
+  return directives;
+}
+
+const cspDirectives = parseCsp(manifest.content_security_policy?.extension_pages ?? '');
+for (const [name, expected] of Object.entries(EXPECTED_CSP_DIRECTIVES)) {
+  const actual = cspDirectives[name];
+  const actualStr = actual ? actual.join(' ') : null;
+  if (actualStr !== expected.join(' ')) {
+    problems.push(
+      `  extension_pages CSP ${name} is ${JSON.stringify(actualStr)}, expected ${JSON.stringify(expected.join(' '))}`,
+    );
+  }
 }
 
 if (problems.length) {
