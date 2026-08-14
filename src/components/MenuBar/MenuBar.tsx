@@ -209,9 +209,12 @@ export function MenuBar() {
     onSelect: () => run(item.commandId),
   }));
 
-  // Recomputed per render; `hasDoc` flipping is what brings this into view,
-  // since the URL is recorded before the document finishes loading.
-  const canDownloadOriginal = !isTauri() && originalDocumentUrl() !== null;
+  // Recomputed per render; `hasDoc` flipping is what brings this into view.
+  // `hasDoc` also matches what `originalDocumentUrl` itself checks (the live
+  // document's fingerprint), so the two cannot disagree; kept explicit rather
+  // than relying on that so this reads the same way the sibling `hasDoc`
+  // checks below do.
+  const canDownloadOriginal = !isTauri() && hasDoc && originalDocumentUrl() !== null;
 
   const menus: TopMenuDef[] = [
     {

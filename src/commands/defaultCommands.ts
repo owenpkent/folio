@@ -48,7 +48,10 @@ const commands: Command[] = [
     // Browser build only, and only when the document arrived from a URL. The
     // extension redirects PDF navigations into this viewer, including ones the
     // site meant as a download, so the untouched file has to stay one click away.
-    when: () => !isTauri() && originalDocumentUrl() !== null,
+    // hasDocument matches the sibling file.close command's guard: without it,
+    // originalDocumentUrl() alone would still say yes on the empty state after
+    // a failed fetch, since nothing else resets it.
+    when: () => !isTauri() && hasDocument() && originalDocumentUrl() !== null,
     run: async () => {
       if (await downloadOriginal()) return;
       pushToast('Could not download the original file.', 'error');

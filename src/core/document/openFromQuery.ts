@@ -1,6 +1,9 @@
+import { announce } from '@/a11y/announcer';
 import type { DocumentSource } from '@/core/pdf';
 import { loadSource } from '@/state/actions';
+import { useDocumentStore } from '@/state/documentStore';
 
+import { downloadBytes } from './downloadBytes';
 import { isTauri } from './openDocument';
 
 /** Schemes the viewer will fetch. Anything else is refused rather than handed to `fetch`. */
@@ -119,15 +122,108 @@ function safeUrl(raw: string): URL | null {
   }
 }
 
-function basename(url: URL): string {
+/** Decoding can reintroduce separators that were percent-encoded in the path
+ * (`/a%2Fb.pdf`), and this feeds an `<a download>`. Browsers sanitize that
+ * attribute themselves, but a filename is not the place to rely on it. */
+function sanitizeFilename(name: string): string {
+  return name.replace(/[\\/]/g, '_').replace(/^\.+/, '');
+}
+
+/** The `filename*` (RFC 5987, preferred) or `filename` parameter of a
+ * Content-Disposition header, or null if it has neither. */
+function filenameFromContentDisposition(header: string): string | null {
+  const extended = /filename\*\s*=\s*[^']*''([^;]+)/i.exec(header);
+  if (extended) {
+    try {
+      return decodeURIComponent(extended[1].trim());
+    } catch {
+      // Malformed percent-encoding; fall through to the plain form.
+    }
+  }
+  const plain = /filename\s*=\s*"?([^";]+)"?/i.exec(header);
+  return plain ? plain[1].trim() : null;
+}
+
+/**
+ * Best-effort filename for a fetched document: the server's
+ * Content-Disposition if it sent one, otherwise the URL's last path segment,
+ * with `.pdf` appended when neither source gave an extension and the
+ * response says it is one. Both headers sit unread on `res` before this --
+ * fed only the URL, this PR's own headline shape (`/download?doc=42&fmt=pdf`,
+ * `/api/v1/documents/42`) produces "download" or "42", an extension-less
+ * filename that also becomes the window title.
+ */
+function basename(url: URL, res: Response): string {
+  const disposition = res.headers.get('content-disposition');
+  const fromHeader = disposition ? sanitizeFilename(filenameFromContentDisposition(disposition) ?? '') : '';
+  if (fromHeader) return fromHeader;
+
+  let fromPath: string;
   try {
-    const last = decodeURIComponent(url.pathname.split('/').pop() || '');
-    // Decoding can reintroduce separators that were percent-encoded in the
-    // path (`/a%2Fb.pdf`), and this feeds an `<a download>`. Browsers sanitize
-    // that attribute themselves, but a filename is not the place to rely on it.
-    return last.replace(/[\\/]/g, '_').replace(/^\.+/, '') || 'Document.pdf';
+    fromPath = sanitizeFilename(decodeURIComponent(url.pathname.split('/').pop() || ''));
   } catch {
-    return 'Document.pdf';
+    fromPath = '';
+  }
+  if (!fromPath) return 'Document.pdf';
+  if (/\.[a-z0-9]{1,5}$/i.test(fromPath)) return fromPath;
+  const type = (res.headers.get('content-type') ?? '').toLowerCase();
+  return type.includes('pdf') ? `${fromPath}.pdf` : fromPath;
+}
+
+/**
+ * The URL this document was fetched from, when it arrived via `#file=`, and
+ * the fingerprint of the document it was fetched for.
+ *
+ * Held so the viewer can offer the original back to the user. The browser
+ * extension redirects PDF navigations here, including ones the site meant as a
+ * download, so "give me the actual file" has to remain one click away.
+ *
+ * The fingerprint is what keeps this from going stale: `loadSource` and
+ * `closeDocument` (in `state/actions.ts`) are the choke point for "a
+ * different document is open now" -- resetting seven other per-document
+ * stores -- but reaching back into this module from there would make the two
+ * modules import each other (this one already imports `loadSource`).
+ * Comparing fingerprints instead means `originalDocumentUrl` cleans itself up
+ * on read: closing the document, opening an unrelated file, or a fetch that
+ * resolves but never produces a loaded document (a 404, or a response that
+ * fails to parse as a PDF) all change the live fingerprint without this
+ * module needing to hear about any of them directly.
+ */
+let originalUrl: string | null = null;
+let originalUrlFingerprint: string | null = null;
+
+/** The URL the current document came from, or null if it wasn't opened from
+ * one -- including if it once was, but a different document is open now. */
+export function originalDocumentUrl(): string | null {
+  const { info } = useDocumentStore.getState();
+  return info && info.fingerprint === originalUrlFingerprint ? originalUrl : null;
+}
+
+/**
+ * Download the document as the server sent it, bypassing anything Folio has
+ * layered on top.
+ *
+ * Fetched into a blob rather than pointed at with `<a download>`: the download
+ * attribute is ignored cross-origin, so the anchor would navigate instead, and
+ * the extension's redirect rule would catch that navigation and land us back
+ * in the viewer. `downloadBytes` (shared with Save a copy's browser path)
+ * hands the bytes to the user from a same-origin blob URL instead, which has
+ * no such problem. The refetch is normally served from cache.
+ */
+export async function downloadOriginal(): Promise<boolean> {
+  const original = originalDocumentUrl();
+  const url = original ? safeUrl(original) : null;
+  if (!url) return false;
+  try {
+    const res = await fetch(url.href, { redirect: 'error' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const filename = basename(url, res);
+    downloadBytes(bytes, filename);
+    announce(`Downloaded ${filename}`);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -153,76 +249,29 @@ function basename(url: URL): string {
  * that starts allowed and 3xx-bounces to one that is not gets refused rather
  * than followed.
  */
-/**
- * The URL this document was fetched from, when it arrived via `#file=`.
- *
- * Held so the viewer can offer the original back to the user. The browser
- * extension redirects PDF navigations here, including ones the site meant as a
- * download, so "give me the actual file" has to remain one click away.
- */
-let originalUrl: string | null = null;
-
-/** The URL the current document came from, or null if it wasn't opened from one. */
-export function originalDocumentUrl(): string | null {
-  return originalUrl;
-}
-
-/**
- * Download the document as the server sent it, bypassing anything Folio has
- * layered on top.
- *
- * Fetched into a blob rather than pointed at with `<a download>`: the download
- * attribute is ignored cross-origin, so the anchor would navigate instead, and
- * the extension's redirect rule would catch that navigation and land us back in
- * the viewer. A same-origin blob URL has no such problem. The refetch is
- * normally served from cache.
- */
-export async function downloadOriginal(): Promise<boolean> {
-  const url = originalUrl ? safeUrl(originalUrl) : null;
-  if (!url) return false;
-  let objectUrl: string | null = null;
-  try {
-    const res = await fetch(url.href, { redirect: 'error' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    objectUrl = URL.createObjectURL(await res.blob());
-    const a = document.createElement('a');
-    a.href = objectUrl;
-    a.download = basename(url);
-    a.rel = 'noopener';
-    document.body.append(a);
-    a.click();
-    a.remove();
-    return true;
-  } catch {
-    return false;
-  } finally {
-    // Revoking immediately can cancel the download in some browsers; give the
-    // click a turn of the event loop to be picked up first.
-    if (objectUrl) {
-      const toRevoke = objectUrl;
-      setTimeout(() => URL.revokeObjectURL(toRevoke), 60_000);
-    }
-  }
-}
-
 export async function openFromQueryParam(): Promise<void> {
   if (isTauri()) return;
   const raw = readFileParam();
   if (!raw) return;
   const url = safeUrl(raw);
   if (!url) return;
-  // Recorded before the load so anything reacting to the document appearing
-  // already sees a URL to offer back.
-  originalUrl = url.href;
   try {
     const res = await fetch(url.href, { redirect: 'error' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const source: DocumentSource = {
       kind: 'bytes',
       data: new Uint8Array(await res.arrayBuffer()),
-      name: basename(url),
+      name: basename(url, res),
     };
     await loadSource(source);
+    // loadSource swallows its own errors (an error state, not a throw), so
+    // success is confirmed here rather than assumed: only a document that
+    // actually finished loading gets associated with this URL.
+    const { status, info } = useDocumentStore.getState();
+    if (status === 'ready' && info) {
+      originalUrl = url.href;
+      originalUrlFingerprint = info.fingerprint;
+    }
   } catch {
     // Leave the empty state; the user can still open a file manually.
   }
