@@ -8,7 +8,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- **Folio is selectable as the Windows `.pdf` handler again.** A PDF downloaded
+- **Folio is selectable as the Windows `.pdf` handler.** A PDF downloaded
   from Chrome kept opening in Acrobat or Edge, and the usual remedy did not
   work: Folio was absent from *Open with -> Choose another app*, so there was no
   way to point `.pdf` at it. Tauri's `bundle.fileAssociations` writes the ProgID

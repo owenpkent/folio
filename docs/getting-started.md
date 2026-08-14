@@ -186,7 +186,7 @@ The Visual C++ Build Tools are missing or the Rust toolchain is set to GNU inste
 The WebView2 Runtime is missing. Install the Evergreen WebView2 runtime and relaunch.
 
 **PDFs downloaded from Chrome still open in Acrobat (or Edge), not Folio.**
-Installing Folio does not take the `.pdf` default away from whatever already holds it, and it is not supposed to. Since Windows 8 the current default lives in `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoice`, whose `ProgId` is protected by a hash only Explorer can produce; an installer that writes it is treated as hijacking and the association gets reset. Chrome does not resolve PDF handlers itself, so *Open* on a download, "Always open with system viewer", and *Show in folder* -> double-click all end up at the same `ShellExecute` call, and all follow `UserChoice`.
+Installing Folio cannot silently take the `.pdf` default away from an app the user has explicitly chosen. Since Windows 8 the live default lives in `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoice`, whose `ProgId` is protected by a hash only Explorer can produce; an installer that writes it is treated as hijacking and the association gets reset. That protection only covers `UserChoice`, though: the installer also writes a plain `.pdf` default under `Software\Classes` (from `bundle.fileAssociations`), and on a machine where `UserChoice` was never set (a fresh image, a server SKU, anything that predates an explicit choice) that plain default is what resolves, so installing Folio there does take `.pdf` over. Chrome does not resolve PDF handlers itself, so *Open* on a download, "Always open with system viewer", and *Show in folder* -> double-click all end up at the same `ShellExecute` call, which follows `UserChoice` first once it exists.
 
 So the default has to be changed by you, once:
 
@@ -196,12 +196,12 @@ So the default has to be changed by you, once:
 If Folio is missing from that list, the install predates the registration fix in [`src-tauri/installer.nsh`](../src-tauri/installer.nsh) (Tauri's `bundle.fileAssociations` writes the ProgID but not the `OpenWithProgids` and `Applications\folio.exe` entries the picker is built from). Reinstall the current build. To confirm the keys landed:
 
 ```powershell
-Get-Item "HKCU:\Software\Classes\.pdf\OpenWithProgids" | Select-Object -ExpandProperty Property
-(Get-ItemProperty "HKCU:\Software\Classes\Applications\folio.exe").FriendlyAppName
-(Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoice").ProgId
+Get-Item "HKCU:\Software\Classes\.pdf\OpenWithProgids" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Property
+(Get-ItemProperty "HKCU:\Software\Classes\Applications\folio.exe" -ErrorAction SilentlyContinue).FriendlyAppName
+(Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoice" -ErrorAction SilentlyContinue).ProgId
 ```
 
-The first two should mention Folio; the third reports who currently owns the association. If you would rather not change the system default at all, the [Chrome extension](../extensions/chrome) hands the open document to the desktop app over a `folio://` deep link, which bypasses `UserChoice` entirely.
+The first command should include `PDF Document` (the ProgID, not the app name); the second should say `Folio`. An empty result from either means the keys did not land. The third reports who currently owns the association, but only via `UserChoice` -- it is empty on any machine where the user has never explicitly picked a PDF handler, which is normal on a fresh Windows install. If it is empty, check `HKCU:\Software\Classes\.pdf` and `HKLM:\Software\Classes\.pdf` for the fallback default instead. If you would rather not change the system default at all, the [Chrome extension](../extensions/chrome) hands the open document to the desktop app over a `folio://` deep link, which bypasses `UserChoice` entirely.
 
 **Icons look wrong or the build complains about icons.**
 App icons live in `src-tauri/icons/`. Regenerate them from the SVG source with `npm run tauri icon src/assets/folio-logo.svg`, which produces the full platform icon set (see `src-tauri/icons/README.md`). On Linux, missing `librsvg2-dev` can cause icon rasterization to fail during the build.
