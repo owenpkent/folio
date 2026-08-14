@@ -429,15 +429,15 @@ kbd {
 }
 /* The address a copy row will act on, shown under its label so the user sees
    what they are copying: a document's link is free to point somewhere its
-   visible text does not admit to. Truncated rather than wrapped, with the whole
-   thing on the row's title attribute, so one long URL cannot stretch the menu
-   across the window. */
+   visible text does not admit to, and the end of the string is usually where
+   that shows -- "accounts.google.com.attacker.tld" reads as Google right up
+   until the last label. Wrapped rather than truncated, so that tail is never
+   the part that gets cut off; the row's title attribute still carries the
+   whole thing for the mouse-hover tooltip. */
 .folio-context-menu__detail {
   display: block;
-  max-width: 26ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 32ch;
+  overflow-wrap: anywhere;
   color: var(--folio-text-muted);
   font-size: 0.8rem;
 }

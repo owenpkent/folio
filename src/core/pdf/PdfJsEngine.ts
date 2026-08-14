@@ -42,6 +42,15 @@ const MAX_CANVAS_AREA = 16_777_216; // 2 ** 24
 const MAX_CANVAS_DIM = 4096;
 
 /**
+ * A `/Link` URI is untrusted document content, and PDF.js applies no cap of
+ * its own: an unbounded one reaches the copy-address row as its `title`
+ * attribute and its accessible name, and a screen reader would start reading
+ * a multi-megabyte string. 2000 characters covers any legitimate URL (well
+ * past what browsers themselves accept in an address bar) with room to spare.
+ */
+const MAX_LINK_URL_LENGTH = 2000;
+
+/**
  * The scale to rasterise a page's backing store at, given its CSS size and the
  * display's pixel ratio. Exported for tests: the two competing pressures here
  * (be at least as dense as the display, stay inside the canvas budget) are what
@@ -420,7 +429,8 @@ export class PdfJsEngine implements PdfEngine {
       if (annotation.subtype !== 'Link' || !annotation.url) continue;
       const rect = annotation.rect;
       if (!Array.isArray(rect) || rect.length !== 4) continue;
-      links.push({ url: annotation.url, rect: [rect[0], rect[1], rect[2], rect[3]] });
+      const url = annotation.url.slice(0, MAX_LINK_URL_LENGTH);
+      links.push({ url, rect: [rect[0], rect[1], rect[2], rect[3]] });
     }
     this.linkCache.set(pageNumber, links);
     return links;

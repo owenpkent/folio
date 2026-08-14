@@ -31,21 +31,46 @@ export const ADDRESSES = {
     rect: [58, 394, 240, 414] as const,
     target: 'https://declared.example.com/real-target',
   },
+  /**
+   * Prose sharing a line with an address, drawn as a single `drawText` call so
+   * PDF.js emits it as one text item -- the shape the hit test has to get
+   * right. `x`/`y` mark the start of the line, well before the address itself.
+   */
+  prose: { text: 'For questions please contact owen2@example.com', x: 60, y: 340 },
+  /**
+   * Close enough to the page's right edge that the hover hint's label --
+   * anchored under the address's own left edge, not the pointer -- overhangs
+   * past the page box into `.folio-pages`, whatever the fit-width scale turns
+   * out to be: the page is 420 units wide, so 20 units of margin is a small
+   * fraction of it at any scale a 1280px-wide viewport can produce.
+   */
+  edge: { text: 'a@bc.co', x: 400, y: 280 },
 };
 
 /**
- * A page carrying an email address, a web address, and a `/Link` annotation.
+ * A page carrying an email address, a web address, a `/Link` annotation, a
+ * line of prose that shares its text item with an address, and an address
+ * near the page's right edge.
  *
  * The link's visible text says nothing about where it goes, which is the case
  * the copy row exists to make legible: the menu shows the declared target, not
- * the words printed over it.
+ * the words printed over it. The prose line and the edge address are both
+ * about the hit test itself: PDF.js emits one text item per line, so an
+ * address is usually not alone in its item, and a hint anchored under one can
+ * overhang past the page it is on.
  */
 async function buildAddresses(): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const page = doc.addPage([ADDRESSES_PAGE.width, ADDRESSES_PAGE.height]);
 
-  for (const entry of [ADDRESSES.email, ADDRESSES.url, ADDRESSES.link]) {
+  for (const entry of [
+    ADDRESSES.email,
+    ADDRESSES.url,
+    ADDRESSES.link,
+    ADDRESSES.prose,
+    ADDRESSES.edge,
+  ]) {
     page.drawText(entry.text, { x: entry.x, y: entry.y, size: 14, font });
   }
 

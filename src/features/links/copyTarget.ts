@@ -47,16 +47,24 @@ export async function copyTargetAt(
 ): Promise<AddressHit | null> {
   const engine = getEngine();
   try {
-    const viewport = await engine.getPageViewport(pageNumber, scale);
+    // Independent reads, resolved together rather than one after another: on
+    // a page whose caches are still cold (the first hover or right-click on
+    // it), this is the difference between one worker round trip and three
+    // taken in series.
+    const [viewport, links, textItems] = await Promise.all([
+      engine.getPageViewport(pageNumber, scale),
+      engine.getPageLinks(pageNumber),
+      engine.getTextItems(pageNumber),
+    ]);
     const [x, y] = viewport.convertToPdfPoint(cssX, cssY) as [number, number];
     const toRegion = (rect: [number, number, number, number]) => normalize(viewport, rect);
 
-    const link = pickLink(await engine.getPageLinks(pageNumber), x, y);
+    const link = pickLink(links, x, y);
     if (link) return { target: targetFromLink(link), region: toRegion(link.rect) };
 
     // Widened to unknown[] first: PDF.js types the list as a union with
     // marked-content markers, which the guard below is what separates out.
-    const items = (await engine.getTextItems(pageNumber)).items as unknown[];
+    const items = textItems.items as unknown[];
     const inText = targetFromText(items.filter(isTextItem), x, y);
     if (inText) return { target: inText.target, region: toRegion(inText.rect) };
 

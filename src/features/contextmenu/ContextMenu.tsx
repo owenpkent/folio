@@ -134,8 +134,10 @@ export function ContextMenu() {
       onSelect: () => void copyText(selectionText),
     },
     // Only present when the right-click landed on one, so the menu stays the
-    // length it was everywhere else.
-    ...(target
+    // length it was everywhere else. Guarded on a non-empty value too: an
+    // address that resolved to nothing worth copying would otherwise show a
+    // row that silently does nothing and announces nothing when activated.
+    ...(target?.value
       ? [
           {
             kind: 'item' as const,
@@ -254,6 +256,14 @@ export function ContextMenu() {
               role="menuitem"
               className="folio-context-menu__item"
               disabled={entry.disabled}
+              // The detail line describes what the row acts on; it is not part
+              // of the row's name. Left in the label's text content, it would
+              // fold into the accessible name computed from that content, so a
+              // screen reader would read the full address as the NAME on every
+              // focus move rather than as a description of the action. It is
+              // still AT-reachable -- aria-describedby reads a referenced
+              // node's text even while that node is itself aria-hidden below.
+              aria-describedby={entry.detail ? `folio-context-menu-detail-${i}` : undefined}
               // Preserve the text selection: a plain mousedown moves focus and
               // collapses it before Highlight/Comment can read it.
               onMouseDown={(e) => e.preventDefault()}
@@ -265,7 +275,12 @@ export function ContextMenu() {
               <span className="folio-context-menu__label">
                 {entry.label}
                 {entry.detail && (
-                  <span className="folio-context-menu__detail" title={entry.detail}>
+                  <span
+                    id={`folio-context-menu-detail-${i}`}
+                    className="folio-context-menu__detail"
+                    title={entry.detail}
+                    aria-hidden="true"
+                  >
                     {entry.detail}
                   </span>
                 )}

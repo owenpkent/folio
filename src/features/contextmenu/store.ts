@@ -16,6 +16,13 @@ interface ContextMenuState {
    */
   target: CopyTarget | null;
   openMenu(x: number, y: number, selectionText: string, target?: CopyTarget | null): void;
+  /**
+   * Fill in the address row after the menu has already opened. Resolving it
+   * (a page viewport plus link/text lookups) is a worker round trip on a cold
+   * cache, and the menu must not wait on that: it opens with no target, and
+   * this backfills one if the resolve finds it still relevant.
+   */
+  setTarget(target: CopyTarget | null): void;
   closeMenu(): void;
 }
 
@@ -27,5 +34,8 @@ export const useContextMenu = create<ContextMenuState>((set) => ({
   target: null,
   openMenu: (x, y, selectionText, target = null) =>
     set({ open: true, x, y, selectionText, target }),
+  // Ignored once the menu has closed: nothing reads `target` while `open` is
+  // false, and the next openMenu sets it explicitly anyway.
+  setTarget: (target) => set((s) => (s.open ? { target } : s)),
   closeMenu: () => set({ open: false }),
 }));

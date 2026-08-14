@@ -35,6 +35,7 @@ export function PdfViewer() {
   const handMode = useViewerStore((s) => s.handMode);
   const autoScroll = useViewerStore((s) => s.autoScroll);
   const openContextMenu = useContextMenu((s) => s.openMenu);
+  const setContextMenuTarget = useContextMenu((s) => s.setTarget);
   // Hand mode turns every drag into a pan, so a hint chasing the pointer there
   // is noise on top of a gesture that is not about the text.
   const addressHover = useTrackAddressHover(scale, !handMode);
@@ -42,6 +43,10 @@ export function PdfViewer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const naturalRef = useRef<{ width: number; height: number } | null>(null);
   const panRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  // Bumped on every right-click so a slow address resolve landing after a
+  // second right-click has already opened the menu somewhere else cannot fill
+  // in a target that belongs to the older position.
+  const contextMenuGeneration = useRef(0);
 
   const recomputeFit = useCallback(() => {
     const container = containerRef.current;
@@ -379,20 +384,27 @@ export function PdfViewer() {
     // which is what the viewport converts into PDF user space.
     const pageEl = target.closest<HTMLElement>('.folio-page');
     const pageNumber = Number(pageEl?.dataset.pageNumber ?? 0);
-    if (!pageEl || !pageNumber) {
-      openContextMenu(e.clientX, e.clientY, selectionText);
-      return;
-    }
+    // Opened immediately, with no target: preventDefault has already
+    // suppressed the native menu, so this cannot wait on a resolve (a page
+    // viewport plus link/text lookups, a worker round trip on a cold cache)
+    // without leaving the user with neither menu for that whole window. The
+    // address row, if there is one, is filled in once it lands.
+    openContextMenu(e.clientX, e.clientY, selectionText);
+    if (!pageEl || !pageNumber) return;
 
     const box = pageEl.getBoundingClientRect();
     const cssX = e.clientX - box.left;
     const cssY = e.clientY - box.top;
-    // Resolved before the menu opens rather than after, so the rows do not pop
-    // in under a cursor already moving toward them. Everything it reads is
-    // cached per page, and it never throws.
-    void copyTargetAt(pageNumber, cssX, cssY, scale).then((hit) => {
-      openContextMenu(e.clientX, e.clientY, selectionText, hit?.target ?? null);
-    });
+    const mine = (contextMenuGeneration.current += 1);
+    void copyTargetAt(pageNumber, cssX, cssY, scale).then(
+      (hit) => {
+        if (mine === contextMenuGeneration.current) setContextMenuTarget(hit?.target ?? null);
+      },
+      () => {
+        // copyTargetAt never throws; this only guards against an unhandled
+        // rejection if that contract is ever broken.
+      },
+    );
   };
 
   if (status === 'empty') return <EmptyState />;

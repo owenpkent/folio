@@ -94,6 +94,22 @@ test.describe('copying addresses', () => {
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(ADDRESSES.link.target);
   });
 
+  test('shows the whole declared target, not a prefix cut off before the deceptive part', async ({
+    page,
+  }) => {
+    const [x0, y0, x1, y1] = ADDRESSES.link.rect;
+    await rightClickAt(page, (x0 + x1) / 2, (y0 + y1) / 2);
+
+    const detail = page.locator('.folio-context-menu__detail');
+    await expect(detail).toContainText(ADDRESSES.link.target);
+
+    // A clipped line overflows its own box (scrollWidth grows past
+    // clientWidth); wrapped text does not. The target is long enough that a
+    // truncated line would have cut off exactly the part that reveals where
+    // it really points.
+    expect(await detail.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(false);
+  });
+
   test('marks an address under the pointer, before any click', async ({ page }) => {
     const hint = page.locator('.folio-address-hint');
     await expect(hint).toHaveCount(0);
@@ -126,12 +142,40 @@ test.describe('copying addresses', () => {
     await expect(hint).toBeVisible();
   });
 
+  test('the hint survives the pointer moving onto a label that overhangs the page edge', async ({
+    page,
+  }) => {
+    await hoverAt(page, ADDRESSES.edge.x + 2, ADDRESSES.edge.y + 5);
+    const hint = page.locator('.folio-address-hint');
+    await expect(hint).toBeVisible();
+
+    // Close to the page's right edge, the label hangs past the page box into
+    // .folio-pages: closest('.folio-page') is null there, which used to clear
+    // the hint at exactly the boundary WCAG 2.2 SC 1.4.13 exists to cover.
+    const label = (await hint.locator('.folio-address-hint__label').boundingBox())!;
+    await page.mouse.move(label.x + label.width - 2, label.y + label.height / 2);
+
+    await expect(hint).toBeVisible();
+  });
+
   test('Escape dismisses the hint without moving the pointer', async ({ page }) => {
     await hoverAt(page, ADDRESSES.email.x + 30, ADDRESSES.email.y + 5);
     await expect(page.locator('.folio-address-hint')).toBeVisible();
 
     // WCAG 2.2 SC 1.4.13: content shown on hover has to be dismissible.
     await page.keyboard.press('Escape');
+    await expect(page.locator('.folio-address-hint')).toHaveCount(0);
+  });
+
+  test('finds nothing hovering prose that only shares a line with an address', async ({
+    page,
+  }) => {
+    // Every other fixture address is drawn on its own, so it is also its own
+    // PDF.js text item -- the one shape the hit test cannot get wrong. This one
+    // shares a line (and so a text item) with an address that sits later in
+    // it, which is the shape that let the hit test resolve to any address
+    // anywhere on the item's line rather than the one under the pointer.
+    await hoverAt(page, ADDRESSES.prose.x + 5, ADDRESSES.prose.y + 5);
     await expect(page.locator('.folio-address-hint')).toHaveCount(0);
   });
 
