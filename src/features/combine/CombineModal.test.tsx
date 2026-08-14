@@ -1,8 +1,9 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { PDFDocument } from 'pdf-lib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type * as OpenDocument from '@/core/document/openDocument';
+import { useDocumentStore } from '@/state/documentStore';
 
 const { pickAndReadDocuments, loadSource } = vi.hoisted(() => ({
   pickAndReadDocuments: vi.fn(async () => [] as { name: string; data: Uint8Array }[]),
@@ -25,15 +26,26 @@ async function pdfBytes(pages = 1): Promise<Uint8Array> {
   return doc.save();
 }
 
+const IDLE_COMBINE_STATE = {
+  modalOpen: false,
+  files: [],
+  busy: false,
+  error: null,
+  progress: { current: 0, total: 0 },
+  cancelRequested: false,
+};
+
 beforeEach(() => {
   pickAndReadDocuments.mockClear();
   loadSource.mockClear();
-  useCombineStore.setState({ modalOpen: false, files: [], busy: false, error: null });
+  useCombineStore.setState(IDLE_COMBINE_STATE);
+  useDocumentStore.getState().reset();
 });
 
 afterEach(() => {
   cleanup();
-  useCombineStore.setState({ modalOpen: false, files: [], busy: false, error: null });
+  useCombineStore.setState(IDLE_COMBINE_STATE);
+  useDocumentStore.getState().reset();
 });
 
 describe('CombineModal', () => {
@@ -83,19 +95,77 @@ describe('CombineModal', () => {
     ]);
     render(<CombineModal />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Combine' }));
+    // Click synchronously, before the async per-file validation below has a
+    // chance to flag bad.pdf and disable the button (see the next test): this
+    // one is about runCombine's own catch path, not the pre-submit guard.
+    fireEvent.click(screen.getByRole('button', { name: 'Combine' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/bad\.pdf/);
     expect(useCombineStore.getState().modalOpen).toBe(true);
     expect(loadSource).not.toHaveBeenCalled();
   });
 
+  it('disables Combine once a staged file fails to validate', async () => {
+    const a = await pdfBytes(1);
+    const bad = new Uint8Array([1, 2, 3]);
+    useCombineStore.getState().open([
+      { name: 'a.pdf', bytes: a },
+      { name: 'bad.pdf', bytes: bad },
+    ]);
+    render(<CombineModal />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Combine' })).toBeDisabled();
+    });
+  });
+
   it('calls the picker when "Add PDFs…" is clicked', () => {
     useCombineStore.getState().open();
     render(<CombineModal />);
 
-    fireEvent.click(screen.getByRole('button', { name: '+ Add PDFs…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add PDFs…' }));
 
     expect(pickAndReadDocuments).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not report success when loadSource resolves into an error state', async () => {
+    // The real loadSource never rejects -- it catches its own failures into
+    // doc.setError and resolves normally (see state/actions.ts) -- so this
+    // mock reproduces that shape instead of throwing, which is exactly the
+    // case runCombine has to notice by checking documentStore afterward.
+    loadSource.mockImplementationOnce(async () => {
+      useDocumentStore.getState().setError('Could not open document');
+    });
+    const a = await pdfBytes(1);
+    const b = await pdfBytes(1);
+    useCombineStore.getState().open([
+      { name: 'a.pdf', bytes: a },
+      { name: 'b.pdf', bytes: b },
+    ]);
+    render(<CombineModal />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Combine' }));
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(useCombineStore.getState().modalOpen).toBe(true);
+    expect(useCombineStore.getState().busy).toBe(false);
+  });
+
+  it('requests cancellation instead of closing outright while a merge is in flight', async () => {
+    const a = await pdfBytes(1);
+    const b = await pdfBytes(1);
+    useCombineStore.getState().open([
+      { name: 'a.pdf', bytes: a },
+      { name: 'b.pdf', bytes: b },
+    ]);
+    useCombineStore.getState().setBusy(true);
+    render(<CombineModal />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    // Busy still true: dismissing while a merge is running only requests
+    // cancellation, it does not hide the modal out from under the run.
+    expect(useCombineStore.getState().modalOpen).toBe(true);
+    expect(useCombineStore.getState().cancelRequested).toBe(true);
   });
 });
