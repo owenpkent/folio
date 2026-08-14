@@ -20,6 +20,16 @@ export default tseslint.config(
       // Staged extension output: a copy of the built web app, plus the
       // extension sources that are linted at their real location.
       'extensions/chrome/build',
+      // Output of the pre-Phase-4 build, which staged in place instead of
+      // into build/ (see extensions/chrome/.gitignore, which still lists
+      // these for the same reason: git does not remove ignored files on
+      // pull, so a contributor who built before that change still has them
+      // on disk). The top-level 'dist' pattern above does not cover these:
+      // ESLint's ignore patterns are not gitignore-style path globbing, so
+      // an unanchored 'dist' only matches a literal top-level ./dist, not
+      // extensions/chrome/dist -- verified by lint-ing a file planted there.
+      'extensions/chrome/dist',
+      'extensions/chrome/icons',
     ],
   },
   js.configs.recommended,

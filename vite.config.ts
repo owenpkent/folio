@@ -32,8 +32,14 @@ try {
  * package can be reproduced and diffed. Unset, this is just the wall clock.
  */
 const sourceDateEpoch = Number(process.env.SOURCE_DATE_EPOCH);
+// >= 0, not > 0: the Unix epoch itself (SOURCE_DATE_EPOCH=0) is a value the
+// reproducible-builds convention allows, and build.mjs honours it (the env
+// var is a non-empty string, "0", which is truthy) -- rejecting it here while
+// build.mjs's own log still says "Reproducible: ... SOURCE_DATE_EPOCH=0" was
+// a silent contradiction between the two. An unset var stays wall-clock:
+// Number(undefined) is NaN, which fails isFinite regardless of the operator.
 const buildDate = (
-  Number.isFinite(sourceDateEpoch) && sourceDateEpoch > 0
+  Number.isFinite(sourceDateEpoch) && sourceDateEpoch >= 0
     ? new Date(sourceDateEpoch * 1000)
     : new Date()
 ).toISOString();

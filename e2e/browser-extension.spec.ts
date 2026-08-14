@@ -12,17 +12,27 @@ import { expect, test, type Page } from '@playwright/test';
  * whatever that fragment names, and refuses what it should not fetch.
  */
 
-const PDF = readFileSync(resolve('e2e/fixtures/form.pdf'));
-
 /** Stand-in origin. Playwright intercepts before the network, so it never resolves. */
 const ORIGIN = 'https://pdf.example';
+
+let cachedPdf: Buffer | null = null;
+/**
+ * The fixture, read lazily rather than at module scope. `e2e/fixtures/` is
+ * gitignored and populated by `e2e/global-setup.ts` when the suite runs;
+ * reading it at import time meant `playwright test --list` and IDE test
+ * discovery, which import spec files without running global setup first,
+ * threw on a fresh clone before a single test had a chance to run.
+ */
+function pdfFixture(): Buffer {
+  return (cachedPdf ??= readFileSync(resolve('e2e/fixtures/form.pdf')));
+}
 
 /** Serve the fixture for anything on ORIGIN, recording what was actually asked for. */
 async function serveFixture(page: Page): Promise<string[]> {
   const requested: string[] = [];
   await page.route(`${ORIGIN}/**`, async (route) => {
     requested.push(route.request().url());
-    await route.fulfill({ status: 200, contentType: 'application/pdf', body: PDF });
+    await route.fulfill({ status: 200, contentType: 'application/pdf', body: pdfFixture() });
   });
   return requested;
 }

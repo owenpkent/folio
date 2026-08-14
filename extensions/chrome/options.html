@@ -15,7 +15,7 @@
           <legend>When you open a PDF</legend>
 
           <div class="choice">
-            <input type="radio" id="mode-browser" name="mode" value="browser" />
+            <input type="radio" id="mode-browser" name="mode" value="browser" aria-describedby="mode-browser-desc" />
             <div>
               <label for="mode-browser">Open it in Folio's viewer</label>
               <p id="mode-browser-desc">
@@ -26,7 +26,7 @@
           </div>
 
           <div class="choice">
-            <input type="radio" id="mode-desktop" name="mode" value="desktop" />
+            <input type="radio" id="mode-desktop" name="mode" value="desktop" aria-describedby="mode-desktop-desc" />
             <div>
               <label for="mode-desktop">Leave PDFs to Chrome</label>
               <p id="mode-desktop-desc">
@@ -37,7 +37,7 @@
           </div>
 
           <div class="choice">
-            <input type="radio" id="mode-off" name="mode" value="off" />
+            <input type="radio" id="mode-off" name="mode" value="off" aria-describedby="mode-off-desc" />
             <div>
               <label for="mode-off">Turn the extension off</label>
               <p id="mode-off-desc">Folio does nothing until you turn it back on.</p>

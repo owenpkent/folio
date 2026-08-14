@@ -132,10 +132,19 @@ button {
   border-radius: 4px;
 }
 
-@media (prefers-contrast: more) {
+/* Windows High Contrast Mode (and any forced-colors mode) reports
+   prefers-contrast: custom, not more -- src/theme/tokens.css uses
+   forced-colors: active for exactly this reason, and gets it right; this used
+   the wrong media feature and so never matched under Windows High Contrast at
+   all. System color keywords resolve to whatever the user chose. */
+@media (forced-colors: active) {
   :root {
-    --border: currentColor;
-    --muted: var(--fg);
+    --bg: Canvas;
+    --fg: CanvasText;
+    --muted: GrayText;
+    --border: CanvasText;
+    --accent: Highlight;
+    --accent-fg: HighlightText;
   }
 }
 
