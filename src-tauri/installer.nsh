@@ -14,6 +14,14 @@
 ; and Chrome's "open downloaded file" / "always open with system viewer" --
 ; follows UserChoice, not us.
 ;
+; That guarantee has one gap: `bundle.fileAssociations` (via Tauri's own
+; APP_ASSOCIATE) unconditionally overwrites the *non-UserChoice* default at
+; `Software\Classes\.pdf`. Precedence is UserChoice, then HKCU\Software\Classes,
+; then HKLM\Software\Classes, so on a machine where the previous handler only
+; ever registered in HKLM and the user never made an explicit choice (a fresh
+; image, a server SKU, anything that has cleared FileExts), installing Folio
+; DOES take `.pdf` over. See docs/getting-started.md for the user-facing note.
+;
 ; What we can do is make that user choice possible and obvious. Tauri's
 ; `bundle.fileAssociations` (see tauri.conf.json) only writes the ProgID itself
 ; plus the `.pdf` default value; on its own that leaves Folio missing from the
@@ -23,7 +31,11 @@
 ; Per-user install -> SHCTX resolves to HKCU (Tauri sets it from the install
 ; mode; this matches what its own APP_ASSOCIATE macro writes). ${MAINBINARYNAME}
 ; is "folio" and $INSTDIR the install root, both defined by the generated script
-; that includes this file.
+; that includes this file. `installMode` is pinned to "currentUser" in
+; tauri.conf.json rather than left at its default, because
+; `registeredAppUser=Folio` in src-tauri/src/lib.rs only resolves against
+; HKCU\Software\RegisteredApplications: a `perMachine` or `both` build would
+; move this key to HKLM and silently break that deep link.
 
 !define FOLIO_PROGID "PDF Document" ; must match bundle.fileAssociations[].name
 !define FOLIO_DESCRIPTION "A world-class, open-source PDF viewer."
@@ -52,7 +64,15 @@
   WriteRegStr SHCTX "Software\Classes\${FOLIO_PROGID}\Application" "ApplicationName" "Folio"
   WriteRegStr SHCTX "Software\Classes\${FOLIO_PROGID}\Application" "ApplicationDescription" "${FOLIO_DESCRIPTION}"
   WriteRegStr SHCTX "Software\Classes\${FOLIO_PROGID}\Application" "ApplicationIcon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
-  WriteRegStr SHCTX "Software\Classes\${FOLIO_PROGID}" "FriendlyTypeName" "PDF document"
+
+  ; Also fix a bug in Tauri's own APP_ASSOCIATE (installer.nsi): the shell\open
+  ; command it writes for this ProgID is unquoted -- "$INSTDIR\folio.exe $\"%1$\""
+  ; -- so an install path containing a space (a custom directory, or a profile
+  ; like "C:\Users\John Smith") makes ShellExecute resolve the bare exe token at
+  ; the first space instead of the real path (CWE-428). This hook runs after
+  ; APP_ASSOCIATE, so overriding it here is enough; use the same quoted form
+  ; already used below for Applications\${MAINBINARYNAME}.exe.
+  WriteRegStr SHCTX "Software\Classes\${FOLIO_PROGID}\shell\open\command" "" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
 
   ; 4. The other half of the picker. Explorer builds "Open with" from both the
   ;    extension's OpenWithProgids and the per-executable Applications key; the
@@ -65,23 +85,57 @@
   WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe\shell\open\command" "" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
   WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe\SupportedTypes" ".pdf" ""
 
-  ; Explorer caches associations per session. Without SHCNE_ASSOCCHANGED
-  ; (0x08000000) the new entries do not show up in "Open with" until the shell
-  ; restarts, so a user who installs and immediately right-clicks a PDF would
-  ; still not see Folio.
-  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, i 0, i 0)'
+  ; Explorer caches associations per session; broadcast the change so it shows
+  ; up in "Open with" immediately instead of after the next shell restart.
+  ; UPDATEFILEASSOC (from FileAssociation.nsh, included ahead of this file)
+  ; passes SHCNF_FLUSH, which makes the broadcast synchronous -- plain
+  ; SHChangeNotify with no flags queues it instead, and the installer's own
+  ; exit (or the updater's passive run) can race the shell draining that queue.
+  !insertmacro UPDATEFILEASSOC
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
   DeleteRegValue SHCTX "Software\RegisteredApplications" "Folio"
-  DeleteRegKey SHCTX "Software\Folio"
+  ; Software\Folio and Tauri's own Software\folio\Folio (which stores $INSTDIR
+  ; for RestorePreviousInstallLocation) are the same registry key -- names are
+  ; case-insensitive -- so only remove our own Capabilities subtree here, never
+  ; the parent wholesale. `/ifempty` then only takes the parent if Tauri's own
+  ; guarded block above (gated on the "delete app data" checkbox) also cleared
+  ; its sibling.
+  DeleteRegKey SHCTX "Software\Folio\Capabilities"
+  DeleteRegKey /ifempty SHCTX "Software\Folio"
+
   ; Only our own value: OpenWithProgids is shared, and every other value in it
   ; belongs to a different application. (`DeleteRegKey /ifempty` would not do
   ; here -- it keys off subkeys, not values, so it would take the siblings with
-  ; it.) An empty leftover key is harmless. Tauri's APP_UNASSOCIATE has already
-  ; restored the previous `.pdf` default value.
+  ; it.) An empty leftover key is harmless.
   DeleteRegValue SHCTX "Software\Classes\.pdf\OpenWithProgids" "${FOLIO_PROGID}"
-  DeleteRegKey SHCTX "Software\Classes\${FOLIO_PROGID}\Application"
+
+  ; APP_ASSOCIATE (installer.nsi) backs up the previous `.pdf` default on every
+  ; install, including a reinstall over an existing Folio install. When that
+  ; happens the backup itself holds our own ProgID, so APP_UNASSOCIATE, which
+  ; ran just before this hook, restored `.pdf`'s default to a ProgID it deleted
+  ; a moment earlier, leaving it dangling. Clean that up, plus the now-useless
+  ; backup value.
+  ReadRegStr $R0 SHCTX "Software\Classes\.pdf" ""
+  ${If} $R0 == "${FOLIO_PROGID}"
+    DeleteRegValue SHCTX "Software\Classes\.pdf" ""
+  ${EndIf}
+  DeleteRegValue SHCTX "Software\Classes\.pdf" "${FOLIO_PROGID}_backup"
+
+  ; If the user picked Folio via "Open with > Always", Explorer wrote this
+  ; ProgId under a hash only Explorer can produce. We cannot rewrite that
+  ; value, but deleting the key is allowed: Windows falls back to the `.pdf`
+  ; default restored above and re-prompts next time the user picks a handler.
+  ; Without this, "How do you want to open this file?" never goes away.
+  ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoice" "ProgId"
+  ${If} $R0 == "${FOLIO_PROGID}"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoice"
+  ${EndIf}
+
+  ; Software\Classes\${FOLIO_PROGID}\Application (written above) is not deleted
+  ; here: APP_UNASSOCIATE already removed the whole Software\Classes\PDF Document
+  ; key, including that subkey, before this hook runs.
   DeleteRegKey SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe"
-  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, i 0, i 0)'
+  !insertmacro UPDATEFILEASSOC
 !macroend
