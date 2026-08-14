@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { uid } from '@/core/id';
+
 import type { IdentitySummary } from './cert';
 import type { DetectedSignature } from './verify';
 
@@ -12,14 +14,6 @@ export interface StoredIdentity {
 }
 
 const KEY = 'folio.signing.identities';
-
-function uid(): string {
-  try {
-    return crypto.randomUUID();
-  } catch {
-    return `id-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
-  }
-}
 
 function load(): StoredIdentity[] {
   try {
@@ -75,7 +69,7 @@ export const useSigningStore = create<SigningState>((set, get) => ({
 
   addIdentity: (label, p12, summary) => {
     const identity: StoredIdentity = {
-      id: uid(),
+      id: uid('id'),
       label: label || summary.commonName,
       p12Base64: bytesToBase64(p12),
       summary,

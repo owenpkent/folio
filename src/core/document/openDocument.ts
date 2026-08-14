@@ -70,14 +70,20 @@ export async function sourceFromFile(file: File): Promise<BytesDocumentSource> {
   return { kind: 'bytes', data, name: file.name };
 }
 
+/** A hidden, auto-clicked `<input type="file">`, attached so the picker opens reliably across browsers. */
+function createHiddenFileInput(multiple: boolean): HTMLInputElement {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/pdf,.pdf';
+  input.multiple = multiple;
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  return input;
+}
+
 function pickViaFileInput(): Promise<DocumentSource | null> {
   return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/pdf,.pdf';
-    // Attach (hidden) so the picker opens reliably across browsers.
-    input.style.display = 'none';
-    document.body.appendChild(input);
+    const input = createHiddenFileInput(false);
     const cleanup = () => input.remove();
 
     input.addEventListener('change', async () => {
@@ -95,12 +101,7 @@ function pickViaFileInput(): Promise<DocumentSource | null> {
 
 function pickViaFileInputMultiple(): Promise<BytesDocumentSource[]> {
   return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/pdf,.pdf';
-    input.multiple = true;
-    input.style.display = 'none';
-    document.body.appendChild(input);
+    const input = createHiddenFileInput(true);
     const cleanup = () => input.remove();
 
     input.addEventListener('change', async () => {
