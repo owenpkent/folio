@@ -26,7 +26,8 @@
 ; `bundle.fileAssociations` (see tauri.conf.json) only writes the ProgID itself
 ; plus the `.pdf` default value; on its own that leaves Folio missing from the
 ; "Open with" list and showing up in Settings under its *file-type* description
-; rather than its name. The three blocks below close those gaps.
+; rather than its name. The numbered blocks below close those gaps (and fix a
+; correctness bug in Tauri's own output).
 ;
 ; Per-user install -> SHCTX resolves to HKCU (Tauri sets it from the install
 ; mode; this matches what its own APP_ASSOCIATE macro writes). ${MAINBINARYNAME}
@@ -38,17 +39,28 @@
 ; move this key to HKLM and silently break that deep link.
 
 !define FOLIO_PROGID "PDF Document" ; must match bundle.fileAssociations[].name
-!define FOLIO_DESCRIPTION "A world-class, open-source PDF viewer."
+; Mirrors bundle.shortDescription in tauri.conf.json (source of truth -- NSIS
+; cannot read JSON, so this copy has to be kept in sync by hand). Also
+; duplicated as `description` in src-tauri/Cargo.toml.
+!define FOLIO_DESCRIPTION "A world-class, open-source PDF viewer"
 
 !macro NSIS_HOOK_POSTINSTALL
   ; 1. Registered application -> Folio gets its own page in Settings > Default
   ;    apps, which the in-app "Set as default PDF viewer" action deep-links to
   ;    via `ms-settings:defaultapps?registeredAppUser=Folio`.
-  WriteRegStr SHCTX "Software\Folio\Capabilities" "ApplicationName" "Folio"
-  WriteRegStr SHCTX "Software\Folio\Capabilities" "ApplicationDescription" "${FOLIO_DESCRIPTION}"
-  WriteRegStr SHCTX "Software\Folio\Capabilities" "ApplicationIcon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
-  WriteRegStr SHCTX "Software\Folio\Capabilities\FileAssociations" ".pdf" "${FOLIO_PROGID}"
-  WriteRegStr SHCTX "Software\RegisteredApplications" "Folio" "Software\Folio\Capabilities"
+  WriteRegStr SHCTX "Software\${PRODUCTNAME}\Capabilities" "ApplicationName" "${PRODUCTNAME}"
+  WriteRegStr SHCTX "Software\${PRODUCTNAME}\Capabilities" "ApplicationDescription" "${FOLIO_DESCRIPTION}"
+  WriteRegStr SHCTX "Software\${PRODUCTNAME}\Capabilities" "ApplicationIcon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
+  WriteRegStr SHCTX "Software\${PRODUCTNAME}\Capabilities\FileAssociations" ".pdf" "${FOLIO_PROGID}"
+  ; Advertise the folio:// deep-link scheme too (registered by Tauri's own
+  ; generated script from plugins.deep-link in tauri.conf.json), so Settings >
+  ; Default apps has somewhere to show and repair it, the same as .pdf.
+  WriteRegStr SHCTX "Software\${PRODUCTNAME}\Capabilities\URLAssociations" "folio" "folio"
+  ; The value NAME here (not its data) has to be the literal "Folio":
+  ; src-tauri/src/lib.rs hardcodes `registeredAppUser=Folio` in its deep link,
+  ; so this stays a literal instead of ${PRODUCTNAME} -- a product rename
+  ; should not silently desync it from that Rust string.
+  WriteRegStr SHCTX "Software\RegisteredApplications" "Folio" "Software\${PRODUCTNAME}\Capabilities"
 
   ; 2. Advertise the ProgID against `.pdf` so Folio appears in Explorer's
   ;    "Open with" / "Choose another app" list -- the shortest route a user has
@@ -61,7 +73,7 @@
   ;    *type* description ("Portable Document Format document"), which is what
   ;    the picker and Settings would otherwise label the entry -- unrecognisable
   ;    as Folio. An Application subkey overrides that with the app's identity.
-  WriteRegStr SHCTX "Software\Classes\${FOLIO_PROGID}\Application" "ApplicationName" "Folio"
+  WriteRegStr SHCTX "Software\Classes\${FOLIO_PROGID}\Application" "ApplicationName" "${PRODUCTNAME}"
   WriteRegStr SHCTX "Software\Classes\${FOLIO_PROGID}\Application" "ApplicationDescription" "${FOLIO_DESCRIPTION}"
   WriteRegStr SHCTX "Software\Classes\${FOLIO_PROGID}\Application" "ApplicationIcon" "$INSTDIR\${MAINBINARYNAME}.exe,0"
 
@@ -78,10 +90,11 @@
   ;    extension's OpenWithProgids and the per-executable Applications key; the
   ;    latter is also what "Look for another app on this PC" binds to, and what
   ;    supplies the friendly name when a user browses to folio.exe by hand.
-  ;    SupportedTypes keeps Folio out of the picker for non-PDF files.
-  WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe" "FriendlyAppName" "Folio"
-  WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe\DefaultIcon" "" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\",0"
-  WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe\shell\open" "FriendlyAppName" "Folio"
+  ;    SupportedTypes keeps Folio out of the picker for non-PDF files. Icon path
+  ;    is left unquoted, matching Tauri's own APP_ASSOCIATE ICON argument above.
+  WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe" "FriendlyAppName" "${PRODUCTNAME}"
+  WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe\DefaultIcon" "" "$INSTDIR\${MAINBINARYNAME}.exe,0"
+  WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe\shell\open" "FriendlyAppName" "${PRODUCTNAME}"
   WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe\shell\open\command" "" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
   WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe\SupportedTypes" ".pdf" ""
 
@@ -102,8 +115,8 @@
   ; the parent wholesale. `/ifempty` then only takes the parent if Tauri's own
   ; guarded block above (gated on the "delete app data" checkbox) also cleared
   ; its sibling.
-  DeleteRegKey SHCTX "Software\Folio\Capabilities"
-  DeleteRegKey /ifempty SHCTX "Software\Folio"
+  DeleteRegKey SHCTX "Software\${PRODUCTNAME}\Capabilities"
+  DeleteRegKey /ifempty SHCTX "Software\${PRODUCTNAME}"
 
   ; Only our own value: OpenWithProgids is shared, and every other value in it
   ; belongs to a different application. (`DeleteRegKey /ifempty` would not do
