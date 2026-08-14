@@ -232,7 +232,8 @@ function scrubPairs(
     const valueIndex = key + 1;
     const value = node.get(valueIndex);
     const dead =
-      (value instanceof PDFRef && (dropped.has(value) || isDeadDestinationRef(value, dropped, context))) ||
+      (value instanceof PDFRef &&
+        (dropped.has(value) || isDeadDestinationRef(value, dropped, context))) ||
       (value instanceof PDFArray && isDeadDestination(value, dropped));
 
     if (dead) {

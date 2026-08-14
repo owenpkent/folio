@@ -101,7 +101,8 @@ export function useKeyboardShortcuts(): void {
         // that is a different, one-shot command: without the altKey check, OS
         // key repeat fires a page move roughly every 33ms for as long as
         // Alt+ArrowUp/Down is held, rather than moving it once per press.
-        const repeatable = (REPEATABLE_KEYS.has(e.key) && !e.altKey) || REPEATABLE_CHORDS.has(binding);
+        const repeatable =
+          (REPEATABLE_KEYS.has(e.key) && !e.altKey) || REPEATABLE_CHORDS.has(binding);
         if (e.repeat && !repeatable) {
           e.preventDefault();
           return;

@@ -35,7 +35,12 @@ const renderList = () =>
 
 const renderGrid = () =>
   render(
-    <PageList layout="grid" scrollRoot=".folio-organize__body" scale={0.35} rootMargin="600px 0px" />,
+    <PageList
+      layout="grid"
+      scrollRoot=".folio-organize__body"
+      scale={0.35}
+      rootMargin="600px 0px"
+    />,
   );
 
 const selection = () => [...usePageOpsStore.getState().selection].sort((a, b) => a - b);

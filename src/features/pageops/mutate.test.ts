@@ -6,9 +6,11 @@ import {
   PDFDict,
   PDFDocument,
   PDFName,
+  PDFNumber,
   PDFRawStream,
   PDFString,
   StandardFonts,
+  type PDFContext,
   type PDFPage,
   type PDFRef,
 } from 'pdf-lib';
@@ -220,6 +222,41 @@ describe('verifyResult', () => {
       expect.objectContaining({ code: 'unreadable-result' }),
     );
   });
+
+  // Page count alone only exercises the page tree -- the one structure a
+  // sweep bug is least likely to touch. checkGraph re-walks the object graph
+  // the same way the sweep did, and catches damage that leaves the page tree,
+  // and so the count, untouched.
+  describe('graph integrity (checkGraph)', () => {
+    /** A document with one reachable ref that resolves to nothing. */
+    async function docWithDanglingRef(): Promise<Uint8Array> {
+      const doc = await PDFDocument.create();
+      doc.addPage([300, 400]);
+      const ghost = doc.context.nextRef(); // allocated, never assigned
+      doc.catalog.set(PDFName.of('LinkForTest'), ghost);
+      return doc.save();
+    }
+
+    it('accepts an ordinary document', async () => {
+      await expect(
+        verifyResult(await labelledPdf(['PAGE-A', 'PAGE-B']), 2, true),
+      ).resolves.toBeUndefined();
+    });
+
+    it('refuses a document with a reachable dangling reference', async () => {
+      await expect(verifyResult(await docWithDanglingRef(), 1, true)).rejects.toThrow(
+        expect.objectContaining({ code: 'unreadable-result' }),
+      );
+    });
+
+    it('is not run unless asked', async () => {
+      // Same corrupt document, but checkGraph defaults to false: a plan that
+      // never dropped a page never ran the sweep, so this is not a new
+      // defect worth the cost, or the risk of flagging something pre-existing
+      // and unrelated, of checking on every rotate and reorder too.
+      await expect(verifyResult(await docWithDanglingRef(), 1)).resolves.toBeUndefined();
+    });
+  });
 });
 
 describe('applyPagePlan rotation', () => {
@@ -283,6 +320,32 @@ describe('applyPagePlan rotation', () => {
     await expect(
       applyPagePlan({ pdfBytes: bytes, plan: { order: [0], rotateBy: { 0: 45 } } }),
     ).rejects.toThrow(expect.objectContaining({ code: 'bad-rotation' }));
+  });
+
+  it('rounds a non-multiple-of-90 existing rotation rather than throwing', async () => {
+    // The plan's own requested turn is always validated as a multiple of 90,
+    // but the page's *existing* /Rotate is not under this feature's control:
+    // a malformed file, or a writer that just did not care, can leave 45
+    // there. Adding 90 to that without rounding first (0deg .. 359deg, no
+    // snap to a quarter turn) produces 135, which pdf-lib's setRotation
+    // assertion rejects, failing every rotate on the document. setRotation
+    // itself asserts the same thing, so the malformed value is written
+    // directly rather than through it.
+    const source = await PDFDocument.create();
+    const page = source.addPage([300, 400]);
+    page.node.set(PDFName.of('Rotate'), PDFNumber.of(45));
+    const bytes = await source.save();
+
+    const result = await applyPagePlan({
+      pdfBytes: bytes,
+      plan: { order: [0], rotateBy: { 0: 90 } },
+    });
+
+    // 45 rounds to the nearest quarter turn (90) before the requested 90 is
+    // added, landing on 180 -- the same answer normalizeAngle would give if
+    // asked to round the sum directly, since adding a multiple of 90 first
+    // does not change which quarter turn is nearest.
+    expect(await rotationsOf(result.bytes)).toEqual([180]);
   });
 });
 
@@ -479,5 +542,98 @@ describe('applyPagePlan and catalog-level data', () => {
         .getFields()
         .map((f) => f.getName()),
     ).toEqual(['survivor']);
+  });
+});
+
+describe('applyPagePlan and every shape /K can take', () => {
+  /**
+   * A tagged two-page document with one structure element whose own /Pg
+   * points at the page being deleted, and whose /K is built by `buildK`.
+   *
+   * Before the fix, structKids used context.lookupMaybe(kids, PDFArray),
+   * which throws instead of returning undefined when /K exists and is not an
+   * array. `K: [elemRef]` (a direct array holding one ref) is the one shape
+   * that happens not to hit that: `PDFContext.lookupMaybe` never even reaches
+   * its type check when the value handed in is already an array. Every case
+   * below is a shape that did.
+   */
+  async function taggedPdfWithKShape(
+    buildK: (context: PDFContext, pageRef: PDFRef) => number | PDFDict | PDFRef,
+  ): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    const pages = [doc.addPage([300, 400]), doc.addPage([300, 400])];
+    const { context } = doc;
+
+    const structRootRef = context.nextRef();
+    const elemRef = context.nextRef();
+    context.assign(
+      elemRef,
+      context.obj({
+        Type: 'StructElem',
+        S: 'Span',
+        P: structRootRef,
+        Pg: pages[1].ref,
+        ActualText: PDFString.of(STRUCT_TEXT),
+        K: buildK(context, pages[1].ref),
+      }),
+    );
+    context.assign(structRootRef, context.obj({ Type: 'StructTreeRoot', K: [elemRef] }));
+    doc.catalog.set(PDFName.of('StructTreeRoot'), structRootRef);
+
+    return doc.save();
+  }
+
+  it('does not throw when /K is a bare MCID (the standard leaf shape)', async () => {
+    const bytes = await taggedPdfWithKShape(() => 0);
+    const result = await applyPagePlan({ pdfBytes: bytes, plan: { order: [0] } });
+
+    expect(result.numPages).toBe(1);
+    expect(await survivesAnywhere(result.bytes, STRUCT_TEXT)).toBe(false);
+  });
+
+  it('does not throw when /K is a direct (non-indirect) content-item dict', async () => {
+    const bytes = await taggedPdfWithKShape((context, pageRef) =>
+      context.obj({ Type: 'MCR', Pg: pageRef, MCID: 0 }),
+    );
+    const result = await applyPagePlan({ pdfBytes: bytes, plan: { order: [0] } });
+
+    expect(result.numPages).toBe(1);
+    expect(await survivesAnywhere(result.bytes, STRUCT_TEXT)).toBe(false);
+  });
+
+  it('does not throw when /K is a single indirect ref, as Word and Acrobat write it', async () => {
+    const bytes = await taggedPdfWithKShape((context, pageRef) =>
+      context.register(context.obj({ Type: 'MCR', Pg: pageRef, MCID: 0 })),
+    );
+    const result = await applyPagePlan({ pdfBytes: bytes, plan: { order: [0] } });
+
+    expect(result.numPages).toBe(1);
+    expect(await survivesAnywhere(result.bytes, STRUCT_TEXT)).toBe(false);
+  });
+
+  it('does not throw when /StructTreeRoot /K itself is a single indirect ref', async () => {
+    // The literal shape the finding names: Word and Acrobat both write a
+    // document with exactly one top-level structure element this way.
+    const doc = await PDFDocument.create();
+    const pages = [doc.addPage([300, 400]), doc.addPage([300, 400])];
+    const { context } = doc;
+
+    const structRootRef = context.nextRef();
+    const elemRef = context.register(
+      context.obj({
+        Type: 'StructElem',
+        S: 'Document',
+        Pg: pages[1].ref,
+        ActualText: PDFString.of(STRUCT_TEXT),
+        K: 0,
+      }),
+    );
+    context.assign(structRootRef, context.obj({ Type: 'StructTreeRoot', K: elemRef }));
+    doc.catalog.set(PDFName.of('StructTreeRoot'), structRootRef);
+
+    const result = await applyPagePlan({ pdfBytes: await doc.save(), plan: { order: [0] } });
+
+    expect(result.numPages).toBe(1);
+    expect(await survivesAnywhere(result.bytes, STRUCT_TEXT)).toBe(false);
   });
 });
