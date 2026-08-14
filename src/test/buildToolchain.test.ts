@@ -121,3 +121,34 @@ describe('build toolchain', () => {
     expect(viteConfig.build?.outDir).toBeUndefined();
   });
 });
+
+describe('installer.nsh drift guard', () => {
+  it('keeps the hand-written ProgID and extension in sync with bundle.fileAssociations', () => {
+    // src-tauri/installer.nsh hand-writes registry keys keyed to a ProgID and
+    // an extension that must match what bundle.fileAssociations in
+    // tauri.conf.json actually generates. If they drift, every key the NSIS
+    // hooks write points at a ProgID Tauri never creates, silently
+    // reintroducing "Folio missing from Open with" with no compile error and
+    // no test (this is the 0.5.0 bug this file exists to guard against).
+    const tauri = readJson('../../src-tauri/tauri.conf.json') as {
+      bundle: { fileAssociations: { ext: string[]; name: string }[] };
+    };
+    const assoc = tauri.bundle.fileAssociations[0];
+
+    const nsh = readFileSync(
+      fileURLToPath(new URL('../../src-tauri/installer.nsh', import.meta.url)),
+      'utf8',
+    );
+
+    const progIdMatch = nsh.match(/!define FOLIO_PROGID "([^"]+)"/);
+    expect(progIdMatch, 'installer.nsh must define FOLIO_PROGID').not.toBeNull();
+    expect(progIdMatch?.[1]).toBe(assoc.name);
+
+    const extMatch = nsh.match(/Capabilities\\FileAssociations" "\.([^"]+)" "\$\{FOLIO_PROGID\}"/);
+    expect(
+      extMatch,
+      'installer.nsh must register FOLIO_PROGID under Capabilities\\FileAssociations for the extension',
+    ).not.toBeNull();
+    expect(extMatch?.[1]).toBe(assoc.ext[0]);
+  });
+});

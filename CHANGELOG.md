@@ -64,6 +64,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and `event-listener` (RUSTSEC-2026-0221). `npm audit` and `cargo audit` both
   report no vulnerabilities.
 
+- **Folio is selectable as the Windows `.pdf` handler.** A PDF downloaded
+  from Chrome kept opening in Acrobat or Edge, and the usual remedy did not
+  work: Folio was absent from *Open with -> Choose another app*, so there was no
+  way to point `.pdf` at it. Tauri's `bundle.fileAssociations` writes the ProgID
+  and the `.pdf` default value, but not the two keys Explorer actually builds
+  the picker from -- `Software\Classes\.pdf\OpenWithProgids` and
+  `Software\Classes\Applications\folio.exe` (with `FriendlyAppName`,
+  `SupportedTypes`, and an open command). `src-tauri/installer.nsh` now writes
+  both, adds an `Application` subkey so the entry is labelled **Folio** rather
+  than "Portable Document Format document", and fires `SHCNE_ASSOCCHANGED` so
+  the picker updates without a shell restart. Uninstall removes only Folio's own
+  `OpenWithProgids` value, leaving other handlers' entries intact.
+
+  What this does *not* do is seize the association: `.pdf`'s current default is
+  held in `UserChoice`, hash-protected so only Explorer can set it, and Chrome's
+  "open downloaded file" is a plain `ShellExecute` that follows it. Reassigning
+  is still a deliberate user action -- via *Open with -> Always*, or the
+  start-screen *Make Folio your default PDF viewer* button, which deep-links to
+  Folio's page in *Settings -> Default apps*. `docs/getting-started.md`
+  troubleshoots the symptom end to end.
+
 ### Security
 
 - The URL handed to the desktop app over `folio://` is scheme-checked before the

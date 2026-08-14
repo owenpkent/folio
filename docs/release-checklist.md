@@ -65,6 +65,28 @@ On the EV-cert Windows host:
 - [ ] `npx tauri build` produces `Folio_<ver>_x64-setup.exe` and a matching `Folio_<ver>_x64-setup.exe.sig` in `src-tauri/target/release/bundle/nsis/`. Sidecars only appear when `TAURI_SIGNING_PRIVATE_KEY[_PASSWORD]` are set; if missing, the build **fails** because `bundle.createUpdaterArtifacts` is `true`.
 - [ ] EV signature is valid: `Get-AuthenticodeSignature <exe> | Format-List Status, SignerCertificate` shows `Status: Valid`, signer `CN=OK Studio Inc.` (or `signtool verify /pa /v <exe>`)
 - [ ] `release/latest.json` `signature` for `windows-x86_64` matches the contents of `Folio_<ver>_x64-setup.exe.sig`, and `pub_date` is the current UTC time
+- [ ] File association survived the build. Tauri regenerates the NSIS script on
+  every build, and nothing fails if the hook stops being applied, so check
+  that the hook actually made it into the generated script before checking
+  what it wrote:
+  ```powershell
+  rg -c "NSIS_HOOK_POSTINSTALL" "src-tauri\target\release\nsis\x64\installer.nsi"   # prints a count; empty means the hook did not survive regeneration
+  rg -cF "installer.nsh" "src-tauri\target\release\nsis\x64\installer.nsi"          # prints a count; empty means installerHooks is not wired
+  ```
+  Then install the bundle and confirm the keys [`src-tauri/installer.nsh`](../src-tauri/installer.nsh) writes are present:
+  ```powershell
+  (Get-Item "HKCU:\Software\Classes\.pdf\OpenWithProgids" -ErrorAction SilentlyContinue).Property                    # includes "PDF Document"
+  (Get-ItemProperty "HKCU:\Software\Classes\Applications\folio.exe" -ErrorAction SilentlyContinue).FriendlyAppName    # "Folio"
+  (Get-ItemProperty "HKCU:\Software\Classes\PDF Document\Application" -ErrorAction SilentlyContinue).ApplicationName  # "Folio"
+  (Get-ItemProperty "HKCU:\Software\RegisteredApplications" -ErrorAction SilentlyContinue).Folio                     # "Software\Folio\Capabilities"
+  ```
+  This only proves anything after an explicit uninstall, or on a clean VM or
+  user profile. Reinstalling the same version over an existing Folio install
+  lands on the installer's "Add/Reinstall" page, which skips the uninstaller
+  entirely, so all four of these survive from the previous install even if
+  the hook silently stopped being applied.
+
+  Then right-click any `.pdf` → *Open with* → *Choose another app*: **Folio** is listed, under that name. See `docs/testing.md` → *Default PDF viewer*.
 
 ---
 

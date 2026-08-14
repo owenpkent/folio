@@ -352,7 +352,31 @@ Install the app first (the `.pdf` association is written by the installer, not b
 `tauri dev`), then:
 
 - **Appears as a handler:** right-click any `.pdf` -> *Open with* -> *Choose
-  another app*. **Folio** should be listed.
+  another app*. **Folio** should be listed, under that name -- not under the
+  file-type description ("Portable Document Format document"). This is the check
+  that fails when the installer's `OpenWithProgids` /
+  `Applications\folio.exe` registration is missing; see
+  `src-tauri/installer.nsh`.
+- **Application identity:**
+  `(Get-ItemProperty "HKCU:\Software\Classes\PDF Document\Application").ApplicationName`
+  should be `Folio`. This is the key that actually fixes the reported symptom
+  (Folio showing up as "Portable Document Format document"); it has its own
+  write in `src-tauri/installer.nsh`, separate from the `Applications\folio.exe`
+  entry above.
+- **Browser download, before changing the default:** right after a fresh
+  install, with some other app still the `.pdf` default, download a PDF in
+  Chrome and open the downloads-bubble dropdown (the chevron next to the file)
+  -> *Open with*. **Folio** should be offered there, even though a plain click
+  still opens whatever app *is* the default. This is the browser-download check
+  that actually depends on this PR's keys. A stock Chrome profile opens PDFs in
+  Chrome's own viewer instead of downloading them
+  (`chrome://settings/content/pdfDocuments`), so switch that setting to
+  "Download PDF files" first, or the file never reaches the downloads bubble.
+- **Browser download, after changing the default:** with Folio set as the
+  `.pdf` default, click the same downloaded file directly. It opens in Folio.
+  This step exercises nothing Folio-specific -- Chrome just calls
+  `ShellExecute`, so it passes or fails purely on the Windows default -- but it
+  is the path users actually report on.
 - **Cold start:** with Folio closed, double-click a `.pdf` (or
   `Start-Process folio-set-default.pdf`). Folio launches **and renders that
   document**, not the empty state.
@@ -361,6 +385,15 @@ Install the app first (the `.pdf` association is written by the installer, not b
 - **In-app action:** on the empty state, click *Make Folio your default PDF
   viewer*. Windows *Settings -> Default apps* opens so you can pick Folio for
   `.pdf`.
+- **Uninstall cleanup:** uninstall, then confirm the hooks' writes are gone.
+  `HKCU:\Software\RegisteredApplications` has no `Folio` value;
+  `HKCU:\Software\Folio\Capabilities` is gone; `OpenWithProgids` under
+  `HKCU:\Software\Classes\.pdf` no longer lists `PDF Document`;
+  `HKCU:\Software\Classes\Applications\folio.exe` is gone; and if you had
+  picked Folio via *Open with -> Always*, so `...\FileExts\.pdf\UserChoice`
+  pointed at it, that key is gone too (Windows asks again next time, instead
+  of silently reusing the now-deleted ProgID). `.pdf`'s default value should
+  point at a real ProgID, not a dangling `PDF Document`.
 
 ### Editing (text boxes, images, and check marks)
 
