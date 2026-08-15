@@ -1,6 +1,7 @@
 import { PDFDocument } from 'pdf-lib';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { MAX_COMBINE_INPUTS } from './combineDocuments';
 import { useCombineStore } from './store';
 
 async function pdfBytes(pages = 1): Promise<Uint8Array> {
@@ -46,6 +47,49 @@ describe('combine store', () => {
     await flush();
 
     expect(useCombineStore.getState().files[0].pageCount).toBe(2);
+  });
+
+  it('drops the raw bytes of a staged file once it has been parsed', async () => {
+    const bytes = await pdfBytes(1);
+    useCombineStore.getState().addFiles([{ name: 'a.pdf', bytes }]);
+
+    expect(useCombineStore.getState().files[0].bytes).toBeDefined();
+    await flush();
+
+    // Nothing reads the raw file once `doc` holds it, and keeping both meant
+    // a second full copy of every staged file stayed resident for as long as
+    // the modal was open, on top of the merged document being built from them.
+    expect(useCombineStore.getState().files[0].doc).toBeDefined();
+    expect(useCombineStore.getState().files[0].bytes).toBeUndefined();
+  });
+
+  it('refuses to stage more files while a merge is in flight', async () => {
+    const bytes = await pdfBytes(1);
+    useCombineStore.getState().open([{ name: 'a.pdf', bytes }]);
+    await flush();
+    useCombineStore.getState().setBusy(true);
+
+    useCombineStore.getState().addFiles([{ name: 'late.pdf', bytes }]);
+
+    // The run snapshotted its inputs before this arrived, so the row would
+    // look included while being no part of the merge -- and the success path
+    // calls close(), which wipes the list without warning. Saying no is
+    // better than losing the file silently.
+    expect(useCombineStore.getState().files.map((f) => f.name)).toEqual(['a.pdf']);
+    expect(useCombineStore.getState().error).toMatch(/in progress/);
+  });
+
+  it('refuses a batch that would take the list past the file ceiling', async () => {
+    const bytes = await pdfBytes(1);
+    const tooMany = Array.from({ length: MAX_COMBINE_INPUTS + 1 }, (_, i) => ({
+      name: `f${i}.pdf`,
+      bytes,
+    }));
+
+    useCombineStore.getState().addFiles(tooMany);
+
+    expect(useCombineStore.getState().files).toEqual([]);
+    expect(useCombineStore.getState().error).toMatch(/in batches/);
   });
 
   it('records an error on a file that cannot be read, naming it', async () => {

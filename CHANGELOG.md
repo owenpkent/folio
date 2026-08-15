@@ -40,9 +40,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   once, then reorder or remove them in the list before combining (every control
   is keyboard-reachable and labelled). The merged document opens in the viewer
   as a new, unsaved file, so Save asks where to put it rather than writing over
-  any of the inputs. A corrupt or password-protected input fails with a message
-  naming the offending file, and a PDF whose header sits behind up to 1&nbsp;KB
-  of preamble junk (the spec allows it) still combines fine.
+  any of the inputs. Form fields are carried over from every input, still
+  filled and still editable, with a name that collides between two inputs
+  renamed rather than fused into one field. A corrupt or password-protected
+  input fails with a message naming the offending file, and a PDF whose header
+  sits behind up to 1&nbsp;KB of preamble junk (the spec allows it) still
+  combines fine.
 - **Delete, reorder, and rotate pages.** Pages can be picked out in the
   thumbnail sidebar or in a new full-window **Pages → Organize pages** grid, then
   dragged to a new position, moved with **Alt+↑/↓**, turned with **Ctrl+[** and
@@ -96,6 +99,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Addresses are also found in **OCR text**, which matters because recognised
   text lives in a sidecar until it is baked into a saved copy: without it a
   freshly recognised scan would offer nothing at all.
+- **A file the OS will not hand over no longer takes the rest of the batch with
+  it.** Dropping or picking several PDFs at once keeps every file that read
+  successfully and names the ones that did not, where one locked or
+  permission-denied file used to discard the whole batch.
 
 ### Changed
 

@@ -11,7 +11,7 @@ import { SearchBar } from '@/components/Search/SearchBar';
 import { Sidebar } from '@/components/Sidebar/Sidebar';
 import { Toolbar } from '@/components/Toolbar/Toolbar';
 import { PdfViewer } from '@/components/Viewer/PdfViewer';
-import { isTauri, readPath } from '@/core/document/openDocument';
+import { describeUnreadable, isTauri, readPathBatch } from '@/core/document/openDocument';
 import { openFromQueryParam } from '@/core/document/openFromQuery';
 import { registerAnnotationCommands } from '@/features/annotations';
 import { CombineModal, registerCombineCommands } from '@/features/combine';
@@ -97,15 +97,20 @@ export function App() {
         if (payload.type !== 'drop' || !payload.paths) return;
         const pdfPaths = payload.paths.filter((p) => p.toLowerCase().endsWith('.pdf'));
         if (pdfPaths.length === 0) return;
-        // A failure reading any one dropped file must not silently discard the
-        // whole drop: without this, one unreadable file among several threw an
-        // unhandled rejection and nothing was opened, with no toast or
-        // announcement to say why.
+        // A failure reading any one dropped file must not discard the whole
+        // drop. readPathBatch keeps whatever read successfully and names the
+        // rest, where Promise.all used to reject on the first failure and
+        // throw away every file that had already read fine.
         try {
-          const sources = await Promise.all(pdfPaths.map((p) => readPath(p)));
+          const { sources, failed } = await readPathBatch(pdfPaths);
+          if (failed.length > 0) {
+            const message = describeUnreadable(failed);
+            pushToast(message, 'error');
+            announce(message, true);
+          }
           // Single vs. multi (and whether to seed or extend the combine modal)
           // is decided in one shared place; see openDroppedPdfs.
-          await openDroppedPdfs(sources);
+          if (sources.length > 0) await openDroppedPdfs(sources);
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Could not read the file';
           pushToast(`Could not open: ${message}`, 'error');

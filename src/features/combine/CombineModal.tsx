@@ -47,17 +47,22 @@ export function CombineModal() {
     else close();
   };
 
-  // Escape is the expected way out of every modal in this app.
+  // Escape is the expected way out of every modal in this app, and goes
+  // through dismiss() rather than repeating its body: the two used to be
+  // identical copies eight lines apart, which would have diverged the first
+  // time dismiss() grew a step.
+  const dismissRef = useRef(dismiss);
+  useEffect(() => {
+    dismissRef.current = dismiss;
+  });
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      if (busy) requestCancel();
-      else close();
+      if (e.key === 'Escape') dismissRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, busy, close, requestCancel]);
+  }, [open]);
 
   // Applies whatever the row handlers below queued, once the DOM they target
   // has actually updated. Runs on every `files` change; a no-op whenever
@@ -78,7 +83,13 @@ export function CombineModal() {
   // A file that failed to read, or that read fine and turned out to have no
   // pages, would otherwise be accepted into a merge that is doomed (or that
   // silently drops it) -- both discovered only after clicking Combine.
-  const hasBlockingFile = files.some((f) => f.error || f.pageCount === 0);
+  //
+  // `!f.pageCount` covers `undefined` as well as `0`, so a file still being
+  // read blocks too. It used not to: clicking Combine before "Reading…"
+  // resolved sent the merge off to parse that file's bytes a second time,
+  // concurrently with the staging parse still in flight, and turned an
+  // encrypted file from an up-front block into a mid-merge failure.
+  const hasBlockingFile = files.some((f) => Boolean(f.error) || !f.pageCount);
   const canCombine = files.length >= 2 && !busy && !hasBlockingFile;
   const stopping = busy && cancelRequested;
   const pct = progress.total ? Math.round((progress.current / progress.total) * 100) : 0;
@@ -204,18 +215,28 @@ export function CombineModal() {
             Add PDFs…
           </button>
 
+          {/* Mounted with the dialog and emptied when idle, deliberately
+              outside the {busy} block below. A live region inserted into the
+              DOM with text already in it is generally not announced --
+              assistive tech reports *changes* to a region it is already
+              watching. The print and OCR progress modals get away with the
+              same markup nested inside their busy check only because their
+              whole dialog, focus trap included, mounts at that moment, so
+              focus moving into it is the announcement. This dialog is
+              already open and focused by the time Combine is clicked, so
+              nothing else would speak: a screen-reader user got silence from
+              the click through to the end of a fast merge. */}
+          <p className="folio-sr-only" aria-live="polite">
+            {busy ? progressText : ''}
+          </p>
+
           {busy && (
             <div className="folio-combine-progress">
-              {/* Same text shown twice, once visible and once for a live
-                  region: a status update inside a live region is not
-                  guaranteed to be read as soon as it changes, and the
-                  progressbar's own aria-valuenow updates too fast to
-                  announce every step, so sighted and screen-reader users get
-                  the same words either way. */}
+              {/* Shown to sighted users; the live region above carries the
+                  same words for everyone else. aria-hidden so the two are
+                  not read as a duplicate pair. The progressbar's own
+                  aria-valuenow updates too fast to announce every step. */}
               <p className="folio-combine-progress__text" aria-hidden="true">
-                {progressText}
-              </p>
-              <p className="folio-sr-only" aria-live="polite">
                 {progressText}
               </p>
               <div

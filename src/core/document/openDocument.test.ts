@@ -77,15 +77,35 @@ describe('pickAndReadDocuments (multi-file browser fallback)', () => {
     expect(input.multiple).toBe(true);
     selectFiles(input, [a, b]);
 
-    const sources = await promise;
+    const { sources, failed } = await promise;
     expect(sources.map((s) => s.name)).toEqual(['a.pdf', 'b.pdf']);
+    expect(failed).toEqual([]);
   });
 
-  it('resolves an empty array when the picker is cancelled', async () => {
+  it('keeps the files that read, and names the ones that did not', async () => {
+    const a = new File([new Uint8Array([1])], 'a.pdf', { type: 'application/pdf' });
+    const bad = new File([new Uint8Array([2])], 'locked.pdf', { type: 'application/pdf' });
+    // Stands in for the OS refusing the file between the pick and the read
+    // (moved, locked, permission denied) -- the case that used to reject the
+    // whole batch and throw away every file that had already read fine.
+    Object.defineProperty(bad, 'arrayBuffer', {
+      value: () => Promise.reject(new Error('EACCES')),
+    });
+    const c = new File([new Uint8Array([3])], 'c.pdf', { type: 'application/pdf' });
+
+    const promise = pickAndReadDocuments();
+    selectFiles(theHiddenFileInput(), [a, bad, c]);
+
+    const { sources, failed } = await promise;
+    expect(sources.map((s) => s.name)).toEqual(['a.pdf', 'c.pdf']);
+    expect(failed).toEqual(['locked.pdf']);
+  });
+
+  it('resolves an empty batch when the picker is cancelled', async () => {
     const promise = pickAndReadDocuments();
     cancelPicker(theHiddenFileInput());
 
-    expect(await promise).toEqual([]);
+    expect(await promise).toEqual({ sources: [], failed: [] });
   });
 });
 

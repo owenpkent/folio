@@ -9,7 +9,7 @@ import { downloadBytes } from '@/core/document/downloadBytes';
 import { isTauri } from '@/core/document/openDocument';
 import { getEngine } from '@/core/pdf';
 import { placeRect } from '@/core/pdf/pageGeometry';
-import { MIN_PDF_BYTES, PDF_HEADER } from '@/core/pdf/pdfHeader';
+import { hasPdfHeader, MIN_PDF_BYTES } from '@/core/pdf/pdfHeader';
 import { stampAnnotations, useAnnotationStore } from '@/features/annotations';
 import { stampEdits, useEditStore } from '@/features/editing';
 import { stampOcrLayer, useOcrStore } from '@/features/ocr';
@@ -189,7 +189,7 @@ async function writeDocument(path: string, bytes: Uint8Array): Promise<void> {
  */
 function isPlausiblePdf(bytes: Uint8Array): boolean {
   if (bytes.length < MIN_PDF_BYTES) return false;
-  return PDF_HEADER.every((byte, i) => bytes[i] === byte);
+  return hasPdfHeader(bytes);
 }
 
 /** The message shown (and announced) when a save is refused as unsafe. */
