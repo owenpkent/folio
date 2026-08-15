@@ -160,6 +160,41 @@ updater, and if a newer version is published it prompts the user, downloads +
 installs, and offers to relaunch. Per-user install (`%LOCALAPPDATA%\Folio`) means
 updates apply **without a UAC prompt**.
 
+### The restart puts the document back
+
+That relaunch is one Folio asked for, not one the user chose, so it should not
+cost them their place. `src/features/updates/resumeAfterUpdate.ts` records the
+open document's path and current page immediately before `relaunch()`, and
+`registerFileOpen` (`src/features/fileopen/openFromLaunch.ts`) reopens both on
+the way back up.
+
+Four rules make it a resume rather than a surprise:
+
+- **Only on "Restart now."** Choosing "Later" records nothing. That update lands
+  on some future launch the user started for their own reasons, possibly days
+  on, and reopening the document they had then is not a convenience.
+- **Only for documents that came from disk.** `documentStore.sourcePath` is null
+  for a file picked in the browser or fetched through a `folio://` link (bytes
+  with no on-disk origin), and there is nothing to reopen. Nothing is recorded
+  in that case, and any earlier note is cleared, so a restart with nothing open
+  does not restore the document before last.
+- **Consumed once**, the way the Rust side's `take_launch_file` is: the note
+  describes one restart, not a standing preference, so it is cleared on the next
+  launch whether or not it is used. A path that fails to open therefore fails
+  once rather than on every launch after.
+- **A file from the OS wins.** If the relaunch also carries a launch file
+  (double-click, single-instance forward), that is what opens: the user picked
+  it just now, where the note only records what happened to be open before.
+
+The note lives in `localStorage`, which survives an in-place update because the
+installer replaces the binary and not the WebView user-data directory. That is
+the same guarantee the theme preference already relies on. It is validated on
+read rather than trusted, so a half-written entry reads as "no note".
+
+This is deliberately *not* a general session restore or a recent-files list;
+both are still planned Rust-side work (see
+[architecture.md](architecture.md)).
+
 ## Known limits
 
 - **macOS / Linux** — Folio compiles on all three in CI (`--no-bundle`), but only

@@ -101,9 +101,10 @@ Folio rendering a two-page form PDF, in light and dark:
 - **OCR** scanned pages with a bundled, offline English engine (tesseract.js): the
   recognized text becomes selectable on screen, is searchable in-app, and is baked
   into the saved PDF as an invisible searchable layer
-- **Combine PDFs** into one document: pick several files from the File menu (or
-  drop them onto the window together), reorder them in the list, and merge; the
-  result opens in the viewer as a new document, ready to review and save
+- **Combine PDFs** into one document: pick several files from the File menu or
+  the sidebar's Pages tab (or drop them onto the window together), reorder them
+  in the list, and merge; the result opens in the viewer as a new document,
+  ready to review and save
 - In-place text edits use a substituted standard font, one run at a time, with
   no paragraph reflow, and text inside a form the page draws more than once is
   still refused. Rotated and skewed images can be replaced but not moved or
@@ -125,7 +126,7 @@ Folio rendering a two-page form PDF, in light and dark:
 - Every action flows through a command registry, so plugins get shortcuts for free
 
 **Desktop and distribution**
-- EV-signed Windows installer; installs per-user and **auto-updates** from GitHub Releases
+- EV-signed Windows installer; installs per-user and **auto-updates** from GitHub Releases. Restarting to finish an update reopens the document you had open, at the page you were on, since that restart is one Folio asked for rather than one you chose
 - Set Folio as your **default PDF viewer**: pick it from *Open with*, or use the start-screen shortcut into *Settings → Default apps*, and double-clicking a `.pdf` opens it in Folio (Windows reserves the actual switch for the user, so Folio cannot silently take over a default the user already chose)
 - **Replace Chrome's PDF reader**: a Chrome extension opens PDFs in Folio's viewer instead, catching them by content-type as well as by `.pdf` URL, so documents served from behind an app (`/download?id=…`) are caught too. Choose per-site, or turn it off; or hand the document to the desktop app via a `folio://` deep link
 - **About dialog** with app version, commit hash, and build date, plus a manual "Check for updates" action (desktop)
@@ -219,7 +220,7 @@ folio/
 │  ├─ core/pdf/          PdfEngine interface + PDF.js implementation
 │  ├─ commands/          command registry (every user action)
 │  ├─ components/        Viewer, MenuBar, Toolbar, Sidebar, Search, common
-│  ├─ features/          annotations, editing, placement, textedit, imageedit, ocr, signatures, forms, save/export
+│  ├─ features/          annotations, editing, placement, textedit, imageedit, ocr, signatures, combine, pageops, links, updates, save/export
 │  ├─ plugins/           plugin host, SDK types, built-in Word Count plugin
 │  ├─ ai/                provider-agnostic AI layer (Claude, experimental) + MCP stubs
 │  ├─ theme/             tokens, ThemeProvider, dark schemes, breakpoints

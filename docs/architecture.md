@@ -77,6 +77,7 @@ Each layer maps to a real directory in the repository.
 | Signatures | `src/features/signatures/` | Visual signature creation (draw/type/upload), on-page placement, per-document `store`, and a small global list of recently typed names (`recents.ts`) |
 | Digital signing | `src/features/signing/` | Certificate identities (create/import .p12 via node-forge), PKCS#7 signing (@signpdf), and signature detection. Runs in the WebView today; a Rust/keychain backend is planned |
 | Combine | `src/features/combine/` | Merges two or more PDFs into one document via pdf-lib: pages, metadata, and (best-effort) AcroForm fields carried forward from the inputs. `store` holds the staged file list plus the progress and cancellation state for a merge in flight |
+| Updates | `src/features/updates/` | The in-app updater check (`checkForUpdates`) and the note that survives the restart it asks for (`resumeAfterUpdate`): the open document's path and page, recorded immediately before `relaunch()` and consumed once on the next launch by `features/fileopen`. Path-backed documents only, and only on a restart accepted there and then. See [releasing.md](releasing.md#the-restart-puts-the-document-back) |
 | Save / export | `src/features/export/` | Writes the filled PDF (PDF.js `saveDocument`), then loads pdf-lib once to bake the OCR layer, edits, signatures, and review annotations |
 | Print | `src/features/print/` | Bakes via `exportDocument`, rasterizes the result in a throwaway PDF.js document at up to 144dpi (less on a long document, since every page bitmap has to be resident at once and the run is held to one memory budget; a document too long to fit even at the floor is refused), and hands `#folio-print-root` to `window.print()`. Each page image is capped on **both** axes so it fits inside one page box: sizing on width alone puts a page taller than the paper onto a second, near-blank sheet, which is one wasted sheet per page |
 | Plugins | `src/plugins/` | Plugin host, SDK types, `contributionStore`, `builtins/` |
@@ -284,7 +285,7 @@ Design rules:
 
 - **Commands and actions mutate state; components read it.** A React component should not orchestrate a workflow directly. It dispatches a command (or calls a state action); that updates the relevant store; components re-render from the store.
 - **Stores never import from `components/`.** Data flows down, actions flow up through commands.
-- **Persistence is selective.** UI theme and dark scheme are persisted in local storage (`themeStore`), and annotations are persisted per document fingerprint in local storage (`features/annotations/store.ts`). Transient view state such as scroll position is not. A recent-files list persisted via the Rust backend is planned, not yet implemented.
+- **Persistence is selective.** UI theme and dark scheme are persisted in local storage (`themeStore`), and annotations are persisted per document fingerprint in local storage (`features/annotations/store.ts`). Transient view state such as scroll position is not. The one exception is narrow and deliberate: `features/updates/resumeAfterUpdate.ts` writes the open document's path and page to local storage immediately before the restart that finishes an update, and the next launch consumes it exactly once. That is a note about a single restart Folio itself asked for, not a session store; a recent-files list persisted via the Rust backend is still planned, not yet implemented.
 
 ### The document mutation lock
 
@@ -370,7 +371,7 @@ The `.pdf` association itself is registered by the installer, in two halves. `bu
 
 Planned Rust-side responsibilities (documented in the `lib.rs` module comment, not yet built):
 
-- **Recent files.** Maintain and persist the recent-documents list across sessions, and feed it to the native menu and the UI.
+- **Recent files.** Maintain and persist the recent-documents list across sessions, and feed it to the native menu and the UI. The post-update resume in `src/features/updates/` is not a down payment on this: it records one path for one restart and throws it away, where a recent-files list has to survive arbitrarily many launches, prune paths that have moved, and be safe to show in a menu.
 - **Native menus.** Build the OS application/menu bar (File, View, Help, and so on) and forward menu clicks to frontend commands so a menu item and a keyboard shortcut run the exact same `Command`.
 - **Window state.** Persist and restore window size, position, and maximized state so Folio reopens the way the user left it.
 - **Secure store.** Hold AI provider credentials in OS-native secure storage.

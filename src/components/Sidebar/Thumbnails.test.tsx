@@ -1,4 +1,5 @@
 import { render } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type * as PdfCore from '@/core/pdf';
@@ -14,6 +15,7 @@ vi.mock('@/core/pdf', async (orig) => {
 });
 
 import { primePageSizeEstimate, resetPageSizes } from '@/core/pdf/pageSizes';
+import { useCombineStore } from '@/features/combine';
 import { useViewerStore } from '@/state/viewerStore';
 
 import { Thumbnails } from './Thumbnails';
@@ -60,5 +62,23 @@ describe('Thumbnails', () => {
     for (const frame of document.querySelectorAll<HTMLElement>('.folio-thumb__frame')) {
       expect(frame.style.aspectRatio).toBe('');
     }
+  });
+
+  it('offers Combine PDFs from the pages panel', async () => {
+    const { getByRole } = render(<Thumbnails />);
+
+    await userEvent.click(getByRole('button', { name: /combine pdfs/i }));
+
+    expect(useCombineStore.getState().modalOpen).toBe(true);
+  });
+
+  it('still offers Combine PDFs with no document open', () => {
+    // The combine modal takes its inputs from a picker, so it is the one thing
+    // on this tab worth reaching from an empty viewer.
+    useViewerStore.setState({ numPages: 0 });
+    const { getByRole, getByText } = render(<Thumbnails />);
+
+    expect(getByText('No document open.')).toBeTruthy();
+    expect(getByRole('button', { name: /combine pdfs/i })).toBeTruthy();
   });
 });

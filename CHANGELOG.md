@@ -6,6 +6,44 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Combine PDFs from the Pages tab.** The sidebar's Pages tab now carries a
+  **Combine PDFs…** button above the thumbnails, opening the same dialog
+  File → Combine PDFs… does. Combining is a page-level operation, so it belongs
+  with the pages rather than only in a menu. It sits outside the scrolling list,
+  where it cannot drift away as the list moves or cover a thumbnail's selection
+  checkbox, and it stays available with no document open, since the dialog takes
+  its inputs from a picker and building a new PDF out of several files is the one
+  thing on that tab worth reaching from an empty viewer.
+- **Restarting to finish an update puts your document back.** Folio asks for
+  that restart; the user did not choose it, so it now records the open
+  document and the page it was on, and reopens both on the way back up. Only
+  for a restart accepted there and then: choosing "Later" records nothing,
+  because that update lands on some future launch started for other reasons,
+  and reopening a days-old document at that point is a surprise rather than a
+  convenience. Only for documents that came from disk, since a file picked in
+  the browser or fetched through a `folio://` link has no path to reopen. The
+  note is consumed on the next launch whether or not it is used, so it can
+  never reopen twice, and a file the OS hands Folio to open takes priority over
+  it.
+
+### Fixed
+
+- **Selecting recognized text no longer highlights the wrong shape.** On a page
+  with an OCR text layer, dragging across the text drew stubby highlight bars
+  sitting up and to the left of the words they belonged to, drifting further off
+  with every word along a line. The overlay positioned each recognized word
+  correctly but drew it in one of the browser's own fonts, and a selection
+  highlight follows the text, not the box the text was placed in: a word whose
+  substitute glyphs came out narrower than the scanned ones highlighted narrow
+  to match. Each word is now measured as the browser actually laid it out and
+  scaled horizontally onto the width it was recognized at, which is what PDF.js's
+  own text layer does for embedded text. Words are also sized to the full height
+  of their recognized box rather than nine tenths of it, so the highlight covers
+  the word instead of riding above it, and no longer clipped, so a highlight
+  cannot be cut off at the edge of a word.
+
 ## [0.6.0] - 2026-08-15
 
 ### Added

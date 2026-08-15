@@ -646,6 +646,26 @@ kbd {
   min-height: 0;
   gap: 12px;
 }
+/* Document-wide page actions, above the list and outside the scrolling box.
+   Its own row for the same reason .folio-page-actions below is one: a control
+   that floats over the list is a control that can swallow a click meant for a
+   thumbnail's checkbox. */
+.folio-thumbnails-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  padding: 8px 8px 0;
+}
+.folio-thumbnails-toolbar .folio-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Full width so the label reads as this panel's own action rather than a
+     button that happens to be parked in the corner. */
+  flex: 1 1 auto;
+  justify-content: center;
+  padding: 6px 12px;
+}
 /* The list scrolls in its own box, separate from the action bar: see the
    comment in Thumbnails.tsx on why that box can no longer be
    .folio-sidebar__body itself. */
@@ -1623,10 +1643,23 @@ kbd {
   position: absolute;
   color: transparent;
   white-space: pre;
-  overflow: hidden;
   line-height: 1;
   cursor: text;
   /* Selection highlight still shows even though the glyphs are transparent. */
+
+  /* The scaleX written by OcrTextLayer stretches the word onto its recognized
+     box, so it has to grow from the box's left edge; the default 50% origin
+     would spread it evenly either way and leave the highlight straddling the
+     word instead of covering it. */
+  transform-origin: 0 0;
+  /* Pinned to a generic family rather than inheriting the app's: the layout
+     effect measures these glyphs to compute that scale, and a webfont
+     swapping in after the measurement would silently invalidate every scale
+     on the page. Nothing here is ever seen, only measured. */
+  font-family: sans-serif;
+  /* overflow: hidden used to clip each word to an explicit width. Both are
+     gone: clipping a word also clips its selection highlight, which is the
+     one part of this layer anyone can see. */
 }
 .folio-ocr-progress {
   margin-top: 12px;

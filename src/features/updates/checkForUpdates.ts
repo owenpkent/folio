@@ -5,6 +5,8 @@ import { check } from '@tauri-apps/plugin-updater';
 import { pushToast } from '@/components/common';
 import { isTauri } from '@/core/document/openDocument';
 
+import { rememberOpenDocument } from './resumeAfterUpdate';
+
 /**
  * Check GitHub Releases for a newer Folio via tauri-plugin-updater and, if the
  * user agrees, download, install, and relaunch. No-op in the browser build
@@ -40,7 +42,15 @@ export async function checkForUpdates(silent = true): Promise<void> {
       okLabel: 'Restart now',
       cancelLabel: 'Later',
     });
-    if (restart) await relaunch();
+    if (restart) {
+      // Leave the note before the process goes away, and only on the branch
+      // that actually restarts: choosing "Later" means the update lands on
+      // some future launch the user starts for their own reasons, and
+      // reopening a document from days ago at that point would be a surprise
+      // rather than a convenience. See resumeAfterUpdate.ts.
+      rememberOpenDocument();
+      await relaunch();
+    }
   } catch (error) {
     const messageText = error instanceof Error ? error.message : String(error);
     if (!silent) pushToast(`Update check failed: ${messageText}`, 'error');
