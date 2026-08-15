@@ -507,9 +507,14 @@ Use an image-only / scanned PDF (no embedded text).
 Worth a pass by hand, because the failure mode is silent and the interesting
 cases are races. Start a long OCR run on a multi-page scan, then, while it runs:
 
-- Confirm **Save**, **Print**, **Digitally sign**, **Edit text**, and **Edit
-  images** all still work. Recognition writes only its own sidecar, so these are
-  deliberately *not* blocked.
+- Confirm **Edit text** and **Edit images** still work. Recognition writes only
+  its own sidecar, so these are deliberately *not* blocked.
+- Confirm **Save**, **Print**, and **Digitally sign** are reachable but ask
+  first: a dialog names how many pages have text so far and offers *Save anyway*
+  / *Wait for recognition*. Take **Wait** and confirm nothing is written and no
+  error is shown; take **Save anyway** on a second try and confirm the copy
+  really is searchable for the recognized pages and image-only for the rest.
+  `Escape` must count as Wait, never as Save.
 - Confirm **Pages** operations, **Combine**, **Open**, and **Close** are disabled,
   each with a tooltip saying another document change is in progress, and that
   `Ctrl+O` / `Ctrl+W` report the refusal rather than doing nothing.

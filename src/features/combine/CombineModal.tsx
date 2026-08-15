@@ -1,8 +1,7 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 
 import { announce } from '@/a11y/announcer';
-import { useFocusTrap } from '@/a11y/focus';
-import { Button, Icon, IconButton } from '@/components/common';
+import { Button, Icon, IconButton, Modal } from '@/components/common';
 import {
   DOCUMENT_MUTATION_BUSY_TITLE,
   useDocumentMutationBlocked,
@@ -38,40 +37,25 @@ export function CombineModal() {
   const moveUp = useCombineStore((s) => s.moveUp);
   const moveDown = useCombineStore((s) => s.moveDown);
 
-  const dialogRef = useRef<HTMLDivElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const actionRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusRef = useRef<PendingFocus>(null);
-  useFocusTrap(dialogRef, open);
 
-  // A run in progress is only ever *asked* to stop -- see dismiss() below --
-  // so the modal (and its staged list) stays on screen and in sync with
-  // whichever run is actually still live until that run's own cleanup runs.
-  // Closing outright here, the way an idle dismiss does, is what used to let
-  // a merge keep running behind a modal the user thought they had dismissed,
-  // then land on whatever document they had navigated to by the time it
-  // finished.
+  // A run in progress is only ever *asked* to stop, so the modal (and its
+  // staged list) stays on screen and in sync with whichever run is actually
+  // still live until that run's own cleanup runs. Closing outright here, the
+  // way an idle dismiss does, is what used to let a merge keep running behind a
+  // modal the user thought they had dismissed, then land on whatever document
+  // they had navigated to by the time it finished.
+  //
+  // Handed to Modal as `onDismiss`, so Escape and the header's close button are
+  // the same code path rather than two copies eight lines apart. Modal keeps
+  // this in a ref internally, which is what the stale-closure dance here used
+  // to be for.
   const dismiss = () => {
     if (busy) requestCancel();
     else close();
   };
-
-  // Escape is the expected way out of every modal in this app, and goes
-  // through dismiss() rather than repeating its body: the two used to be
-  // identical copies eight lines apart, which would have diverged the first
-  // time dismiss() grew a step.
-  const dismissRef = useRef(dismiss);
-  useEffect(() => {
-    dismissRef.current = dismiss;
-  });
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') dismissRef.current();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
 
   // Applies whatever the row handlers below queued, once the DOM they target
   // has actually updated. Runs on every `files` change; a no-op whenever
@@ -146,85 +130,73 @@ export function CombineModal() {
   };
 
   return (
-    <div className="folio-modal-backdrop">
-      <div
-        ref={dialogRef}
-        className="folio-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Combine PDFs"
-      >
-        <div className="folio-modal__header">
-          <h2 className="folio-modal__title">Combine PDFs</h2>
-          <IconButton icon="x" label="Close" onClick={dismiss} disabled={stopping} />
-        </div>
+    <Modal open={open} title="Combine PDFs" onDismiss={dismiss} dismissDisabled={stopping}>
+      <div className="folio-modal__body">
+        {files.length === 0 ? (
+          <p className="folio-modal__hint">
+            Add two or more PDFs below. They will be combined in the order shown, top to bottom.
+          </p>
+        ) : (
+          <ol className="folio-combine-list" aria-label="Files to combine">
+            {files.map((file, index) => {
+              // Position, not just name: two staged files can share a
+              // basename (picked from different folders), which would
+              // otherwise give every button on both rows the same
+              // accessible name.
+              const position = `item ${index + 1} of ${files.length}`;
+              return (
+                <li key={file.id} className="folio-combine-list__item">
+                  <div className="folio-combine-list__info">
+                    <span className="folio-combine-list__name">{file.name}</span>
+                    <span className={`folio-combine-list__meta${file.error ? ' is-error' : ''}`}>
+                      {file.error
+                        ? file.error
+                        : file.pageCount === undefined
+                          ? 'Reading…'
+                          : `${file.pageCount} page${file.pageCount === 1 ? '' : 's'}`}
+                    </span>
+                  </div>
+                  <div className="folio-combine-list__actions">
+                    <IconButton
+                      ref={actionRef(`${file.id}:up`)}
+                      icon="chevron-up"
+                      label={`Move ${file.name} up, ${position}`}
+                      disabled={busy || index === 0}
+                      onClick={() => handleMoveUp(file, index)}
+                    />
+                    <IconButton
+                      ref={actionRef(`${file.id}:down`)}
+                      icon="chevron-down"
+                      label={`Move ${file.name} down, ${position}`}
+                      disabled={busy || index === files.length - 1}
+                      onClick={() => handleMoveDown(file, index)}
+                    />
+                    <IconButton
+                      ref={actionRef(`${file.id}:trash`)}
+                      icon="trash"
+                      label={`Remove ${file.name}, ${position}`}
+                      disabled={busy}
+                      onClick={() => handleRemove(file, index)}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
 
-        <div className="folio-modal__body">
-          {files.length === 0 ? (
-            <p className="folio-modal__hint">
-              Add two or more PDFs below. They will be combined in the order shown, top to bottom.
-            </p>
-          ) : (
-            <ol className="folio-combine-list" aria-label="Files to combine">
-              {files.map((file, index) => {
-                // Position, not just name: two staged files can share a
-                // basename (picked from different folders), which would
-                // otherwise give every button on both rows the same
-                // accessible name.
-                const position = `item ${index + 1} of ${files.length}`;
-                return (
-                  <li key={file.id} className="folio-combine-list__item">
-                    <div className="folio-combine-list__info">
-                      <span className="folio-combine-list__name">{file.name}</span>
-                      <span className={`folio-combine-list__meta${file.error ? ' is-error' : ''}`}>
-                        {file.error
-                          ? file.error
-                          : file.pageCount === undefined
-                            ? 'Reading…'
-                            : `${file.pageCount} page${file.pageCount === 1 ? '' : 's'}`}
-                      </span>
-                    </div>
-                    <div className="folio-combine-list__actions">
-                      <IconButton
-                        ref={actionRef(`${file.id}:up`)}
-                        icon="chevron-up"
-                        label={`Move ${file.name} up, ${position}`}
-                        disabled={busy || index === 0}
-                        onClick={() => handleMoveUp(file, index)}
-                      />
-                      <IconButton
-                        ref={actionRef(`${file.id}:down`)}
-                        icon="chevron-down"
-                        label={`Move ${file.name} down, ${position}`}
-                        disabled={busy || index === files.length - 1}
-                        onClick={() => handleMoveDown(file, index)}
-                      />
-                      <IconButton
-                        ref={actionRef(`${file.id}:trash`)}
-                        icon="trash"
-                        label={`Remove ${file.name}, ${position}`}
-                        disabled={busy}
-                        onClick={() => handleRemove(file, index)}
-                      />
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
+        <button
+          ref={addButtonRef}
+          type="button"
+          className="folio-link-button"
+          disabled={busy}
+          onClick={handleAddFiles}
+        >
+          <Icon name="plus" size={14} />
+          Add PDFs…
+        </button>
 
-          <button
-            ref={addButtonRef}
-            type="button"
-            className="folio-link-button"
-            disabled={busy}
-            onClick={handleAddFiles}
-          >
-            <Icon name="plus" size={14} />
-            Add PDFs…
-          </button>
-
-          {/* Mounted with the dialog and emptied when idle, deliberately
+        {/* Mounted with the dialog and emptied when idle, deliberately
               outside the {busy} block below. A live region inserted into the
               DOM with text already in it is generally not announced --
               assistive tech reports *changes* to a region it is already
@@ -235,53 +207,52 @@ export function CombineModal() {
               already open and focused by the time Combine is clicked, so
               nothing else would speak: a screen-reader user got silence from
               the click through to the end of a fast merge. */}
-          <p className="folio-sr-only" aria-live="polite">
-            {busy ? progressText : ''}
-          </p>
+        <p className="folio-sr-only" aria-live="polite">
+          {busy ? progressText : ''}
+        </p>
 
-          {busy && (
-            <div className="folio-combine-progress">
-              {/* Shown to sighted users; the live region above carries the
+        {busy && (
+          <div className="folio-combine-progress">
+            {/* Shown to sighted users; the live region above carries the
                   same words for everyone else. aria-hidden so the two are
                   not read as a duplicate pair. The progressbar's own
                   aria-valuenow updates too fast to announce every step. */}
-              <p className="folio-combine-progress__text" aria-hidden="true">
-                {progressText}
-              </p>
-              <div
-                className="folio-ocr-progress"
-                role="progressbar"
-                aria-valuenow={pct}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label="Combine progress"
-              >
-                <div className="folio-ocr-progress__bar" style={{ width: `${pct}%` }} />
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <p className="folio-modal__error" role="alert">
-              {error}
+            <p className="folio-combine-progress__text" aria-hidden="true">
+              {progressText}
             </p>
-          )}
-        </div>
+            <div
+              className="folio-ocr-progress"
+              role="progressbar"
+              aria-valuenow={pct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Combine progress"
+            >
+              <div className="folio-ocr-progress__bar" style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        )}
 
-        <div className="folio-modal__footer">
-          <Button onClick={dismiss} disabled={stopping}>
-            {stopping ? 'Stopping…' : 'Cancel'}
-          </Button>
-          <Button
-            variant="primary"
-            disabled={!canCombine}
-            title={crossBusy ? DOCUMENT_MUTATION_BUSY_TITLE : undefined}
-            onClick={() => void runCombine()}
-          >
-            {busy ? 'Combining…' : 'Combine'}
-          </Button>
-        </div>
+        {error && (
+          <p className="folio-modal__error" role="alert">
+            {error}
+          </p>
+        )}
       </div>
-    </div>
+
+      <div className="folio-modal__footer">
+        <Button onClick={dismiss} disabled={stopping}>
+          {stopping ? 'Stopping…' : 'Cancel'}
+        </Button>
+        <Button
+          variant="primary"
+          disabled={!canCombine}
+          title={crossBusy ? DOCUMENT_MUTATION_BUSY_TITLE : undefined}
+          onClick={() => void runCombine()}
+        >
+          {busy ? 'Combining…' : 'Combine'}
+        </Button>
+      </div>
+    </Modal>
   );
 }

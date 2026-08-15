@@ -108,6 +108,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it.** Dropping or picking several PDFs at once keeps every file that read
   successfully and names the ones that did not, where one locked or
   permission-denied file used to discard the whole batch.
+- **`Escape` closes the OCR progress dialog.** Every other modal in the app took
+  it; the one you can be sitting in front of for minutes was the one that never
+  grew a handler. It now stops the run, exactly as `Escape` already did in the
+  print progress dialog — a request, not an abort, so the pages already
+  recognised are kept.
+- **Saving during an unfinished OCR run asks first.** Recognition deliberately
+  does not freeze the app, so Save, Print, and Digitally sign all stay available
+  while it runs — but an export taken part-way through bakes a text layer
+  covering only the pages recognised so far, leaving the rest image-only with
+  nothing in the file to say which is which. Those three now say how far the run
+  has got and offer *Save anyway* or *Wait for recognition*, rather than
+  producing a quietly half-searchable copy. A single-page recognition, over in
+  seconds, does not ask.
 
 ### Changed
 

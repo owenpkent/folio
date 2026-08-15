@@ -59,7 +59,7 @@ Each layer maps to a real directory in the repository.
 |---|---|---|
 | Rust backend | `src-tauri/src/` | Implemented: file read/write (`read_document`, `write_document`), browser hand-off (`fetch_pdf`), `app_version`, default-viewer launch handling (`take_launch_file`, `open_default_apps_settings`), plus the dialog, fs, updater, deep-link, single-instance, and process plugins. Planned: recent files, native menus, window state, secure store |
 | Static assets | `public/` | Files served verbatim by Vite. Holds the self-hosted tesseract.js OCR runtime under `public/tesseract/` (git-ignored, populated by `scripts/setup-ocr-assets.mjs` via the `predev`/`prebuild` hooks); the PDF.js worker is bundled via a `?url` import, not placed here |
-| UI components | `src/components/` | `Viewer/`, `Toolbar/`, `Sidebar/`, `Search/`, `common/` (`common/` also holds `toastStore` and the root `ErrorBoundary`) |
+| UI components | `src/components/` | `Viewer/`, `Toolbar/`, `Sidebar/`, `Search/`, `common/` (`common/` also holds the `Modal` primitive every dialog is built on, the `confirmStore` + `ConfirmHost` pair behind `askConfirmation()`, `toastStore`, and the root `ErrorBoundary`) |
 | Shared hooks | `src/hooks/` | `useNearViewport` (one shared `IntersectionObserver` per root/margin), `watchDevicePixelRatio`, `useMediaQuery` |
 | Command registry | `src/commands/` | Every user action as a `Command`; single dispatch point |
 | PDF core | `src/core/` | `pdf/` (`PdfEngine` interface + `PdfJsEngine`, plus `pageSizes` for lazily measured page geometry and `pageGeometry` for the mapping between the page as displayed and the unrotated user space pdf-lib draws into), `document/` (file picking and byte reading), `lru.ts` (capacity-bounded cache with a release hook) |
@@ -309,6 +309,8 @@ The three scopes and the single rule that relates them:
 | `sidecar` | Per-fingerprint sidecar state for the page map it started on, and no bytes at all | OCR recognition |
 
 Conflict is symmetric, and everything excludes everything **except `content` and `sidecar`, which may overlap**. That exemption is the point of having scopes: recognition can run for minutes on a long document, and blocking Save, Print, Sign, and both in-place editors for its whole duration was a freeze over a conflict it does not actually have. A text edit leaves the page map exactly as OCR found it. A page operation does not, so that still waits.
+
+The exemption has one cost, and it is paid explicitly rather than silently. An export taken mid-run bakes the pages recognized so far and leaves the rest image-only: nothing in the output is *wrong*, but a copy saved 40 pages into a 300-page run is searchable for 40 pages and not for the other 260, with nothing in the file to say which. So the three bake paths (Save, Print, digital signing) ask first, via `confirmIncompleteOcr` (`src/features/ocr/`), and ask **before** taking the lock — a question is a human-scale wait, the same rule that keeps the native file dialog outside it.
 
 Three properties fall out of the design rather than being maintained by hand:
 
