@@ -1,7 +1,8 @@
 # Page operations
 
-Deleting, reordering, and rotating the pages of a document. Inserting,
-splitting, and merging are still on the [roadmap](../ROADMAP.md).
+Deleting, reordering, and rotating the pages of a document. Merging whole PDFs
+into one is covered by [Combine](#combining-whole-pdfs) below; inserting and
+splitting are still on the [roadmap](../ROADMAP.md).
 
 ## Where they live
 
@@ -9,10 +10,31 @@ Two surfaces, one implementation. Both render the same `PageList`
 (`src/features/pageops/PageList.tsx`), so selection, dragging, and every
 keyboard path behave identically in each.
 
-- **The thumbnails sidebar**, for a quick change while reading.
+- **The thumbnails sidebar** (the Pages tab), for a quick change while reading.
 - **Pages → Organize pages**, a full-window grid, for restructuring a long
   document. One column of small thumbnails is a poor place to move page 4 to
   page 90.
+
+## Combining whole PDFs
+
+**Combine PDFs…** sits at the top of the Pages tab, above the thumbnails, and
+opens the same dialog File → Combine PDFs… does. Combining is a page-level
+operation, so it belongs with the pages rather than only in a menu.
+
+Two placement decisions are worth knowing, because both are load-bearing:
+
+- **Outside the scrolling list**, in a row of its own. The same reasoning that
+  moved the selection action bar out of the scroll box applies: a control
+  floating over the thumbnails is a control that can swallow a click meant for a
+  page's selection checkbox, since whichever element paints on top also receives
+  the click.
+- **Not gated on a document being open.** The dialog takes its inputs from a
+  file picker, so building a new PDF out of several files is the one thing on
+  this tab worth reaching from an empty viewer. With no document open the tab
+  shows the button above "No document open."
+
+The merge itself is unchanged and documented with the feature; see the
+[CHANGELOG](../CHANGELOG.md) entry for what it carries across from each input.
 
 ## Picking pages out
 

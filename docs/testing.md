@@ -497,6 +497,13 @@ Use an image-only / scanned PDF (no embedded text).
 - Toolbar *Recognize text (OCR)* -> a progress modal counts pages (Cancel works).
 - After it finishes: **select** text on the page and copy it; **find** (Ctrl+F)
   a word from the scan and confirm it hits.
+- Watch the **highlight**, not just the copied text, and drag across a long line
+  at more than one zoom level. Each word's highlight should sit on the word and
+  cover it top to bottom, and the last word on a line should be no further off
+  than the first. Highlights that come out narrow, ride above the glyphs, or
+  drift further right along a line mean the per-word horizontal scale in
+  `OcrTextLayer` is not being applied (see
+  [editing-and-ocr.md](editing-and-ocr.md#how-it-works)).
 - Save a copy, open it in another reader, and confirm the text is now
   selectable/searchable there (an invisible layer over the image).
 - **Offline/CSP:** with the desktop app, disconnect the network after the first
@@ -553,6 +560,25 @@ the CSP's worker/wasm directives are correct.
 Requires two versions: install one, publish a higher version to GitHub Releases
 with a `latest.json` (see [releasing.md](releasing.md)), relaunch, and confirm
 the update prompt. It can't be exercised from a single local build.
+
+While you have that two-version setup, the post-update resume is worth the same
+pass, since only the packaged app can exercise it:
+
+- Open a PDF **from disk**, scroll to a page past the first, take the update, and
+  choose **Restart now**. The same document should come back at the same page.
+- Take the update again from a build with **nothing open**, and confirm the
+  restart comes back empty rather than reopening the document from the run
+  before.
+- Open a PDF **from the browser extension** (a `folio://` deep link) and take the
+  update. There is no path on disk to reopen, so the restart comes back empty;
+  it must not fail or reopen something else.
+- Choose **Later** instead, then quit and relaunch by hand. Nothing should be
+  reopened: the note is only written for a restart accepted there and then.
+- Relaunch once more. Still nothing reopened: the note is consumed on the first
+  launch after it is written, used or not.
+- Move or delete the file between the restart being accepted and Folio coming
+  back up. The failure should be one toast naming the problem, and the launch
+  after that should be clean.
 
 ## Continuous integration
 

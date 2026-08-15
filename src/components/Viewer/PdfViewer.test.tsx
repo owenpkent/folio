@@ -102,6 +102,32 @@ describe('PdfViewer scroll-to-page', () => {
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 4984, behavior: 'smooth' });
   });
 
+  it('holds a request issued before the pages are committed', () => {
+    // Opening a document straight to a page (the post-update resume) marks the
+    // store ready and asks for the page in the same turn, a microtask before
+    // React commits a single page element. The subscription that hears it
+    // there has nothing to scroll to; consuming the request at that point
+    // dropped the jump for good, and every resume landed on page 1.
+    useDocumentStore.setState({ status: 'loading' });
+    useViewerStore.setState({ numPages: 0 });
+
+    render(<PdfViewer />);
+    const container = document.querySelector<HTMLElement>('.folio-viewer');
+    if (!container) throw new Error('viewer did not render');
+    container.scrollTo = scrollTo as unknown as typeof container.scrollTo;
+
+    act(() => {
+      useViewerStore.setState({ numPages: 5 });
+      useDocumentStore.setState({ status: 'ready' });
+      useViewerStore.getState().goToPage(TARGET_PAGE);
+    });
+
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    // And consumed once it has actually been served, so the next request for
+    // the same page is still a change the subscription can see.
+    expect(useViewerStore.getState().pendingScrollPage).toBeNull();
+  });
+
   it('re-aims only while the target is still moving', () => {
     mount();
 

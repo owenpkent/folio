@@ -32,9 +32,10 @@ Four capabilities:
 > a corrupt file. Embedded images can be moved, resized, and replaced the same
 > way, except a rotated or skewed image can only be replaced (moving or
 > resizing it is refused), and an image inside a Form XObject is not editable
-> yet at all. Deleting, reordering, and rotating pages ship (see
-> [page-operations.md](page-operations.md)); inserting, splitting, and merging
-> pages, along with redaction and non-Latin text, remain on the
+> yet at all. Deleting, reordering, and rotating pages ship, as does combining
+> whole PDFs into one (see
+> [page-operations.md](page-operations.md)); inserting and splitting pages,
+> along with redaction and non-Latin text, remain on the
 > [roadmap](../ROADMAP.md).
 
 ## Editing: text boxes, images, and check marks
@@ -368,7 +369,18 @@ with nothing in the file to say which. The dialog names how far the run has got
   to a PNG at 2x (no HiDPI multiplier, for a predictable pixel grid). tesseract
   returns words with pixel bounding boxes, which are normalized to the page.
 - **On screen:** `OcrTextLayer` renders transparent, selectable spans at each
-  word's rect (font size derived from the layer's measured height).
+  word's rect, sized to the full height of that rect so a selection highlight
+  covers the word rather than riding above it. Each span is then **measured and
+  scaled horizontally** onto the width the word was recognized at. That step is
+  what makes the highlight land on the word: the span holds the browser's own
+  glyphs, not the scanned ones, and a selection highlight follows the text, not
+  the box the text was placed in, so without the scale a word whose substitute
+  glyphs come out narrower highlights narrow to match, and the error grows
+  across a line. It is the same correction PDF.js applies to its own text layer
+  (`--scale-x`). Measurement is batched (clear every transform, read every
+  width, write every scale) so a dense page costs two reflows per zoom step
+  rather than two per word, and the span's font family is pinned to a generic
+  one so a webfont arriving late cannot invalidate the measurements.
 - **On save:** `stampOcrLayer` (`src/features/ocr/bake.ts`) draws each word with
   `drawText(..., { opacity: 0 })` — present for search/copy, invisible on the
   page. Words the standard font cannot encode are skipped individually.
@@ -423,6 +435,16 @@ first; `--with-ocr` alone only makes the package bigger.
 - **Alignment is approximate.** The invisible layer is positioned per word box,
   which is more than enough for search and copy but is not a pixel-perfect glyph
   overlay.
+- **Recognizing a page that already has embedded text leaves two selectable
+  layers.** OCR is meant for image-only pages and nothing stops it running on a
+  page that already has text. When it does, `OcrTextLayer` (z-index 3) stacks
+  over PDF.js's own text layer (z-index 2), both selectable, and the one on top
+  wins the drag, so selection comes from the recognized words rather than the
+  more accurate embedded ones. Suppressing the OCR layer whenever the text layer
+  has any spans is not the fix: a scan carrying a stamped page number or header
+  has a handful of embedded spans and still needs its recognized text. Deciding
+  between them needs a real "does this page have *enough* embedded text" test,
+  which is not written yet.
 
 ## Where the code lives
 
