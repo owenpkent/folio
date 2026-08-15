@@ -9,7 +9,11 @@
  * The matching is deliberately conservative. A false positive here is a menu
  * item offering to copy something that is not an address, which is worse than
  * missing an unusual one: it makes the feature look broken. Anything without a
- * scheme, a `www.`, or a well-known suffix is left alone.
+ * scheme, a `www.`, or a well-known suffix is left alone. That last rule also
+ * costs real addresses: a bare domain (no scheme, no `www.`, and no path)
+ * under a suffix that reads as an ordinary English word, e.g. "example.co" or
+ * "example.at", goes undetected too, on purpose. See COMMON_SUFFIXES and
+ * PATH_ONLY_SUFFIXES for the trade.
  */
 
 export type AddressKind = 'email' | 'url';
@@ -45,24 +49,15 @@ const COMMON_SUFFIXES = new Set([
   'ai',
   'app',
   'dev',
-  'co',
-  'me',
   'uk',
-  'us',
   'ca',
   'au',
   'nz',
-  'ie',
-  'de',
   'fr',
   'es',
-  'it',
   'nl',
-  'be',
   'ch',
-  'at',
   'se',
-  'no',
   'dk',
   'fi',
   'pl',
@@ -71,10 +66,34 @@ const COMMON_SUFFIXES = new Set([
   'mx',
   'jp',
   'cn',
-  'in',
   'za',
   'eu',
 ]);
+
+/**
+ * Suffixes accepted only when the token carries a path, query, or fragment.
+ *
+ * Each of these is also a common English word or abbreviation, and a bare
+ * domain under one is character-for-character identical to a sentence that
+ * lost the space after its full stop: "the total cost.It was high" tokenises
+ * to "cost.It", "File the report.No changes" to "report.No". OCR drops that
+ * space routinely, so treating these the way COMMON_SUFFIXES treats "com"
+ * turned ordinary prose into an offer to copy a link that was never there.
+ *
+ * A path is what tells the two apart. Prose never continues past the word:
+ * "report.co branding" ends the token at the suffix, while a real short link
+ * is "t.co/aB3xY9" or "youtu.be/dQw4w9WgXcQ". Dropping these suffixes outright
+ * was what closed the false-positive hole, but it also stopped detecting the
+ * two most common bare short links in real documents along with every bare
+ * domain under .de, .it, .in, .at, .co, and .ie. Requiring a path segment
+ * keeps both: no prose case gains a match, and every shortener does.
+ *
+ * A bare domain under one of these with no path at all (`spiegel.de` on its
+ * own) is still missed, which stays the accepted trade -- a false positive
+ * reads as a broken feature, a false negative just means typing `https://` or
+ * `www.` in front, both of which detect fine.
+ */
+const PATH_ONLY_SUFFIXES = new Set(['co', 'be', 'de', 'it', 'in', 'at', 'us', 'no', 'me', 'ie']);
 
 const EMAIL = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}$/;
 // A scheme alone is the signal: no requirement on what follows, so a port
@@ -82,7 +101,10 @@ const EMAIL = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,
 // (intranet) all still count.
 const SCHEME_URL = /^https?:\/\/\S+$/i;
 const WWW_URL = /^www\.[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}(?:[/?#]\S*)?$/i;
-const BARE_URL = /^([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)\.([A-Za-z]{2,24})(?:[/?#]\S*)?$/;
+// The third group is the path/query/fragment, captured rather than skipped so
+// classify can tell "t.co/aB3xY9" from the bare "report.co"; see
+// PATH_ONLY_SUFFIXES.
+const BARE_URL = /^([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)\.([A-Za-z]{2,24})([/?#]\S*)?$/;
 
 /** Characters a document wraps an address in, which are not part of it. */
 const OPENERS = '([{<"\'“‘«';
@@ -124,8 +146,9 @@ function classify(text: string): AddressKind | null {
 
   const bare = BARE_URL.exec(text);
   if (!bare) return null;
-  const [, domain, suffix] = bare;
-  if (!COMMON_SUFFIXES.has(suffix.toLowerCase())) return null;
+  const [, domain, suffix, path] = bare;
+  const lower = suffix.toLowerCase();
+  if (!COMMON_SUFFIXES.has(lower) && !(path && PATH_ONLY_SUFFIXES.has(lower))) return null;
 
   // A dropped space between two sentences reads the same as a bare domain:
   // "the total cost.It was high" tokenises to "cost.It", whose suffix is in the

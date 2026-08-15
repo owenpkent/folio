@@ -276,6 +276,7 @@ State is the single source of truth between the UI, commands, plugins, and the A
 | annotation store (`useAnnotationStore`) | `src/features/annotations/store.ts` | Current document fingerprint and its annotations | `features/annotations/` tools |
 | contribution store (`useContributionStore`) | `src/plugins/contributionStore.ts` | Plugin-contributed toolbar items, sidebar panels, annotation tools | Plugin host on activate/deactivate |
 | `toastStore` | `src/components/common/toastStore.ts` | Transient toast notifications | `pushToast` (commands, plugins) |
+| `documentMutationStore` | `src/state/documentMutationStore.ts` | Which document mutations are in flight, and who owns them | `withDocumentMutation`, from every mutating entry point |
 
 Those are the core stores; the editing, OCR, signatures, signing, text-edit, image-edit, placement, and context-menu features colocate their own stores the same way (`src/features/*/store.ts`). There is no separate `viewportStore` or `uiStore`: view and UI state (zoom, fit, sidebar, search) all live in `viewerStore`. There is no `pluginStore`; plugin UI contributions live in `contributionStore`.
 
@@ -284,6 +285,38 @@ Design rules:
 - **Commands and actions mutate state; components read it.** A React component should not orchestrate a workflow directly. It dispatches a command (or calls a state action); that updates the relevant store; components re-render from the store.
 - **Stores never import from `components/`.** Data flows down, actions flow up through commands.
 - **Persistence is selective.** UI theme and dark scheme are persisted in local storage (`themeStore`), and annotations are persisted per document fingerprint in local storage (`features/annotations/store.ts`). Transient view state such as scroll position is not. A recent-files list persisted via the Rust backend is planned, not yet implemented.
+
+### The document mutation lock
+
+Nine features can rewrite or replace the open document: page operations, in-place text editing, in-place image editing, combine, OCR recognition, save, print, digital signing, and open/close. Each guarded only against a second attempt at *itself*, so any two of them could interleave. The failure is quiet and expensive: two features racing to call `reloadEditedBytes` leaves whichever lands second silently discarding the other's change, and page operations' snapshot/remap of the per-fingerprint sidecar stores (`features/pageops/pageState.ts`) can discard a later edit the same way.
+
+`documentMutationStore` is the one lock they all go through. It is not a boolean. Every acquisition carries an **owner** (which feature) and a **scope** (what it writes), and returns a release closure rather than a global `end()`:
+
+```ts
+await withDocumentMutation(
+  { owner: 'pageops', scope: 'pages' },
+  async () => { /* ... */ },
+  () => false,          // what to do instead, when refused
+);
+```
+
+The three scopes and the single rule that relates them:
+
+| Scope | What it writes | Used by |
+|---|---|---|
+| `pages` | Replaces the document, or renumbers its pages — the page map every sidecar store is keyed to | Open, Close, Combine, page operations |
+| `content` | Rewrites the bytes of the pages already there, or reads a consistent snapshot of them, leaving the page map alone | Text edit, image edit, Save, Print, digital signing |
+| `sidecar` | Per-fingerprint sidecar state for the page map it started on, and no bytes at all | OCR recognition |
+
+Conflict is symmetric, and everything excludes everything **except `content` and `sidecar`, which may overlap**. That exemption is the point of having scopes: recognition can run for minutes on a long document, and blocking Save, Print, Sign, and both in-place editors for its whole duration was a freeze over a conflict it does not actually have. A text edit leaves the page map exactly as OCR found it. A page operation does not, so that still waits.
+
+Three properties fall out of the design rather than being maintained by hand:
+
+- **Owner identity.** A feature asks `documentMutationBlocked(owner, scope)`, which ignores the caller's own in-flight work. Without it, every control a feature disables while it works blames "another document change" for the change the user just asked *that feature* to make.
+- **Release closures.** The closure is idempotent and checks its own token, so a double release cannot unlock whoever holds the lock now. That is what lets `combine` nest a load inside its own already-held lock (`loadSourceHoldingLock`) without the hand-rolled "do I own this?" bookkeeping a global `end()` forced on callers.
+- **One acquire site per entry point.** `withDocumentMutation` acquires, runs, and releases in a `finally`. Hand-written acquire/release blocks had already drifted apart across fifteen call sites: one took the lock outside its own `try` (so a throw in between stranded it for the rest of the session), and two entry points that needed it never took it at all. `reloadEditedBytes` dev-asserts the lock is held, so a future caller that forgets is noticed rather than silently racing.
+
+A blocked entry point never fails silently. Where a control can be disabled up front it is, with `DOCUMENT_MUTATION_BUSY_TITLE` explaining why; commands declare the lock in their `when` so the menu bar, the command palette, and the shortcut dispatcher all agree; and anything reached anyway reports the refusal with a toast and an announcement.
 
 ## Extension points
 

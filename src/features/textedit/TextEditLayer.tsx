@@ -10,6 +10,11 @@ import {
 } from '@/core/pdf';
 import { usePageOpsStore } from '@/features/pageops/store';
 import { reloadEditedBytes } from '@/state/actions';
+import {
+  DOCUMENT_MUTATION_BUSY_TITLE,
+  useDocumentMutationBlocked,
+  withDocumentMutation,
+} from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 import { formWidgetAt } from '@/state/formsLayer';
 import { useViewerStore } from '@/state/viewerStore';
@@ -50,6 +55,12 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
   const active = useTextEditStore((s) => s.active);
   const session = useTextEditStore((s) => s.session);
   const scale = useViewerStore((s) => s.scale);
+  // Some OTHER feature is mid-flight rewriting the document; starting a new
+  // edit session on top of that is exactly the collision documentMutationStore
+  // exists to prevent, so the catcher that opens one goes inert until it
+  // clears. Owner-scoped: a commit of our own holds the same lock and is not
+  // "another" change.
+  const crossBusy = useDocumentMutationBlocked('textedit', 'content');
   const rootRef = useRef<HTMLDivElement>(null);
   const pageIndex = pageNumber - 1;
 
@@ -154,37 +165,51 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
       return;
     }
 
-    void (async () => {
-      try {
-        const bytes = await getEngine().saveDocument();
-        const result = await commitTextEdit({
-          pdfBytes: bytes,
-          pageIndex: currentSession.pageIndex,
-          target: currentSession.target,
-          newText,
-          style: {
-            fontFamilyHint: `${currentSession.pdfFontName} ${currentSession.fontFamily}`.trim(),
-            fontSize: currentSession.fontSize,
-            color: currentSession.color,
-          },
-        });
-        // Only push the pre-edit snapshot once the commit has actually
-        // succeeded: a failed attempt below never reaches here, so there is
-        // nothing to compensate for in the catch block.
-        useTextEditStore.getState().pushUndo(bytes);
-        await reloadEditedBytes(result);
-        // Page ops keep a separate undo stack bound to the same chord (see
-        // pageops/commands.ts); its snapshots describe bytes from before this
-        // edit and would silently discard it if used now.
-        usePageOpsStore.getState().clearUndo();
-        useTextEditStore.getState().endSession();
-      } catch (error) {
-        const message =
-          error instanceof TexteditError ? error.message : 'Could not save this text edit';
-        pushToast(message, 'error');
+    // The catcher that opens a session already goes inert during a
+    // cross-feature mutation (see crossBusy above), but a session already
+    // open when one starts elsewhere reaches this regardless of that: guard
+    // the actual save/reload round trip too, not just the entry point.
+    void withDocumentMutation(
+      { owner: 'textedit', scope: 'content' },
+      async () => {
+        try {
+          const bytes = await getEngine().saveDocument();
+          const result = await commitTextEdit({
+            pdfBytes: bytes,
+            pageIndex: currentSession.pageIndex,
+            target: currentSession.target,
+            newText,
+            style: {
+              fontFamilyHint: `${currentSession.pdfFontName} ${currentSession.fontFamily}`.trim(),
+              fontSize: currentSession.fontSize,
+              color: currentSession.color,
+            },
+          });
+          // Only push the pre-edit snapshot once the commit has actually
+          // succeeded: a failed attempt below never reaches here, so there is
+          // nothing to compensate for in the catch block.
+          useTextEditStore.getState().pushUndo(bytes);
+          // Before the reload, not after: reloadEditedBytes can reject once
+          // pdf.js has already taken the new bytes, and an invalidate sitting
+          // past that await never runs, leaving page ops' stack poppable
+          // against bytes it no longer describes. Page ops keep a separate undo
+          // stack bound to the same chord (see pageops/commands.ts), and its
+          // snapshots would silently discard this edit if used now.
+          usePageOpsStore.getState().clearUndo();
+          await reloadEditedBytes(result);
+          useTextEditStore.getState().endSession();
+        } catch (error) {
+          const message =
+            error instanceof TexteditError ? error.message : 'Could not save this text edit';
+          pushToast(message, 'error');
+          onFailure();
+        }
+      },
+      () => {
+        pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
         onFailure();
-      }
-    })();
+      },
+    );
   };
 
   const handleCancel = () => {
@@ -198,6 +223,8 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
           type="button"
           className="folio-textedit-hit"
           aria-label="Click text on the page to edit it"
+          disabled={crossBusy}
+          title={crossBusy ? DOCUMENT_MUTATION_BUSY_TITLE : undefined}
           onClick={handleClick}
         />
       )}

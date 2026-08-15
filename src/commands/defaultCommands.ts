@@ -6,6 +6,7 @@ import { isTauri } from '@/core/document/openDocument';
 import { downloadOriginal, originalDocumentUrl } from '@/core/document/openFromQuery';
 import { checkForUpdates } from '@/features/updates';
 import { closeDocument, openDocumentViaPicker } from '@/state/actions';
+import { documentMutationBlocked } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 import { scrollViewerByPage } from '@/state/viewerElement';
 import { useViewerStore } from '@/state/viewerStore';
@@ -16,6 +17,15 @@ import { commandRegistry } from './registry';
 import type { Command } from './types';
 
 const hasDocument = () => useDocumentStore.getState().status === 'ready';
+/**
+ * Opening and closing both replace what the engine is holding, so both wait on
+ * the cross-feature lock (see state/documentMutationStore.ts). Declared as the
+ * commands' own `when` rather than only checked inside the actions, so every
+ * surface that reads a command's guard -- the menu bar, the command palette,
+ * the shortcut dispatcher -- disables the row instead of offering a click that
+ * quietly does nothing.
+ */
+const canReplaceDocument = () => !documentMutationBlocked('document', 'pages');
 
 function announceZoom(): void {
   announce(`Zoom ${Math.round(useViewerStore.getState().scale * 100)} percent`);
@@ -32,13 +42,14 @@ const commands: Command[] = [
     title: 'Open document…',
     category: 'File',
     keybinding: 'Mod+O',
+    when: canReplaceDocument,
     run: () => openDocumentViaPicker(),
   },
   {
     id: 'file.close',
     title: 'Close document',
     category: 'File',
-    when: hasDocument,
+    when: () => hasDocument() && canReplaceDocument(),
     run: () => closeDocument(),
   },
   {

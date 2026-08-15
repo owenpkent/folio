@@ -13,6 +13,7 @@ import { resetPageSizes } from '@/core/pdf/pageSizes';
 import { useTextEditStore } from '@/features/textedit/store';
 import { useSigningStore } from '@/features/signing';
 import { reloadEditedBytes } from '@/state/actions';
+import { withDocumentMutation } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
 
@@ -63,81 +64,104 @@ function warnIfSigned(): void {
  * belongs. Returns false when it declined or failed, having said why.
  */
 export async function commitPagePlan(plan: PagePlan, announcement: string): Promise<boolean> {
-  const ops = usePageOpsStore.getState();
   // Each commit serialises the whole document and reloads it, so a second one
-  // starting mid-flight would be reading bytes the first has already replaced.
-  if (ops.busy) return false;
-  ops.setBusy(true);
-  warnIfSigned();
+  // starting mid-flight would be reading bytes the first has already
+  // replaced. ops.busy guards a second page op (and drives this feature's own
+  // busy UI); withDocumentMutation guards every OTHER feature that can also
+  // rewrite the document, and is what releases the lock however this ends.
+  if (usePageOpsStore.getState().busy) return false;
 
-  let snapshot: PageOpsSnapshot | undefined;
-  try {
-    const wasOn = useViewerStore.getState().currentPage;
-    const before = await getEngine().saveDocument();
-    // These bytes stay ours: pdf-lib parses a copy, and only reloadEditedBytes
-    // hands an array to pdf.js, which detaches it.
-    snapshot = capturePageState(before, useViewerStore.getState().numPages);
-    const result = await applyPagePlan({ pdfBytes: before, plan });
+  return withDocumentMutation(
+    { owner: 'pageops', scope: 'pages' },
+    async () => {
+      usePageOpsStore.getState().setBusy(true);
+      let snapshot: PageOpsSnapshot | undefined;
+      try {
+        // Inside the try, not between acquiring the lock and entering it:
+        // warnIfSigned reads two stores and pushes a toast, and a throw from
+        // any of that used to strand the lock for the rest of the session,
+        // with nothing in the UI able to clear it.
+        warnIfSigned();
 
-    // Persisting the remap (each store's replaceAll writes straight through to
-    // localStorage) has to wait until the swap it is describing has actually
-    // landed. reloadEditedBytes can still reject after applyPagePlan
-    // succeeds, and remapping first would leave every highlight, signature,
-    // text box, and OCR page one page ahead of a document that never changed,
-    // saved to disk, with nothing in the undo stack to put it back.
-    await swapInDocument(result.bytes, result.numPages, wasOn, result.pageMap);
-    remapPageState(result.pageMap, turnsByPageNumber(plan));
+        const wasOn = useViewerStore.getState().currentPage;
+        const before = await getEngine().saveDocument();
+        // These bytes stay ours: pdf-lib parses a copy, and only
+        // reloadEditedBytes hands an array to pdf.js, which detaches it.
+        snapshot = capturePageState(before, useViewerStore.getState().numPages);
+        const result = await applyPagePlan({ pdfBytes: before, plan });
 
-    usePageOpsStore.getState().pushUndo(snapshot);
-    usePageOpsStore.getState().remapSelection(result.pageMap);
-    announce(announcement);
-    return true;
-  } catch (error) {
-    // Nothing to put back if the failure happened before the swap, but if
-    // swapInDocument itself is what failed, capturePageState's snapshot is
-    // the only record of the (still current) sidecar state.
-    if (snapshot) restorePageState(snapshot);
-    const message =
-      error instanceof PageOpsError
-        ? error.message
-        : 'Could not change the pages of this document.';
-    pushToast(message, 'error');
-    announce(message, true);
-    return false;
-  } finally {
-    usePageOpsStore.getState().setBusy(false);
-  }
+        // Persisting the remap (each store's replaceAll writes straight through
+        // to localStorage) has to wait until the swap it is describing has
+        // actually landed. reloadEditedBytes can still reject after
+        // applyPagePlan succeeds, and remapping first would leave every
+        // highlight, signature, text box, and OCR page one page ahead of a
+        // document that never changed, saved to disk, with nothing in the undo
+        // stack to put it back.
+        await swapInDocument(result.bytes, result.numPages, wasOn, result.pageMap);
+        remapPageState(result.pageMap, turnsByPageNumber(plan));
+
+        usePageOpsStore.getState().pushUndo(snapshot);
+        usePageOpsStore.getState().remapSelection(result.pageMap);
+        announce(announcement);
+        return true;
+      } catch (error) {
+        // Nothing to put back if the failure happened before the swap, but if
+        // swapInDocument itself is what failed, capturePageState's snapshot is
+        // the only record of the (still current) sidecar state.
+        if (snapshot) restorePageState(snapshot);
+        const message =
+          error instanceof PageOpsError
+            ? error.message
+            : 'Could not change the pages of this document.';
+        pushToast(message, 'error');
+        announce(message, true);
+        return false;
+      } finally {
+        usePageOpsStore.getState().setBusy(false);
+      }
+    },
+    () => false,
+  );
 }
 
 /** Step back one page operation, restoring both the bytes and what was placed on them. */
 export async function undoPageOp(): Promise<boolean> {
-  const ops = usePageOpsStore.getState();
-  if (ops.busy) return false;
-  const snapshot = ops.popUndo();
-  if (!snapshot) return false;
-  ops.setBusy(true);
+  if (usePageOpsStore.getState().busy) return false;
 
-  try {
-    const wasOn = useViewerStore.getState().currentPage;
-    // The byte swap first: swapInDocument hands snapshot.bytes to pdf.js,
-    // which detaches the buffer, so a snapshot is good for exactly one
-    // attempt and there are no bytes left to retry with if this rejects.
-    // Restoring the sidecar stores only once it has actually landed keeps a
-    // failed attempt from leaving every highlight, signature, text box, and
-    // OCR page pointed at a document that never went back.
-    await swapInDocument(snapshot.bytes, snapshot.numPages, wasOn, null);
-    restorePageState(snapshot);
-    usePageOpsStore.getState().clearSelection();
-    announce('Page change undone');
-    return true;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Could not undo the page change.';
-    pushToast(message, 'error');
-    announce(message, true);
-    return false;
-  } finally {
-    usePageOpsStore.getState().setBusy(false);
-  }
+  return withDocumentMutation(
+    { owner: 'pageops', scope: 'pages' },
+    async () => {
+      // Popped only once the lock is actually held: popUndo mutates the stack,
+      // so doing it before an acquire that might be refused would throw the
+      // snapshot away without ever using it.
+      const snapshot = usePageOpsStore.getState().popUndo();
+      if (!snapshot) return false;
+      usePageOpsStore.getState().setBusy(true);
+
+      try {
+        const wasOn = useViewerStore.getState().currentPage;
+        // The byte swap first: swapInDocument hands snapshot.bytes to pdf.js,
+        // which detaches the buffer, so a snapshot is good for exactly one
+        // attempt and there are no bytes left to retry with if this rejects.
+        // Restoring the sidecar stores only once it has actually landed keeps a
+        // failed attempt from leaving every highlight, signature, text box, and
+        // OCR page pointed at a document that never went back.
+        await swapInDocument(snapshot.bytes, snapshot.numPages, wasOn, null);
+        restorePageState(snapshot);
+        usePageOpsStore.getState().clearSelection();
+        announce('Page change undone');
+        return true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not undo the page change.';
+        pushToast(message, 'error');
+        announce(message, true);
+        return false;
+      } finally {
+        usePageOpsStore.getState().setBusy(false);
+      }
+    },
+    () => false,
+  );
 }
 
 async function swapInDocument(

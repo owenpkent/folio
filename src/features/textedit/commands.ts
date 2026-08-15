@@ -3,6 +3,11 @@ import { pushToast } from '@/components/common';
 import { usePageOpsStore } from '@/features/pageops/store';
 import { useSigningStore } from '@/features/signing';
 import { reloadEditedBytes } from '@/state/actions';
+import {
+  documentMutationBlocked,
+  DOCUMENT_MUTATION_BUSY_TITLE,
+  withDocumentMutation,
+} from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 
 import { useTextEditStore } from './store';
@@ -42,15 +47,30 @@ export function registerTextEditCommands(): void {
     title: 'Undo text edit',
     category: 'Edit',
     keybinding: 'Mod+z',
-    when: () => ready() && useTextEditStore.getState().active,
+    // The lock: some OTHER feature is mid-flight rewriting the document (see
+    // documentMutationStore.ts); undoing on top of that would race it.
+    when: () =>
+      ready() &&
+      useTextEditStore.getState().active &&
+      !documentMutationBlocked('textedit', 'content'),
     run: async () => {
-      const bytes = useTextEditStore.getState().popUndo();
-      if (!bytes) return;
-      await reloadEditedBytes(bytes);
-      // Page ops keep a separate undo stack bound to the same chord (see
-      // pageops/commands.ts); its snapshots describe bytes from before this
-      // reload and would silently discard it if used now.
-      usePageOpsStore.getState().clearUndo();
+      await withDocumentMutation(
+        { owner: 'textedit', scope: 'content' },
+        async () => {
+          // Popped inside the lock: popUndo mutates the stack, so doing it
+          // before an acquire that might be refused would discard a snapshot
+          // that never got used.
+          const bytes = useTextEditStore.getState().popUndo();
+          if (!bytes) return;
+          // Before the reload for the same reason TextEditLayer clears it
+          // there: reloadEditedBytes can reject after pdf.js has taken the
+          // bytes, and page ops' snapshots describe bytes from before this
+          // reload either way.
+          usePageOpsStore.getState().clearUndo();
+          await reloadEditedBytes(bytes);
+        },
+        () => pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info'),
+      );
     },
   });
 }

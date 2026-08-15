@@ -2,6 +2,11 @@ import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { pushToast } from '@/components/common';
 import { getEngine } from '@/core/pdf';
+import {
+  documentMutationBlocked,
+  DOCUMENT_MUTATION_BUSY_TITLE,
+  withDocumentMutation,
+} from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
 
@@ -31,13 +36,55 @@ async function recognizeOnePage(pageNumber: number): Promise<void> {
   useOcrStore.getState().setPage({ pageNumber, words, text });
 }
 
+/**
+ * Report a run that could not start because something else holds the lock.
+ *
+ * Recognition used to return silently here while its menu row stayed enabled,
+ * so clicking "Recognize text (OCR)" during a page op did nothing at all: no
+ * toast, no announcement, no progress modal.
+ */
+function reportBlocked(): void {
+  pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
+  announce(DOCUMENT_MUTATION_BUSY_TITLE, true);
+}
+
+/**
+ * Run one recognition pass under the cross-feature lock.
+ *
+ * Scope 'sidecar', not 'content': recognition writes into the OCR store page by
+ * page and never touches the document's bytes, so what it cannot survive is the
+ * page map moving underneath it -- a page op's snapshot/restore/remap of that
+ * same store (see pageops/pageState.ts), a combine, an open, or a close. A text
+ * edit, an image edit, a save, or a print leaves the page map exactly as it
+ * was, and those are free to run alongside a recognition pass that can take
+ * minutes on a long document. See documentMutationStore.ts.
+ */
+async function runRecognition(total: number, pass: () => Promise<void>): Promise<void> {
+  if (!ready() || useOcrStore.getState().status === 'running') return;
+
+  return withDocumentMutation(
+    { owner: 'ocr', scope: 'sidecar' },
+    async () => {
+      // Inside the lock: start() puts the progress modal up, and doing that
+      // before an acquire that might be refused would leave it on screen over
+      // a run that never began.
+      useOcrStore.getState().start(total);
+      try {
+        await pass();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'OCR failed';
+        useOcrStore.getState().fail(message);
+        pushToast(`OCR failed: ${message}`, 'error');
+      }
+    },
+    reportBlocked,
+  );
+}
+
 /** OCR the whole document, page by page, with progress and cancellation. */
 export async function recognizeDocument(): Promise<void> {
-  if (!ready() || useOcrStore.getState().status === 'running') return;
   const total = useViewerStore.getState().numPages;
-  const store = useOcrStore.getState();
-  store.start(total);
-  try {
+  await runRecognition(total, async () => {
     for (let page = 1; page <= total; page++) {
       if (useOcrStore.getState().cancelRequested) break;
       await recognizeOnePage(page);
@@ -46,29 +93,18 @@ export async function recognizeDocument(): Promise<void> {
     const cancelled = useOcrStore.getState().cancelRequested;
     pushToast(cancelled ? 'OCR stopped' : 'Text recognized', cancelled ? 'info' : 'success');
     announce(cancelled ? 'OCR stopped' : 'Text recognition complete');
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'OCR failed';
-    useOcrStore.getState().fail(message);
-    pushToast(`OCR failed: ${message}`, 'error');
-  }
+  });
 }
 
 /** OCR just the page the user is viewing. */
 export async function recognizeCurrentPage(): Promise<void> {
-  if (!ready() || useOcrStore.getState().status === 'running') return;
   const page = useViewerStore.getState().currentPage;
-  const store = useOcrStore.getState();
-  store.start(1);
-  try {
+  await runRecognition(1, async () => {
     await recognizeOnePage(page);
     useOcrStore.getState().finish();
     pushToast('Text recognized', 'success');
     announce(`Text recognized on page ${page}`);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'OCR failed';
-    useOcrStore.getState().fail(message);
-    pushToast(`OCR failed: ${message}`, 'error');
-  }
+  });
 }
 
 let registered = false;
@@ -78,11 +114,19 @@ export function registerOcrCommands(): void {
   if (registered) return;
   registered = true;
 
+  // Both guards include the lock, so a surface that reads `when` (the menu
+  // bar, the command palette) disables the row while a page op, a combine, an
+  // open, or a close is in flight instead of leaving it enabled and inert.
+  const canRecognize = () =>
+    ready() &&
+    useOcrStore.getState().status !== 'running' &&
+    !documentMutationBlocked('ocr', 'sidecar');
+
   commandRegistry.register({
     id: 'ocr.recognizeDocument',
     title: 'Recognize text (OCR)',
     category: 'Edit',
-    when: ready,
+    when: canRecognize,
     run: () => recognizeDocument(),
   });
 
@@ -90,7 +134,7 @@ export function registerOcrCommands(): void {
     id: 'ocr.recognizePage',
     title: 'Recognize text on this page (OCR)',
     category: 'Edit',
-    when: ready,
+    when: canRecognize,
     run: () => recognizeCurrentPage(),
   });
 }

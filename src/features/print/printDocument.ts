@@ -13,6 +13,11 @@ import { pushToast } from '@/components/common';
 import { mapWithConcurrency } from '@/core/concurrency';
 import { ensureWorker, pdfWasmUrl } from '@/core/pdf/setupWorker';
 import { exportDocument } from '@/features/export';
+import {
+  documentMutationBlocked,
+  DOCUMENT_MUTATION_BUSY_TITLE,
+  withDocumentMutation,
+} from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 
 import { usePrintStore } from './store';
@@ -219,7 +224,20 @@ export async function printDocument(): Promise<void> {
   usePrintStore.getState().start(0);
 
   try {
-    const bytes = await exportDocument();
+    // Under the cross-feature lock, and only this line: print bakes through
+    // the very same snapshot Save does -- the engine's bytes plus the edit,
+    // signature, OCR, and annotation stores -- so a page op mid-swap or a
+    // recognition run mid-remap would put OCR text and stamped edits on the
+    // wrong pages of the printout. Everything below works from `bytes`, a
+    // private copy nothing else can disturb, so the lock is released before
+    // the rasterizing and long before window.print(). See
+    // documentMutationStore.ts and saveDocument.ts's exportUnderLock.
+    const bytes = await withDocumentMutation<Uint8Array | null>(
+      { owner: 'export', scope: 'content' },
+      exportDocument,
+      () => null,
+    );
+    if (!bytes) throw new Error(DOCUMENT_MUTATION_BUSY_TITLE);
 
     ensureWorker();
     // wasmUrl for the same reason PdfJsEngine passes it: without it the worker
@@ -399,7 +417,11 @@ export function registerPrintCommands(): void {
     title: 'Print',
     category: 'File',
     keybinding: 'Mod+P',
-    when: () => useDocumentStore.getState().status === 'ready',
+    // The lock as well as the document: print reads the same snapshot Save
+    // does, so it is unavailable for the same reasons and says so the same way.
+    when: () =>
+      useDocumentStore.getState().status === 'ready' &&
+      !documentMutationBlocked('export', 'content'),
     run: () => printDocument(),
   });
 }

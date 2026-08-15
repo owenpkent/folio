@@ -3,6 +3,10 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { announce } from '@/a11y/announcer';
 import { useFocusTrap } from '@/a11y/focus';
 import { Button, Icon, IconButton } from '@/components/common';
+import {
+  DOCUMENT_MUTATION_BUSY_TITLE,
+  useDocumentMutationBlocked,
+} from '@/state/documentMutationStore';
 
 import { addFilesViaPicker, runCombine } from './commands';
 import { useCombineStore, type PendingFile } from './store';
@@ -20,6 +24,11 @@ export function CombineModal() {
   const open = useCombineStore((s) => s.modalOpen);
   const files = useCombineStore((s) => s.files);
   const busy = useCombineStore((s) => s.busy);
+  // Some OTHER feature is mid-flight rewriting the document; a merge cannot
+  // start until it clears (see documentMutationStore.ts and runCombine).
+  // Owner-scoped, so the button does not blame another feature for the merge
+  // this modal itself is running -- `busy` above is what reports that.
+  const crossBusy = useDocumentMutationBlocked('combine', 'pages');
   const error = useCombineStore((s) => s.error);
   const progress = useCombineStore((s) => s.progress);
   const cancelRequested = useCombineStore((s) => s.cancelRequested);
@@ -90,7 +99,7 @@ export function CombineModal() {
   // concurrently with the staging parse still in flight, and turned an
   // encrypted file from an up-front block into a mid-merge failure.
   const hasBlockingFile = files.some((f) => Boolean(f.error) || !f.pageCount);
-  const canCombine = files.length >= 2 && !busy && !hasBlockingFile;
+  const canCombine = files.length >= 2 && !busy && !hasBlockingFile && !crossBusy;
   const stopping = busy && cancelRequested;
   const pct = progress.total ? Math.round((progress.current / progress.total) * 100) : 0;
   const progressText = stopping
@@ -263,7 +272,12 @@ export function CombineModal() {
           <Button onClick={dismiss} disabled={stopping}>
             {stopping ? 'Stopping…' : 'Cancel'}
           </Button>
-          <Button variant="primary" disabled={!canCombine} onClick={() => void runCombine()}>
+          <Button
+            variant="primary"
+            disabled={!canCombine}
+            title={crossBusy ? DOCUMENT_MUTATION_BUSY_TITLE : undefined}
+            onClick={() => void runCombine()}
+          >
             {busy ? 'Combining…' : 'Combine'}
           </Button>
         </div>

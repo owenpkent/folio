@@ -2,6 +2,10 @@ import { pickAndReadDocument, type BytesDocumentSource } from '@/core/document/o
 import { getEngine, type DocumentSource } from '@/core/pdf';
 import { resetPageSizes } from '@/core/pdf/pageSizes';
 import { announce } from '@/a11y/announcer';
+// The toast store only, not the components barrel: that also exports Button,
+// ToastHost, and the rest of the UI kit, which this low-level orchestration
+// module has no business importing (same rule as the feature imports below).
+import { pushToast } from '@/components/common/toastStore';
 import { useAnnotationStore } from '@/features/annotations';
 // Store only, not the feature barrel: that also exports CombineModal, which
 // pulls in UI modules this low-level orchestration module has no business
@@ -25,6 +29,11 @@ import { detectSignatures, useSigningStore, type DetectedSignature } from '@/fea
 import { useTextEditStore } from '@/features/textedit/store';
 import { pluginHost } from '@/plugins/PluginHost';
 
+import {
+  assertDocumentMutationHeld,
+  DOCUMENT_MUTATION_BUSY_TITLE,
+  withDocumentMutation,
+} from './documentMutationStore';
 import { useDocumentStore } from './documentStore';
 import { useViewerStore } from './viewerStore';
 
@@ -73,7 +82,41 @@ export async function openDroppedPdfs(sources: BytesDocumentSource[]): Promise<v
   combine.open(seed);
 }
 
+/**
+ * Open a document, taking the cross-feature lock for the duration.
+ *
+ * Loading replaces the engine's document and resets every per-fingerprint
+ * store, so it is exactly the kind of change a mid-flight page op, text edit,
+ * or image edit could be reloading on top of; see documentMutationStore.ts.
+ * A blocked open says so rather than doing nothing: Open is reachable from a
+ * dropped file and a keyboard shortcut as well as the menu, and only the menu
+ * can be disabled up front.
+ */
 export async function loadSource(source: DocumentSource): Promise<void> {
+  return withDocumentMutation(
+    { owner: 'document', scope: 'pages' },
+    () => loadSourceHoldingLock(source),
+    () => {
+      pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
+      announce(DOCUMENT_MUTATION_BUSY_TITLE, true);
+    },
+  );
+}
+
+/**
+ * {@link loadSource}'s body, for the one caller that is already holding the
+ * lock: combine finishes its own already-locked run by loading the merged
+ * result (see runCombine in features/combine/commands.ts), and re-acquiring
+ * here would refuse its own load.
+ *
+ * Split into a separate function rather than sniffing "is the lock free?" from
+ * inside loadSource. That sniff could not tell combine's nesting apart from an
+ * unrelated feature holding the lock, so it waved every concurrent caller
+ * through -- a drop or a Ctrl+O landing mid-page-op would reset the stores to
+ * the new document while the page op went on to reload the OLD one's bytes and
+ * remap the OLD one's sidecar over them.
+ */
+export async function loadSourceHoldingLock(source: DocumentSource): Promise<void> {
   const engine = getEngine();
   const doc = useDocumentStore.getState();
   const viewer = useViewerStore.getState();
@@ -126,22 +169,42 @@ export async function loadSource(source: DocumentSource): Promise<void> {
   }
 }
 
+/**
+ * Closing replaces the engine's document with nothing, exactly the kind of
+ * change a mid-flight page op / text edit / image edit could be reloading on
+ * top of; see documentMutationStore.ts.
+ *
+ * A blocked close reports it rather than resolving silently: File > Close is
+ * disabled while the lock is held (see the command's `when` in
+ * commands/defaultCommands.ts), but the command is also reachable from the
+ * command palette and from a plugin, and "clicked Close, nothing happened, no
+ * reason given" is the failure this whole lock is meant to avoid.
+ */
 export async function closeDocument(): Promise<void> {
-  await getEngine().closeDocument();
-  resetPageSizes();
-  useDocumentStore.getState().reset();
-  useViewerStore.getState().reset();
-  useAnnotationStore.getState().reset();
-  useSignatureStore.getState().reset();
-  useEditStore.getState().reset();
-  useOcrStore.getState().reset();
-  useTextEditStore.getState().reset();
-  usePageOpsStore.getState().reset();
-  usePlacementStore.getState().cancel();
-  useAddressHover.getState().clear();
-  useSigningStore.getState().setDetected([]);
-  document.title = 'Folio';
-  announce('Closed document');
+  return withDocumentMutation(
+    { owner: 'document', scope: 'pages' },
+    async () => {
+      await getEngine().closeDocument();
+      resetPageSizes();
+      useDocumentStore.getState().reset();
+      useViewerStore.getState().reset();
+      useAnnotationStore.getState().reset();
+      useSignatureStore.getState().reset();
+      useEditStore.getState().reset();
+      useOcrStore.getState().reset();
+      useTextEditStore.getState().reset();
+      usePageOpsStore.getState().reset();
+      usePlacementStore.getState().cancel();
+      useAddressHover.getState().clear();
+      useSigningStore.getState().setDetected([]);
+      document.title = 'Folio';
+      announce('Closed document');
+    },
+    () => {
+      pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
+      announce(DOCUMENT_MUTATION_BUSY_TITLE, true);
+    },
+  );
 }
 
 /**
@@ -152,6 +215,12 @@ export async function closeDocument(): Promise<void> {
  * text, annotations) must survive the reload untouched.
  */
 export async function reloadEditedBytes(bytes: Uint8Array): Promise<void> {
+  // This is the chokepoint the cross-feature lock exists to serialize, so it
+  // is also where a caller that forgot to take it shows up. Development-only
+  // and non-fatal: see the helper's own comment for why it complains rather
+  // than acquiring on the caller's behalf.
+  assertDocumentMutationHeld('reloadEditedBytes');
+
   const doc = useDocumentStore.getState();
   if (doc.status !== 'ready' || !doc.info) return;
 

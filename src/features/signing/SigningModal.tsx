@@ -4,6 +4,11 @@ import { announce } from '@/a11y/announcer';
 import { useFocusTrap } from '@/a11y/focus';
 import { Button, IconButton } from '@/components/common';
 import { exportDocument, saveBytes } from '@/features/export';
+import {
+  DOCUMENT_MUTATION_BUSY_TITLE,
+  useDocumentMutationBlocked,
+  withDocumentMutation,
+} from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 
 import { generateSelfSignedP12, parseP12 } from './cert';
@@ -19,6 +24,10 @@ export function SigningModal() {
   const identities = useSigningStore((s) => s.identities);
   const addIdentity = useSigningStore((s) => s.addIdentity);
   const getP12 = useSigningStore((s) => s.getP12);
+  // Some OTHER feature is mid-flight rewriting the document; signing reads
+  // the same kind of snapshot Save does (see saveDocument.ts's identical
+  // guard), so it waits for the same reason and under the same owner.
+  const crossBusy = useDocumentMutationBlocked('export', 'content');
 
   const [selectedId, setSelectedId] = useState('');
   const [passphrase, setPassphrase] = useState('');
@@ -115,7 +124,21 @@ export function SigningModal() {
     }
     setBusy(true);
     try {
-      const prepared = await exportDocument();
+      // The lock covers preparing the bytes and nothing past it: exportDocument
+      // reads the same snapshot Save does (see saveDocument.ts's
+      // exportUnderLock), while signPdf works from a private copy and saveBytes
+      // opens a native dialog the user may sit on indefinitely. Holding the
+      // lock across that froze every other feature for the duration.
+      const prepared = await withDocumentMutation<Uint8Array | null>(
+        { owner: 'export', scope: 'content' },
+        exportDocument,
+        () => null,
+      );
+      if (!prepared) {
+        announce(DOCUMENT_MUTATION_BUSY_TITLE, true);
+        return;
+      }
+
       const signed = await signPdf(prepared, p12, passphrase, {
         reason: reason.trim() || undefined,
         location: location.trim() || undefined,
@@ -133,7 +156,13 @@ export function SigningModal() {
 
   return (
     <div className="folio-modal-backdrop">
-      <div ref={dialogRef} className="folio-modal" role="dialog" aria-modal="true" aria-label="Digitally sign">
+      <div
+        ref={dialogRef}
+        className="folio-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Digitally sign"
+      >
         <div className="folio-modal__header">
           <h2 className="folio-modal__title">Digitally sign</h2>
           <IconButton icon="x" label="Close" onClick={close} />
@@ -222,11 +251,19 @@ export function SigningModal() {
                 <>
                   <label className="folio-field">
                     <span className="folio-field__label">Name (Common Name)</span>
-                    <input className="folio-input" value={genName} onChange={(e) => setGenName(e.target.value)} />
+                    <input
+                      className="folio-input"
+                      value={genName}
+                      onChange={(e) => setGenName(e.target.value)}
+                    />
                   </label>
                   <label className="folio-field">
                     <span className="folio-field__label">Organization (optional)</span>
-                    <input className="folio-input" value={genOrg} onChange={(e) => setGenOrg(e.target.value)} />
+                    <input
+                      className="folio-input"
+                      value={genOrg}
+                      onChange={(e) => setGenOrg(e.target.value)}
+                    />
                   </label>
                   <label className="folio-field">
                     <span className="folio-field__label">Passphrase for the new key</span>
@@ -294,7 +331,8 @@ export function SigningModal() {
           <Button onClick={close}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={busy || identities.length === 0 || addMode !== 'none'}
+            disabled={busy || identities.length === 0 || addMode !== 'none' || crossBusy}
+            title={crossBusy ? DOCUMENT_MUTATION_BUSY_TITLE : undefined}
             onClick={onSign}
           >
             {busy ? 'Signing…' : 'Sign and save'}

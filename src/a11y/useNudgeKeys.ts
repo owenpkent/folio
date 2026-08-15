@@ -40,10 +40,21 @@ export interface NudgeKeysOptions {
   rect: NudgeRect;
   /** Names the item in announcements, e.g. "Text box". */
   label: string;
-  /** Apply a new rect. Called at most once per keystroke. */
-  onChange(rect: NudgeRect): void;
-  /** Remove the item, for Delete / Backspace. Omit to leave those keys alone. */
-  onDelete?(): void;
+  /**
+   * Apply a new rect. Called at most once per keystroke.
+   *
+   * Return `false` when the change was refused (a layer whose commit path is
+   * blocked by another feature's in-flight document mutation does exactly
+   * that); anything else, `undefined` included, counts as applied. This
+   * matters because the announcement below is the only feedback a screen
+   * reader user gets: a layer that silently declined the change while this
+   * hook went on to announce a new position told them the item had moved when
+   * it had not.
+   */
+  onChange(rect: NudgeRect): boolean | void;
+  /** Remove the item, for Delete / Backspace. Omit to leave those keys alone.
+   *  Reports a refusal the same way {@link NudgeKeysOptions.onChange} does. */
+  onDelete?(): boolean | void;
   /**
    * Keep the displayed pixel aspect ratio constant while resizing, mirroring
    * each layer's own pointer resize: images, check marks, and signatures lock
@@ -133,7 +144,10 @@ export function useNudgeKeys(options: NudgeKeysOptions): (e: KeyboardEvent<HTMLE
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (!onDelete) return;
         claim();
-        onDelete();
+        if (onDelete() === false) {
+          announceLater(`${label} cannot be deleted right now`);
+          return;
+        }
         // Immediate, not deferred: the item is gone, so there is nothing left
         // for a later keystroke to coalesce with.
         announce(`${label} deleted`);
@@ -168,7 +182,12 @@ export function useNudgeKeys(options: NudgeKeysOptions): (e: KeyboardEvent<HTMLE
           announceLater(`${label} is at the edge of the page`);
           return;
         }
-        onChange(next);
+        if (onChange(next) === false) {
+          // Deferred like the success case, so a held arrow key against a
+          // blocked layer produces one announcement rather than one per repeat.
+          announceLater(`${label} cannot be moved right now`);
+          return;
+        }
         announceLater(`${label} moved to ${pct(next.x)} across, ${pct(next.y)} down the page`);
         return;
       }
@@ -204,7 +223,10 @@ export function useNudgeKeys(options: NudgeKeysOptions): (e: KeyboardEvent<HTMLE
         );
         return;
       }
-      onChange({ ...current, width, height });
+      if (onChange({ ...current, width, height }) === false) {
+        announceLater(`${label} cannot be resized right now`);
+        return;
+      }
       announceLater(`${label} resized to ${pct(width)} of the page width`);
     },
     [announceLater],

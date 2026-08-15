@@ -66,6 +66,17 @@ someone moved page 4 above page 3 is not a trade worth making.
 Undo restores the document's bytes *and* everything placed on its pages, because
 deleting a page also deletes the highlights and signatures that were on it.
 
+A page operation holds the [document mutation
+lock](architecture.md#the-document-mutation-lock) for its whole commit, at the
+widest scope there is: renumbering the pages moves the page map every sidecar
+store is keyed to, so nothing else that touches the document may interleave with
+it — not another page operation, not a text or image edit, not a save, print,
+sign, combine, OCR pass, open, or close. Each of those disables itself with an
+explanatory tooltip while the commit runs, and refuses with a toast if reached by
+a keybinding anyway. The buttons in this feature's own action bar disable on its
+own `busy` flag instead, so they never blame "another document change" for the
+operation the user just started here.
+
 ## Deleting removes the content
 
 `pdf-lib`'s `removePage` only unlinks a page from the page tree. Its writer then

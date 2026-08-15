@@ -2,7 +2,8 @@ import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { pushToast } from '@/components/common';
 import { describeUnreadable, pickAndReadDocuments } from '@/core/document/openDocument';
-import { loadSource } from '@/state/actions';
+import { loadSourceHoldingLock } from '@/state/actions';
+import { DOCUMENT_MUTATION_BUSY_TITLE, withDocumentMutation } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 
 import { CombineCancelledError, combinePdfs } from './combineDocuments';
@@ -87,6 +88,8 @@ let inFlight = false;
  * over any one of the inputs.
  */
 export async function runCombine(): Promise<void> {
+  // `inFlight` guards a second combine run; the lock guards every OTHER
+  // feature that can also rewrite the document (see documentMutationStore.ts).
   if (inFlight) return;
   const store = useCombineStore.getState();
   if (store.files.length < 2) {
@@ -94,64 +97,79 @@ export async function runCombine(): Promise<void> {
     return;
   }
 
-  inFlight = true;
-  // Snapshotted now, not read again until the merge is done: the row controls
-  // that could change this list are disabled for as long as `busy` is true
-  // (see CombineModal), so this stays the list the user actually saw.
-  const inputs = store.files.map((f) => ({ name: f.name, bytes: f.bytes, doc: f.doc }));
-  const total = inputs.length;
+  await withDocumentMutation(
+    { owner: 'combine', scope: 'pages' },
+    async () => {
+      inFlight = true;
+      // Snapshotted now, not read again until the merge is done: the row
+      // controls that could change this list are disabled for as long as
+      // `busy` is true (see CombineModal), so this stays the list the user
+      // actually saw.
+      const inputs = store.files.map((f) => ({ name: f.name, bytes: f.bytes, doc: f.doc }));
+      const total = inputs.length;
 
-  // Also clears cancelRequested: a run that was cancelled leaves the modal
-  // open with nothing else resetting that flag (see the field's own doc
-  // comment in store.ts), and without this a second Combine click would
-  // poll isCancelled() below and see it still true from the last run,
-  // cancelling itself before doing any work.
-  store.startRun(total);
-  try {
-    const result = await combinePdfs(inputs, {
-      onProgress: (done) => useCombineStore.getState().setProgress(done, total),
-      isCancelled: () => useCombineStore.getState().cancelRequested,
-    });
+      // Also clears cancelRequested: a run that was cancelled leaves the modal
+      // open with nothing else resetting that flag (see the field's own doc
+      // comment in store.ts), and without this a second Combine click would
+      // poll isCancelled() below and see it still true from the last run,
+      // cancelling itself before doing any work.
+      store.startRun(total);
+      try {
+        const result = await combinePdfs(inputs, {
+          onProgress: (done) => useCombineStore.getState().setProgress(done, total),
+          isCancelled: () => useCombineStore.getState().cancelRequested,
+        });
 
-    await loadSource({ kind: 'bytes', data: result.bytes, name: 'combined.pdf' });
-    // loadSource never rejects -- it catches its own failures into
-    // doc.setError and resolves normally -- so a failed load has to be
-    // noticed here instead, or this proceeds to announce success over an
-    // error state.
-    const doc = useDocumentStore.getState();
-    if (doc.status === 'error') {
-      throw new Error(doc.error ?? 'Could not open the combined document');
-    }
+        // loadSourceHoldingLock, not loadSource: this run already holds the
+        // lock, and the public entry point would refuse its own load. See that
+        // function's own comment for why the split exists.
+        await loadSourceHoldingLock({ kind: 'bytes', data: result.bytes, name: 'combined.pdf' });
+        // It never rejects -- it catches its own failures into doc.setError and
+        // resolves normally -- so a failed load has to be noticed here instead,
+        // or this proceeds to announce success over an error state.
+        const doc = useDocumentStore.getState();
+        if (doc.status === 'error') {
+          throw new Error(doc.error ?? 'Could not open the combined document');
+        }
 
-    useCombineStore.getState().close();
-    if (result.formsDegraded) {
-      // A real, if narrow, warning: something was actually dropped. Kept
-      // distinct from the plain success toast (kind 'info' rather than
-      // 'success') so it reads as worth a second look, not as an error.
-      pushToast(`Combined. ${FORMS_DEGRADED_WARNING}`, 'info');
-      announce(`Combined ${total} documents. ${FORMS_DEGRADED_WARNING}`);
-    } else {
-      pushToast('Combined', 'success');
-      // Informational only when forms merged cleanly: nothing was lost, so
-      // this says what happened without asking the user to go check anything.
-      announce(`Combined ${total} documents${result.formsMerged ? ', including form fields' : ''}`);
-    }
-  } catch (error) {
-    if (error instanceof CombineCancelledError) {
-      // A user action, not a failure -- like print's own cancel, this must
-      // not raise an error. The modal stays open (nothing called close())
-      // with its staged list intact, so the user can pick up where they left
-      // off; only the busy/progress state needs clearing, in the finally
-      // below.
-    } else {
-      const message = error instanceof Error ? error.message : 'Could not combine these PDFs';
-      useCombineStore.getState().setError(message);
-      announce(`Could not combine: ${message}`, true);
-    }
-  } finally {
-    inFlight = false;
-    useCombineStore.getState().endRun();
-  }
+        useCombineStore.getState().close();
+        if (result.formsDegraded) {
+          // A real, if narrow, warning: something was actually dropped. Kept
+          // distinct from the plain success toast (kind 'info' rather than
+          // 'success') so it reads as worth a second look, not as an error.
+          pushToast(`Combined. ${FORMS_DEGRADED_WARNING}`, 'info');
+          announce(`Combined ${total} documents. ${FORMS_DEGRADED_WARNING}`);
+        } else {
+          pushToast('Combined', 'success');
+          // Informational only when forms merged cleanly: nothing was lost, so
+          // this says what happened without asking the user to go check
+          // anything.
+          announce(
+            `Combined ${total} documents${result.formsMerged ? ', including form fields' : ''}`,
+          );
+        }
+      } catch (error) {
+        if (error instanceof CombineCancelledError) {
+          // A user action, not a failure -- like print's own cancel, this must
+          // not raise an error. The modal stays open (nothing called close())
+          // with its staged list intact, so the user can pick up where they
+          // left off; only the busy/progress state needs clearing, in the
+          // finally below.
+        } else {
+          const message = error instanceof Error ? error.message : 'Could not combine these PDFs';
+          useCombineStore.getState().setError(message);
+          announce(`Could not combine: ${message}`, true);
+        }
+      } finally {
+        inFlight = false;
+        useCombineStore.getState().endRun();
+      }
+    },
+    () => {
+      useCombineStore.getState().setError(DOCUMENT_MUTATION_BUSY_TITLE);
+      announce(DOCUMENT_MUTATION_BUSY_TITLE, true);
+    },
+  );
 }
 
 let registered = false;
