@@ -5,8 +5,11 @@ import { PDFDocument, PDFHexString, type PDFPage } from 'pdf-lib';
 import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { pushToast } from '@/components/common';
+import { downloadBytes } from '@/core/document/downloadBytes';
 import { isTauri } from '@/core/document/openDocument';
 import { getEngine } from '@/core/pdf';
+import { placeRect } from '@/core/pdf/pageGeometry';
+import { MIN_PDF_BYTES, PDF_HEADER } from '@/core/pdf/pdfHeader';
 import { stampAnnotations, useAnnotationStore } from '@/features/annotations';
 import { stampEdits, useEditStore } from '@/features/editing';
 import { stampOcrLayer, useOcrStore } from '@/features/ocr';
@@ -89,13 +92,12 @@ async function stampSignatures(pdf: PDFDocument, signatures: Signature[]): Promi
     const page = pages[sig.pageNumber - 1];
     if (!page) continue;
     const png = await pdf.embedPng(sig.dataUrl);
-    const { width: pw, height: ph } = page.getSize();
-    const w = sig.rect.width * pw;
-    const h = sig.rect.height * ph;
-    const x = sig.rect.x * pw;
-    // Normalized rects are top-left origin; PDF space is bottom-left.
-    const y = ph - sig.rect.y * ph - h;
-    page.drawImage(png, { x, y, width: w, height: h });
+    // placeRect turns the normalized (top-left, as-displayed) rect into
+    // pdf-lib's bottom-left user space and supplies the rotate that keeps the
+    // signature upright on a page with a non-zero /Rotate (see
+    // core/pdf/pageGeometry.ts).
+    const { x, y, width, height, rotate } = placeRect(page, sig.rect);
+    page.drawImage(png, { x, y, width, height, rotate });
   }
 }
 
@@ -169,21 +171,6 @@ async function writeDocument(path: string, bytes: Uint8Array): Promise<void> {
     headers: { 'Folio-Path': encodeURIComponent(path) },
   });
 }
-
-/**
- * The smallest payload that could plausibly be a PDF.
- *
- * A file needs the header, a catalog, a page tree, at least one page object, a
- * cross-reference table and the trailer before it is openable at all; the
- * smallest hand-built valid PDFs are several hundred bytes, and anything this
- * app produces (pdf.js's save, or pdf-lib after stamping) is far larger. The
- * floor only has to separate "a real document" from "a bug produced nothing",
- * so it sits well under any genuine export.
- */
-const MIN_PDF_BYTES = 256;
-
-/** ASCII `%PDF-`, the header every PDF this app writes starts with. */
-const PDF_HEADER = [0x25, 0x50, 0x44, 0x46, 0x2d];
 
 /**
  * Reject bytes that cannot be a document before they are written anywhere.
@@ -260,19 +247,6 @@ export async function saveBytes(bytes: Uint8Array, suggested: string): Promise<b
     pushToast('Could not save the document', 'error');
     return false;
   }
-}
-
-function downloadBytes(bytes: Uint8Array, filename: string): void {
-  // Copy into a fresh ArrayBuffer-backed view so the type is a valid BlobPart.
-  const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 let registered = false;

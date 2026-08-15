@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { uid } from '@/core/id';
+
 import {
   DEFAULT_FONT_SIZE_PT,
   DEFAULT_MARK_COLOR,
@@ -21,14 +23,6 @@ import {
  * features/signatures/store. The `selectedId` / `focusId` fields are
  * transient UI state and are never persisted.
  */
-
-function uid(): string {
-  try {
-    return crypto.randomUUID();
-  } catch {
-    return `edit-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
-  }
-}
 
 const storageKey = (fingerprint: string) => `folio.edits.${fingerprint}`;
 
@@ -55,6 +49,8 @@ interface EditState {
   updateText(id: string, patch: TextStylePatch): void;
   updateMark(id: string, patch: MarkStylePatch): void;
   remove(id: string): void;
+  /** Replace the whole collection: page ops rewriting page numbers in bulk, or restoring an undo snapshot. */
+  replaceAll(edits: EditItem[]): void;
 
   select(id: string | null): void;
   /** Select a text box and put the caret in it (used after a click that was not a drag). */
@@ -116,7 +112,7 @@ export const useEditStore = create<EditState>((set, get) => {
 
     addText: (pageNumber, rect) => {
       const item: TextEdit = {
-        id: uid(),
+        id: uid('edit'),
         kind: 'text',
         pageNumber,
         rect,
@@ -134,7 +130,7 @@ export const useEditStore = create<EditState>((set, get) => {
 
     addImage: (pageNumber, dataUrl, mime, rect) => {
       const item: ImageEdit = {
-        id: uid(),
+        id: uid('edit'),
         kind: 'image',
         pageNumber,
         rect,
@@ -149,7 +145,7 @@ export const useEditStore = create<EditState>((set, get) => {
 
     addMark: (pageNumber, rect, glyph) => {
       const item: MarkEdit = {
-        id: uid(),
+        id: uid('edit'),
         kind: 'mark',
         pageNumber,
         rect,
@@ -187,6 +183,11 @@ export const useEditStore = create<EditState>((set, get) => {
         selectedId: s.selectedId === id ? null : s.selectedId,
         focusId: s.focusId === id ? null : s.focusId,
       }));
+      persist();
+    },
+
+    replaceAll: (edits) => {
+      set({ edits });
       persist();
     },
 

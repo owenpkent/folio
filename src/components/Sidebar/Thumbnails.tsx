@@ -1,11 +1,8 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef } from 'react';
 
-import { getEngine } from '@/core/pdf';
-import { getIntrinsicSize, subscribePageSizes } from '@/core/pdf/pageSizes';
-import { useNearViewport } from '@/hooks/useNearViewport';
+import { PageActionBar, PageList, usePageOpsStore } from '@/features/pageops';
 import { useViewerStore } from '@/state/viewerStore';
 import { isNarrowViewport } from '@/theme/breakpoints';
-import { DARK_SCHEME_TINT, useThemeStore } from '@/theme/themeStore';
 
 const THUMB_SCALE = 0.22;
 // How long after the user last touched the sidebar scrollbar themselves before
@@ -15,8 +12,12 @@ const USER_SCROLL_SUPPRESS_MS = 1200;
 export function Thumbnails() {
   const numPages = useViewerStore((s) => s.numPages);
   const currentPage = useViewerStore((s) => s.currentPage);
-  const goToPage = useViewerStore((s) => s.goToPage);
   const setSidebarOpen = useViewerStore((s) => s.setSidebarOpen);
+  // The organizer modal mounts its own PageActionBar in its footer while it
+  // is open. Mounting this one too would put two "Actions for the selected
+  // pages" groups and two role="status" counts in the accessibility tree at
+  // once, both announcing the same selection.
+  const organizing = usePageOpsStore((s) => s.organizing);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastUserScrollRef = useRef(0);
 
@@ -29,7 +30,7 @@ export function Thumbnails() {
   // the effect would run once against a null ref, find no scroller, and never
   // look again once a PDF actually opened.
   useEffect(() => {
-    const scroller = containerRef.current?.closest('.folio-sidebar__body');
+    const scroller = containerRef.current?.querySelector('.folio-thumbnails-scroll');
     if (!scroller) return;
     const markUserScroll = () => {
       lastUserScrollRef.current = Date.now();
@@ -46,8 +47,8 @@ export function Thumbnails() {
 
   // Keep the active thumbnail in view as the current page changes while the
   // document scrolls. 'nearest' does nothing when the thumb is already fully
-  // visible, and the button exists for every page up front (see Thumbnail
-  // below), so this does not need to wait on its lazy-rendered canvas.
+  // visible, and the button exists for every page up front (see PageThumb), so
+  // this does not need to wait on its lazy-rendered canvas.
   useEffect(() => {
     if (Date.now() - lastUserScrollRef.current < USER_SCROLL_SUPPRESS_MS) return;
     const el = containerRef.current?.querySelector<HTMLElement>(
@@ -63,103 +64,33 @@ export function Thumbnails() {
   }
 
   return (
-    <div className="folio-thumbnails" ref={containerRef}>
-      {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNumber) => (
-        <Thumbnail
-          key={pageNumber}
-          pageNumber={pageNumber}
-          active={pageNumber === currentPage}
-          onSelect={() => {
-            goToPage(pageNumber);
+    <div className="folio-thumbnails-panel" ref={containerRef}>
+      {/*
+       * The scrolling region is its own element, separate from the action
+       * bar below: the action bar used to live inside .folio-sidebar__body
+       * (the scrolling element) and rely on position: sticky to stay visible
+       * at the bottom, which means floating *over* whatever thumbnail
+       * happened to be scrolled to that spot. That is fine for a bar with
+       * nothing clickable behind it, and wrong for one sitting over a
+       * checkbox: whichever element paints on top also receives the click,
+       * so a click aimed at a covered checkbox lands on the bar instead.
+       * Giving the bar its own row below the scrolling list, rather than a
+       * layer on top of it, means there is no card it can ever cover.
+       */}
+      <div className="folio-thumbnails-scroll">
+        <PageList
+          layout="column"
+          scrollRoot=".folio-thumbnails-scroll"
+          scale={THUMB_SCALE}
+          rootMargin="300px 0px"
+          onNavigate={() => {
             // On narrow viewports the sidebar is a drawer covering the page;
             // picking a page means "show it", so dismiss the drawer.
             if (isNarrowViewport()) setSidebarOpen(false);
           }}
         />
-      ))}
+      </div>
+      {!organizing && <PageActionBar />}
     </div>
-  );
-}
-
-interface ThumbnailProps {
-  pageNumber: number;
-  active: boolean;
-  onSelect: () => void;
-}
-
-function Thumbnail({ pageNumber, active, onSelect }: ThumbnailProps) {
-  const dark = useThemeStore((s) => s.resolvedTheme === 'dark');
-  const darkScheme = useThemeStore((s) => s.darkScheme);
-  // Same mapping as Page.tsx: dark mode inverts the thumbnail; Green/Amber add
-  // a tint. Null tint => Night.
-  const tint = dark ? (DARK_SCHEME_TINT[darkScheme] ?? undefined) : undefined;
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  // Reserve the frame's box from the page's shape before anything is rendered
-  // into it, the way Page.tsx reserves its own. Without it the zeroed canvas of
-  // an unrendered thumb is 0x0, every thumb collapses to its page number, and
-  // ~50 of them fit inside the 300px ring on first paint: fifty renderPage
-  // calls at once, with pdf.js decoding each page's embedded images at native
-  // resolution however small THUMB_SCALE is. The heights then grew as the
-  // thumbs rendered, walking the sidebar's scroll position as they went.
-  // Whatever is known is good enough here: this is the same estimate the viewer
-  // lays pages out with, and it does not measure pages of its own to get it.
-  const intrinsic = useSyncExternalStore(subscribePageSizes, () => getIntrinsicSize(pageNumber));
-
-  // The root must be the element that actually scrolls (.folio-sidebar__body),
-  // not the flex column inside it. With an element root, IntersectionObserver
-  // clips only against containers *between* target and root, never above it, so
-  // rooting this at the unclipped .folio-thumbnails made every thumb in the
-  // document report as intersecting on the first observation, which rasterised
-  // every page at once on open. Same element the scroll effect above targets.
-  //
-  // Two-way (rather than latching on first sight, like it used to) so thumbnails
-  // that scroll away drop their backing store again; otherwise a long document
-  // accumulates a canvas per page visited and never gives one back.
-  const render = useNearViewport(buttonRef, '300px 0px', '.folio-sidebar__body');
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    // Scrolled away: 0x0 frees the raster memory, matching Page.tsx.
-    if (!render) {
-      canvas.width = 0;
-      canvas.height = 0;
-      return;
-    }
-
-    const controller = new AbortController();
-    getEngine()
-      .renderPage(pageNumber, {
-        scale: THUMB_SCALE,
-        canvas,
-        signal: controller.signal,
-        invert: dark,
-        tint,
-      })
-      .catch(() => {});
-    return () => controller.abort();
-  }, [render, pageNumber, dark, tint]);
-
-  return (
-    <button
-      ref={buttonRef}
-      type="button"
-      data-page-number={pageNumber}
-      className={`folio-thumb${active ? ' is-active' : ''}`}
-      aria-label={`Go to page ${pageNumber}`}
-      title={`Go to page ${pageNumber}`}
-      aria-current={active ? 'page' : undefined}
-      onClick={onSelect}
-    >
-      <span
-        className="folio-thumb__frame"
-        style={intrinsic ? { aspectRatio: `${intrinsic.width} / ${intrinsic.height}` } : undefined}
-      >
-        <canvas ref={canvasRef} className="folio-thumb__canvas" />
-      </span>
-      <span className="folio-thumb__num">{pageNumber}</span>
-    </button>
   );
 }

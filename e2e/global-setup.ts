@@ -11,6 +11,7 @@ export default async function globalSetup(): Promise<void> {
   await writeFixture('e2e/fixtures/form.pdf', await buildEmptyForm());
   await writeFixture('e2e/fixtures/filled-form.pdf', await buildFilledForm());
   await writeFixture('e2e/fixtures/addresses.pdf', await buildAddresses());
+  await writeFixture('e2e/fixtures/pages.pdf', await buildNumberedPages());
 }
 
 /** The page size every address in {@link buildAddresses} is positioned against. */
@@ -143,6 +144,24 @@ async function buildEmptyForm(): Promise<Uint8Array> {
   const page2 = doc.addPage([420, 560]);
   page2.drawText('Page two', { x: 40, y: 500, size: 18, font });
 
+  return doc.save();
+}
+
+/**
+ * Four pages, each saying which position it started in.
+ *
+ * Page operations are otherwise hard to assert on: after a reorder every page
+ * still renders, and only the words on them say whether the right one moved.
+ * The word is the page's whole text content, so a spec can read it straight off
+ * the text layer. Portrait, so a quarter turn is visible in the layout box.
+ */
+async function buildNumberedPages(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (const label of ['ONE', 'TWO', 'THREE', 'FOUR']) {
+    const page = doc.addPage([420, 594]);
+    page.drawText(label, { x: 60, y: 300, size: 56, font });
+  }
   return doc.save();
 }
 

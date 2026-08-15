@@ -1,6 +1,8 @@
 import { PDFHexString, PDFName, PDFNumber, type PDFDocument, type PDFPage } from 'pdf-lib';
 
-import type { Annotation, NormalizedRect } from './types';
+import { boxRect, scaleHeight, scaleWidth, type UserBox } from '@/core/pdf/pageGeometry';
+
+import type { Annotation } from './types';
 
 /**
  * Encode a PDF text string for the /Contents entry. `PDFHexString.fromText`
@@ -60,25 +62,27 @@ export function stampAnnotations(pdf: PDFDocument, annotations: Annotation[]): v
 
 function buildHighlight(pdf: PDFDocument, page: PDFPage, annotation: Annotation) {
   if (annotation.rects.length === 0) return null;
-  const { width: pw, height: ph } = page.getSize();
 
-  // Convert each line's rect once, then derive both the quad points and the
-  // enclosing Rect from the same boxes.
-  const boxes = annotation.rects.map((rect) => toPdfRect(rect, pw, ph));
+  // Each line's rect, as the axis-aligned user-space box it covers. A
+  // /QuadPoints box is positioned by extent, not drawn, so the reader turns
+  // it along with the rest of the page and it needs no rotation of its own
+  // (see core/pdf/pageGeometry.ts) -- unlike bake.ts's stampers, which draw
+  // content and so have to counter-rotate.
+  const boxes = annotation.rects.map((rect) => boxRect(page, rect));
 
   // One quad per highlighted line. Per PDF 32000-1 12.5.6.10 the eight numbers
   // are the corners in the order upper-left, upper-right, lower-left,
   // lower-right — not a simple rectangle winding.
   const quads: number[] = [];
-  for (const { x1, y1, x2, y2 } of boxes) {
-    quads.push(x1, y2, x2, y2, x1, y1, x2, y1);
+  for (const { x0, y0, x1, y1 } of boxes) {
+    quads.push(x0, y1, x1, y1, x0, y0, x1, y0);
   }
 
   const box = boundingBox(boxes);
   const dict = pdf.context.obj({
     Type: 'Annot',
     Subtype: 'Highlight',
-    Rect: [box.x1, box.y1, box.x2, box.y2],
+    Rect: [box.x0, box.y0, box.x1, box.y1],
     QuadPoints: quads.map((n) => PDFNumber.of(n)),
     C: rgbTriplet(annotation.color),
     // The highlighted text itself: what a screen reader announces for this
@@ -93,19 +97,24 @@ function buildHighlight(pdf: PDFDocument, page: PDFPage, annotation: Annotation)
 function buildNote(pdf: PDFDocument, page: PDFPage, annotation: Annotation) {
   const anchor = annotation.anchor;
   if (!anchor) return null;
-  const { width: pw, height: ph } = page.getSize();
 
   // A /Text annotation's rect is the icon's box; readers size the icon
-  // themselves. 20pt is the conventional square Acrobat uses.
+  // themselves. 20pt is the conventional square Acrobat uses -- a fixed
+  // point size, not a fraction of the page, so it is expressed as a fraction
+  // of the *displayed* page (dividing by the full-page length scaleWidth/
+  // scaleHeight would return for fraction 1) before boxRect turns it. Like
+  // the highlight box above, this is extent rather than drawn content, so it
+  // needs no rotation of its own.
   const size = 20;
-  const x = anchor.x * pw;
-  const y = ph - anchor.y * ph - size;
+  const widthFraction = size / scaleWidth(page, 1);
+  const heightFraction = size / scaleHeight(page, 1);
+  const box = boxRect(page, { x: anchor.x, y: anchor.y, width: widthFraction, height: heightFraction });
 
   const dict = pdf.context.obj({
     Type: 'Annot',
     Subtype: 'Text',
     Name: 'Comment',
-    Rect: [x, y, x + size, y + size],
+    Rect: [box.x0, box.y0, box.x1, box.y1],
     // The reviewer's comment is the annotation's content. Fall back to the
     // captured page text so a note left empty still says what it marks.
     Contents: pdfText(annotation.note?.trim() || annotation.text || ''),
@@ -117,23 +126,12 @@ function buildNote(pdf: PDFDocument, page: PDFPage, annotation: Annotation) {
   return pdf.context.register(dict);
 }
 
-/** Normalized (top-left origin) rect → PDF user space (bottom-left origin). */
-function toPdfRect(rect: NormalizedRect, pw: number, ph: number) {
-  const x1 = rect.x * pw;
-  const x2 = (rect.x + rect.width) * pw;
-  const y2 = ph - rect.y * ph;
-  const y1 = ph - (rect.y + rect.height) * ph;
-  return { x1, y1, x2, y2 };
-}
-
-type PdfRect = ReturnType<typeof toPdfRect>;
-
-function boundingBox(boxes: PdfRect[]) {
+function boundingBox(boxes: UserBox[]): UserBox {
   return {
-    x1: Math.min(...boxes.map((b) => b.x1)),
-    y1: Math.min(...boxes.map((b) => b.y1)),
-    x2: Math.max(...boxes.map((b) => b.x2)),
-    y2: Math.max(...boxes.map((b) => b.y2)),
+    x0: Math.min(...boxes.map((b) => b.x0)),
+    y0: Math.min(...boxes.map((b) => b.y0)),
+    x1: Math.max(...boxes.map((b) => b.x1)),
+    y1: Math.max(...boxes.map((b) => b.y1)),
   };
 }
 

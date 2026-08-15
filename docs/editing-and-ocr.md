@@ -32,7 +32,9 @@ Four capabilities:
 > a corrupt file. Embedded images can be moved, resized, and replaced the same
 > way, except a rotated or skewed image can only be replaced (moving or
 > resizing it is refused), and an image inside a Form XObject is not editable
-> yet at all. Page operations, redaction, and non-Latin text remain on the
+> yet at all. Deleting, reordering, and rotating pages ship (see
+> [page-operations.md](page-operations.md)); inserting, splitting, and merging
+> pages, along with redaction and non-Latin text, remain on the
 > [roadmap](../ROADMAP.md).
 
 ## Editing: text boxes, images, and check marks
@@ -376,6 +378,25 @@ the desktop app must work offline, so the entire OCR runtime is self-hosted:
 A `.js` `corePath` is passed to tesseract.js, which pins the SIMD-LSTM core and
 skips its runtime SIMD auto-detection. Baseline wasm SIMD is supported by
 WebView2 and modern browsers, Folio's only targets.
+
+### Not in the Chrome extension
+
+OCR is absent from the [Chrome extension](../extensions/chrome/README.md) build:
+the commands and the menu row are compiled out, so the feature does not appear
+rather than appearing and failing.
+
+Two reasons, and the second is the blocking one.
+
+The runtime is 8.4 MB, which was 77% of the extension's packed size, and the
+Chrome Web Store bans remote code, so it cannot be fetched on demand: it either
+ships in the package or it does not exist there.
+
+More importantly, it would not work as written. The paths above are **absolute**
+(`/tesseract/...`), and the extension viewer is served from
+`chrome-extension://<id>/dist/`, where an absolute path resolves above the
+viewer and 404s. Bundling the assets would not have been enough. Making OCR work
+in the browser extension means giving `recognize.ts` a base-relative asset path
+first; `--with-ocr` alone only makes the package bigger.
 
 ### Limitations
 

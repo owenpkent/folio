@@ -70,6 +70,27 @@ const ICONS = {
   'chevron-left': <path d="M15 18l-6-6 6-6" />,
   'chevron-right': <path d="M9 18l6-6-6-6" />,
   'chevron-down': <path d="M6 9l6 6 6-6" />,
+  'chevron-up': <path d="M6 15l6-6 6 6" />,
+  undo: (
+    <>
+      <path d="M9 14L4 9l5-5" />
+      <path d="M4 9h11a5 5 0 0 1 0 10h-4" />
+    </>
+  ),
+  // Three quarters of a circle with an arrowhead on the open end, so the two
+  // read as mirrored turns of the same shape.
+  'rotate-left': (
+    <>
+      <path d="M4 12a8 8 0 1 0 2.3-5.6" />
+      <path d="M4 4v5h5" />
+    </>
+  ),
+  'rotate-right': (
+    <>
+      <path d="M20 12a8 8 0 1 1-2.3-5.6" />
+      <path d="M20 4v5h-5" />
+    </>
+  ),
   x: (
     <>
       <line x1="18" y1="6" x2="6" y2="18" />
@@ -243,6 +264,20 @@ const ICONS = {
       <path d="M20 8V5a1 1 0 0 0-1-1h-3" />
       <path d="M4 16v3a1 1 0 0 0 1 1h3" />
       <path d="M20 16v3a1 1 0 0 1-1 1h-3" />
+    </>
+  ),
+  // Two overlapping pages, evoking several documents folding into one -- the
+  // File > Combine PDFs… menu entry.
+  combine: (
+    <>
+      <rect x="3" y="4" width="12" height="15" rx="2" />
+      <rect x="9" y="7" width="12" height="15" rx="2" />
+    </>
+  ),
+  plus: (
+    <>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
     </>
   ),
 } satisfies Record<string, ReactNode>;

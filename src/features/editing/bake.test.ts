@@ -1,8 +1,8 @@
 // @vitest-environment node
 import zlib from 'node:zlib';
 
-import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { describe, expect, it } from 'vitest';
+import { degrees, PDFDocument, StandardFonts } from 'pdf-lib';
+import { describe, expect, it, vi } from 'vitest';
 
 import { hexToRgb01, standardFontFor, stampEdits, wrapText } from './bake';
 import { MARK_GLYPH_PATHS, MARK_GLYPH_STROKE_WIDTH, type EditItem } from './types';
@@ -220,5 +220,39 @@ describe('stampEdits', () => {
     expect(stream).toContain('78 78 l');
     expect(stream).toContain('78 22 m');
     expect(stream).toContain('22 78 l');
+  });
+
+  it('places an image and a mark where the user saw them on a 90°-rotated page', async () => {
+    // Same fixture pageGeometry.test.ts checks placeRect/offsetInFrame
+    // against: a 400x600 MediaBox turned 90 degrees (displayed as 600x400),
+    // and a rect a quarter in from the left, half way down, half the
+    // displayed width, a quarter of the displayed height. placeRect resolves
+    // that to {x: 300, y: 150, width: 300, height: 100, rotate: degrees(90)}.
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([400, 600]);
+    page.setRotation(degrees(90));
+    const rect = { x: 0.25, y: 0.5, width: 0.5, height: 0.25 };
+
+    const drawImage = vi.spyOn(page, 'drawImage');
+    const drawSvgPath = vi.spyOn(page, 'drawSvgPath');
+
+    await stampEdits(doc, [
+      { ...imageEdit, rect },
+      { ...markEdit, rect },
+    ]);
+
+    expect(drawImage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ x: 300, y: 150, width: 300, height: 100, rotate: degrees(90) }),
+    );
+    // The mark is anchored at the box's own top edge: offsetInFrame(placement,
+    // 0, height) on this turn sends the box's own "up" 100 units in negative
+    // user-x (see offsetInFrame's 90-degree case), landing at x=300-100=200,
+    // y unchanged at 150. Scale is still width/100 (=300/100=3): marks are
+    // square, so width and height agree.
+    expect(drawSvgPath).toHaveBeenCalledWith(
+      MARK_GLYPH_PATHS.check,
+      expect.objectContaining({ x: 200, y: 150, scale: 3, rotate: degrees(90) }),
+    );
   });
 });

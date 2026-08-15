@@ -28,6 +28,10 @@ export function PdfViewer() {
   const status = useDocumentStore((s) => s.status);
   const error = useDocumentStore((s) => s.error);
   const fingerprint = useDocumentStore((s) => s.info?.fingerprint);
+  // A page operation keeps the fingerprint (it is the same logical document)
+  // but can change what page 1 is, and page 1's size is the layout estimate for
+  // every page not yet measured.
+  const docVersion = useDocumentStore((s) => s.docVersion);
 
   const numPages = useViewerStore((s) => s.numPages);
   const scale = useViewerStore((s) => s.scale);
@@ -105,7 +109,7 @@ export function PdfViewer() {
     return () => {
       cancelled = true;
     };
-  }, [status, fingerprint, recomputeFit]);
+  }, [status, fingerprint, docVersion, recomputeFit]);
 
   // Recompute the fit scale when the fit mode changes or the container resizes.
   useEffect(() => {

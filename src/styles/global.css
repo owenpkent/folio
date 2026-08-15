@@ -631,6 +631,174 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+/* Page operations: selection, drag-to-reorder, and the organizer grid.
+   The card wraps a page's navigation button together with its selection
+   checkbox, which has to be a sibling of that button rather than inside it. */
+.folio-thumbnails-panel {
+  display: flex;
+  flex-direction: column;
+  /* Fills .folio-sidebar__body's box (a definite height: it stretches to
+     .folio-sidebar's height as a row flex item) so .folio-thumbnails-scroll
+     below has a bounded height of its own to scroll within, and the action
+     bar has a fixed amount of room below it rather than sharing scrollable
+     space with the page list. */
+  height: 100%;
+  min-height: 0;
+  gap: 12px;
+}
+/* The list scrolls in its own box, separate from the action bar: see the
+   comment in Thumbnails.tsx on why that box can no longer be
+   .folio-sidebar__body itself. */
+.folio-thumbnails-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.folio-page-card {
+  position: relative;
+  /* Forms a stacking context (position: relative + an explicit z-index, even
+     0) so the check button's z-index below is scoped to this card instead of
+     escaping to whichever ancestor context is nearest. Belt and braces
+     alongside .folio-thumbnails-scroll above: that is what keeps a card from
+     ever sitting under .folio-page-actions in the first place, but a card
+     should not depend on that to keep its own controls layered correctly
+     among themselves regardless. */
+  z-index: 0;
+  display: flex;
+  justify-content: center;
+}
+.folio-page-card__check {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 2px solid var(--folio-border);
+  border-radius: 4px;
+  background: var(--folio-surface);
+  cursor: pointer;
+  /* Out of the way until it is useful: the checkbox appears on hover, on focus,
+     or once the page is picked out, so a sidebar being used for reading is not
+     covered in controls. It stays in the tab order and in the accessibility
+     tree throughout, so this is a visual affordance, not a gate. */
+  opacity: 0;
+  transition: opacity 120ms ease-in-out;
+}
+.folio-page-card:hover .folio-page-card__check,
+.folio-page-card__check:focus-visible,
+.folio-page-card.is-selected .folio-page-card__check {
+  opacity: 1;
+}
+.folio-page-card.is-selected .folio-page-card__check {
+  border-color: var(--folio-accent);
+  background: var(--folio-accent);
+}
+/* The tick, drawn rather than iconised: two strokes of a border, rotated. */
+.folio-page-card.is-selected .folio-page-card__check::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0;
+  width: 4px;
+  height: 9px;
+  border: solid var(--folio-surface);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.folio-page-card.is-selected .folio-thumb__frame {
+  border-color: var(--folio-accent);
+}
+.folio-page-card.is-dragging {
+  opacity: 0.4;
+}
+.folio-page-drop {
+  flex: 0 0 auto;
+  background: var(--folio-accent);
+  border-radius: 2px;
+}
+.folio-thumbnails .folio-page-drop {
+  width: 132px;
+  height: 3px;
+  margin: -6px 0;
+}
+.folio-page-grid .folio-page-drop {
+  width: 3px;
+  align-self: stretch;
+  margin: 0 -6px;
+}
+.folio-page-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+}
+/* The organizer exists precisely because one column of small thumbnails is a
+   poor place to move page 4 to page 90, but without this override its cards
+   render at the sidebar's own 132px and the 1100px dialog just wraps more of
+   the same postage stamps. See OrganizePagesModal's GRID_SCALE for how the
+   rasterisation size is kept matched to this. */
+.folio-page-grid .folio-thumb__frame {
+  width: 210px;
+}
+.folio-page-actions {
+  /* A row of its own below .folio-thumbnails-scroll (see global.css and
+     Thumbnails.tsx), not a layer floating on top of it: this used to be
+     position: sticky, which kept it visible by overlapping whatever card
+     the scroll position put underneath it -- including that card's own
+     checkbox, so a click meant for the checkbox could land on a button here
+     instead. In the organizer's footer this was always inert (nothing
+     between it and .folio-organize__footer ever scrolls), so removing it
+     changes nothing there. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--folio-border);
+  background: var(--folio-surface);
+}
+.folio-page-actions__count {
+  margin: 0;
+  color: var(--folio-text-muted);
+  font-size: 0.85rem;
+}
+.folio-page-actions__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.folio-modal--wide {
+  width: min(1100px, 92vw);
+  max-width: none;
+}
+.folio-organize {
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+}
+.folio-organize__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+.folio-organize__footer {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+/* The organizer's own action bar sits in a footer that already has a border. */
+.folio-organize__footer .folio-page-actions {
+  flex: 1 1 auto;
+  border-top: none;
+  padding: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .folio-page-card__check {
+    transition: none;
+  }
+}
+
 /* Outline */
 .folio-outline,
 .folio-outline__children {
@@ -1705,6 +1873,72 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Combine PDFs ---- */
+.folio-combine-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Same convention as .folio-search__results: an unbounded list inside a
+     modal/dropdown gets its own scroll region rather than pushing the
+     header and footer off-screen. Without this, a dozen-plus staged files
+     clipped the close button off the top and Cancel/Combine off the bottom. */
+  max-height: 320px;
+  overflow-y: auto;
+}
+.folio-combine-list__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--folio-border);
+  border-radius: var(--folio-radius-sm);
+}
+.folio-combine-list__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.folio-combine-list__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.folio-combine-list__meta {
+  color: var(--folio-text-muted);
+  font-size: 0.8125rem;
+}
+.folio-combine-list__meta.is-error {
+  color: var(--folio-danger);
+}
+.folio-combine-list__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.folio-combine-progress {
+  margin-top: 8px;
+}
+/* Not a bare `p` selector: that would also match the sibling .folio-sr-only
+   paragraph, and this rule's specificity would win over .folio-sr-only's own
+   `margin: -1px` (part of how it clips itself out of the visible layout),
+   nudging that paragraph's invisible 1x1px box out of position. */
+.folio-combine-progress__text {
+  margin: 0 0 4px;
+  font-size: 0.8125rem;
+  color: var(--folio-text-muted);
+}
+.folio-modal__error {
+  margin: 8px 0 0;
+  color: var(--folio-danger);
+  font-size: 0.8125rem;
+}
+
 /* ---- Signing (modal fields + digital signatures) ---- */
 .folio-field {
   display: flex;
@@ -1717,6 +1951,9 @@ kbd {
   color: var(--folio-text-muted);
 }
 .folio-link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   align-self: flex-start;
   margin-bottom: 12px;
   padding: 0;
@@ -1726,8 +1963,12 @@ kbd {
   cursor: pointer;
   font: inherit;
 }
-.folio-link-button:hover {
+.folio-link-button:hover:not(:disabled) {
   text-decoration: underline;
+}
+.folio-link-button:disabled {
+  color: var(--folio-text-muted);
+  cursor: default;
 }
 .folio-add-identity {
   border: 1px solid var(--folio-border);
@@ -1887,13 +2128,15 @@ kbd {
 /* Scrollbars */
 .folio-viewer::-webkit-scrollbar,
 .folio-sidebar__body::-webkit-scrollbar,
-.folio-search__results::-webkit-scrollbar {
+.folio-search__results::-webkit-scrollbar,
+.folio-combine-list::-webkit-scrollbar {
   width: 12px;
   height: 12px;
 }
 .folio-viewer::-webkit-scrollbar-thumb,
 .folio-sidebar__body::-webkit-scrollbar-thumb,
-.folio-search__results::-webkit-scrollbar-thumb {
+.folio-search__results::-webkit-scrollbar-thumb,
+.folio-combine-list::-webkit-scrollbar-thumb {
   background: var(--folio-border);
   border: 3px solid transparent;
   background-clip: content-box;

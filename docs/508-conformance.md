@@ -216,6 +216,21 @@ capability at all), so this is a discovery gap rather than a functional one. The
 fix is a links panel listing every address in the document, reachable like any
 other sidebar tab, which would also give the feature a copy-all.
 
+**Page operations do not add to this gap.** Deleting, reordering, and rotating
+pages (see [page-operations.md](page-operations.md)) were built with a full
+non-pointer path rather than a pointer-first one with keys bolted on. Each page
+in the thumbnail sidebar and in the organizer carries a real
+`role="checkbox"` control with an accessible name (`Select page 3`) and an
+`aria-checked` state, so picking pages out is announced rather than inferred
+from a highlight; `Space` on a page toggles it, `Delete` removes the selection,
+`Alt`+`↑`/`↓` moves it, and `Ctrl/Cmd`+`[`/`]` turns it. Every operation
+announces its result through the polite live region ("Moved 2 pages down").
+Dragging a thumbnail is bound to mouse and pen only, deliberately: in the
+sidebar a vertical touch-drag is how the panel scrolls, so touch reorders with
+the selection bar's move buttons, which are the same commands the keyboard
+uses. Drag is therefore a shortcut for something two other input methods reach
+directly, which is the 302.1 / 502.2.1 position rather than an exception to it.
+
 ### PDF/UA export (504.2.2)
 
 > **504.2.2 PDF Export.** Authoring tools capable of exporting PDF files that

@@ -1,5 +1,6 @@
 import { commandRegistry } from '@/commands';
 import { pushToast } from '@/components/common';
+import { usePageOpsStore } from '@/features/pageops/store';
 import { useSigningStore } from '@/features/signing';
 import { reloadEditedBytes } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
@@ -44,7 +45,12 @@ export function registerTextEditCommands(): void {
     when: () => ready() && useTextEditStore.getState().active,
     run: async () => {
       const bytes = useTextEditStore.getState().popUndo();
-      if (bytes) await reloadEditedBytes(bytes);
+      if (!bytes) return;
+      await reloadEditedBytes(bytes);
+      // Page ops keep a separate undo stack bound to the same chord (see
+      // pageops/commands.ts); its snapshots describe bytes from before this
+      // reload and would silently discard it if used now.
+      usePageOpsStore.getState().clearUndo();
     },
   });
 }

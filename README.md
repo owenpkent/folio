@@ -92,9 +92,18 @@ Folio rendering a two-page form PDF, in light and dark:
   leaving the original image untouched for any other page still drawing it
 - Place a **check mark** anywhere, for forms that print an empty box with no
   interactive field behind it; a placed mark can be switched to a cross
+- **Delete, reorder, and rotate pages**, from the thumbnail sidebar or a
+  full-window page organizer: drag to move, or pick pages out and use the
+  keyboard throughout. Every change is one undo step, and deleting a page sweeps
+  its content out of the file rather than only unlinking it, so the text and
+  images on it are not left behind for a parser to find. See
+  [page operations](docs/page-operations.md)
 - **OCR** scanned pages with a bundled, offline English engine (tesseract.js): the
   recognized text becomes selectable on screen, is searchable in-app, and is baked
   into the saved PDF as an invisible searchable layer
+- **Combine PDFs** into one document: pick several files from the File menu (or
+  drop them onto the window together), reorder them in the list, and merge; the
+  result opens in the viewer as a new document, ready to review and save
 - In-place text edits use a substituted standard font, one run at a time, with
   no paragraph reflow, and text inside a form the page draws more than once is
   still refused. Rotated and skewed images can be replaced but not moved or
@@ -117,8 +126,8 @@ Folio rendering a two-page form PDF, in light and dark:
 
 **Desktop and distribution**
 - EV-signed Windows installer; installs per-user and **auto-updates** from GitHub Releases
-- Set Folio as your **default PDF viewer**: double-click a `.pdf` to open it in Folio (there's a one-click "make default" action on the start screen)
-- Open PDFs from your browser: a Chrome extension renders them in Folio, or hands off to the desktop app via a `folio://` deep link
+- Set Folio as your **default PDF viewer**: pick it from *Open with*, or use the start-screen shortcut into *Settings → Default apps*, and double-clicking a `.pdf` opens it in Folio (Windows reserves the actual switch for the user, so Folio cannot silently take over a default the user already chose)
+- **Replace Chrome's PDF reader**: a Chrome extension opens PDFs in Folio's viewer instead, catching them by content-type as well as by `.pdf` URL, so documents served from behind an app (`/download?id=…`) are caught too. Choose per-site, or turn it off; or hand the document to the desktop app via a `folio://` deep link
 - **About dialog** with app version, commit hash, and build date, plus a manual "Check for updates" action (desktop)
 
 **AI-ready**
@@ -221,7 +230,10 @@ folio/
 │  ├─ assets/            app-icon source (folio-logo.svg)
 │  └─ test/              test setup
 ├─ src-tauri/            Rust backend (file IO, native shell)
+├─ extensions/chrome/    Chrome extension: Folio's viewer instead of Chrome's PDF reader
 ├─ extensions/vscode/    VS Code extension: view PDFs in an editor tab (preview)
+├─ e2e/                  Playwright end-to-end suite
+├─ scripts/              build, release, and version/manifest parity checks
 └─ docs/                 architecture, accessibility, theming, plugins, AI
 ```
 
@@ -234,6 +246,7 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Accessibility](docs/accessibility.md)
 - [Section 508 conformance](docs/508-conformance.md) (what is supported, and the open gaps)
 - [Editing and OCR](docs/editing-and-ocr.md)
+- [Page operations](docs/page-operations.md)
 - [Forms and signatures](docs/forms-and-signatures.md)
 - [Theming](docs/theming.md)
 - [Writing plugins](docs/plugins.md)
@@ -241,7 +254,8 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Testing](docs/testing.md)
 - [Releasing](docs/releasing.md) (signed installer + auto-updater) and the [release checklist](docs/release-checklist.md)
 - [VS Code extension](extensions/vscode/README.md) (preview: view PDFs in an editor tab)
-- [Chrome extension](extensions/chrome/README.md) (preview: open PDFs in Folio from the browser)
+- [Chrome extension](extensions/chrome/README.md) (replace Chrome's PDF reader with Folio's viewer, or hand the document to the desktop app)
+- [Browser extension privacy policy](docs/browser-extension-privacy.md)
 - [Roadmap](ROADMAP.md)
 
 ## Contributing

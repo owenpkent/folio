@@ -8,6 +8,7 @@ import {
   pickTextItem,
   type PageTextItems,
 } from '@/core/pdf';
+import { usePageOpsStore } from '@/features/pageops/store';
 import { reloadEditedBytes } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
 import { formWidgetAt } from '@/state/formsLayer';
@@ -172,6 +173,10 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
         // nothing to compensate for in the catch block.
         useTextEditStore.getState().pushUndo(bytes);
         await reloadEditedBytes(result);
+        // Page ops keep a separate undo stack bound to the same chord (see
+        // pageops/commands.ts); its snapshots describe bytes from before this
+        // edit and would silently discard it if used now.
+        usePageOpsStore.getState().clearUndo();
         useTextEditStore.getState().endSession();
       } catch (error) {
         const message =

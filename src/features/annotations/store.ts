@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { uid } from '@/core/id';
+
 import type { Annotation, NormalizedRect } from './types';
 
 /**
@@ -8,14 +10,6 @@ import type { Annotation, NormalizedRect } from './types';
  * you review. Saving a copy writes them into that copy as real PDF annotations
  * — see `stampAnnotations` in ./bake.ts.
  */
-
-function uid(): string {
-  try {
-    return crypto.randomUUID();
-  } catch {
-    return `anno-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
-  }
-}
 
 const storageKey = (fingerprint: string) => `folio.annotations.${fingerprint}`;
 
@@ -47,6 +41,8 @@ interface AnnotationState {
   moveNote(id: string, anchor: { x: number; y: number }): void;
   setNote(id: string, note: string): void;
   remove(id: string): void;
+  /** Replace the whole collection: page ops rewriting page numbers in bulk, or restoring an undo snapshot. */
+  replaceAll(annotations: Annotation[]): void;
 }
 
 export const useAnnotationStore = create<AnnotationState>((set, get) => {
@@ -79,7 +75,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => {
 
     addHighlight: (pageNumber, rects, text, color) => {
       const annotation: Annotation = {
-        id: uid(),
+        id: uid('anno'),
         type: 'highlight',
         pageNumber,
         rects,
@@ -94,7 +90,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => {
 
     addNote: (pageNumber, anchor, contextText, color, rects = []) => {
       const annotation: Annotation = {
-        id: uid(),
+        id: uid('anno'),
         type: 'note',
         pageNumber,
         rects,
@@ -125,6 +121,11 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => {
 
     remove: (id) => {
       set((s) => ({ annotations: s.annotations.filter((a) => a.id !== id) }));
+      persist();
+    },
+
+    replaceAll: (annotations) => {
+      set({ annotations });
       persist();
     },
   };
