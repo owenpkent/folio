@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { uid } from '@/core/id';
+
 import {
   DEFAULT_FONT_SIZE_PT,
   DEFAULT_MARK_COLOR,
@@ -21,14 +23,6 @@ import {
  * features/signatures/store. The `selectedId` / `focusId` fields are
  * transient UI state and are never persisted.
  */
-
-function uid(): string {
-  try {
-    return crypto.randomUUID();
-  } catch {
-    return `edit-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
-  }
-}
 
 const storageKey = (fingerprint: string) => `folio.edits.${fingerprint}`;
 
@@ -118,7 +112,7 @@ export const useEditStore = create<EditState>((set, get) => {
 
     addText: (pageNumber, rect) => {
       const item: TextEdit = {
-        id: uid(),
+        id: uid('edit'),
         kind: 'text',
         pageNumber,
         rect,
@@ -136,7 +130,7 @@ export const useEditStore = create<EditState>((set, get) => {
 
     addImage: (pageNumber, dataUrl, mime, rect) => {
       const item: ImageEdit = {
-        id: uid(),
+        id: uid('edit'),
         kind: 'image',
         pageNumber,
         rect,
@@ -151,7 +145,7 @@ export const useEditStore = create<EditState>((set, get) => {
 
     addMark: (pageNumber, rect, glyph) => {
       const item: MarkEdit = {
-        id: uid(),
+        id: uid('edit'),
         kind: 'mark',
         pageNumber,
         rect,

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Folio PDF Viewer options</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Folio PDF Viewer</h1>
+
+      <form id="form">
+        <fieldset>
+          <legend>When you open a PDF</legend>
+
+          <div class="choice">
+            <input type="radio" id="mode-browser" name="mode" value="browser" aria-describedby="mode-browser-desc" />
+            <div>
+              <label for="mode-browser">Open it in Folio's viewer</label>
+              <p id="mode-browser-desc">
+                Replaces Chrome's built-in PDF reader. You can still hand the document to
+                the desktop app at any time.
+              </p>
+            </div>
+          </div>
+
+          <div class="choice">
+            <input type="radio" id="mode-desktop" name="mode" value="desktop" aria-describedby="mode-desktop-desc" />
+            <div>
+              <label for="mode-desktop">Leave PDFs to Chrome</label>
+              <p id="mode-desktop-desc">
+                Chrome's reader stays in charge. The toolbar button and right-click menu
+                still open the current PDF in the Folio desktop app.
+              </p>
+            </div>
+          </div>
+
+          <div class="choice">
+            <input type="radio" id="mode-off" name="mode" value="off" aria-describedby="mode-off-desc" />
+            <div>
+              <label for="mode-off">Turn the extension off</label>
+              <p id="mode-off-desc">Folio does nothing until you turn it back on.</p>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Sites to leave alone</legend>
+          <label for="excluded">One site per line</label>
+          <p id="excluded-help">
+            PDFs on these sites open in Chrome's reader as usual. Subdomains are included,
+            so <code>example.com</code> also covers <code>docs.example.com</code>.
+          </p>
+          <textarea
+            id="excluded"
+            name="excluded"
+            rows="6"
+            spellcheck="false"
+            autocapitalize="off"
+            autocorrect="off"
+            aria-describedby="excluded-help"
+            placeholder="example.com"
+            maxlength="4000"
+          ></textarea>
+        </fieldset>
+
+        <div class="actions">
+          <button type="submit">Save</button>
+          <!-- Assertive: the user pressed a button and is owed the outcome now.
+               Kept in the DOM at all times so screen readers observe the region. -->
+          <p id="status" role="status" aria-live="assertive"></p>
+        </div>
+      </form>
+    </main>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

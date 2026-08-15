@@ -8,6 +8,41 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The Chrome extension grew up.** It was a preview that only caught URLs
+  ending in `.pdf`, which misses most PDFs served from behind an application
+  (`/download?id=123`). A second `declarativeNetRequest` rule now matches the
+  response's content-type. The two rules are deliberately not interchangeable:
+  the URL rule fires *before the request is sent*, so the origin serves nothing,
+  while the content-type rule can only fire once the response has arrived, so
+  the PDF is fetched, discarded, and fetched again. The URL rule takes priority
+  and the content-type rule is the catch-all underneath it.
+- **An options page for the extension**, with three modes -- open PDFs in Folio's
+  viewer, leave them to the browser, or turn the extension off -- plus a per-site
+  exclusion list covering subdomains. Turning interception off removes the
+  redirect rules rather than leaving them installed and second-guessing them.
+  Keyboard-operable and screen-reader-labeled, and it follows the OS colour
+  scheme along with `prefers-contrast` and `prefers-reduced-motion`.
+- **File → Download original**, for a document opened from a URL in the browser.
+  A PDF link the site marked as a download is opened in the viewer rather than
+  downloaded, because the URL rule matches before any response headers exist, so
+  the untouched file stays one click away. It is fetched into a blob rather than
+  linked with `download`, which is ignored cross-origin and would navigate
+  straight back into the viewer.
+- **A reproducible extension package.** `npm run package:chrome` stages into
+  `extensions/chrome/build/` and emits a `.zip` that is a function of the commit:
+  building the same commit twice gives byte-identical output, which CI verifies
+  by doing exactly that. The archive writer is in-tree because nothing in the
+  dependency set produces deterministic output.
+- **A privacy policy for the extension**, at
+  [docs/browser-extension-privacy.md](docs/browser-extension-privacy.md).
+- **Combine PDFs.** File → Combine PDFs… merges two or more PDFs into a single
+  document. Pick files in the dialog, or drop several PDFs onto the window at
+  once, then reorder or remove them in the list before combining (every control
+  is keyboard-reachable and labelled). The merged document opens in the viewer
+  as a new, unsaved file, so Save asks where to put it rather than writing over
+  any of the inputs. A corrupt or password-protected input fails with a message
+  naming the offending file, and a PDF whose header sits behind up to 1&nbsp;KB
+  of preamble junk (the spec allows it) still combines fine.
 - **Delete, reorder, and rotate pages.** Pages can be picked out in the
   thumbnail sidebar or in a new full-window **Pages → Organize pages** grid, then
   dragged to a new position, moved with **Alt+↑/↓**, turned with **Ctrl+[** and
@@ -38,8 +73,54 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   before they are used: a result that cannot be read back is refused and the open
   document is left untouched.
 
+### Changed
+
+- The extension's toolbar button is enabled only on a page where it does
+  something, instead of being always clickable and usually inert.
+- `manifest.version` is derived from `package.json`, and `npm run check:versions`
+  fails if the checked-in manifest has drifted. A separate check pins the
+  extension's permission surface, so widening it is a deliberate edit rather
+  than a side effect.
+- Source maps no longer ship in the extension package, and the OCR runtime is
+  left out of it: together they took the package from about 17 MB to 4.24 MB
+  (1.26 MB packed). OCR is absent from the UI in that build rather than present
+  and failing on a missing asset.
+- The roadmap no longer lists a browser extension as a non-goal, which it has
+  not been since the preview landed.
+
 ### Fixed
 
+- **A PDF URL containing `&` opened the wrong document.** The extension carries
+  the document's URL in the viewer's fragment un-encoded, and the viewer read it
+  with `URLSearchParams`, which truncated at the first ampersand: a link to
+  `/download?doc=42&fmt=pdf` fetched `/download?doc=42`. The fragment is now read
+  verbatim.
+- `SOURCE_DATE_EPOCH` is honoured when set, so the build date baked into the
+  bundle stops two builds of the same commit from differing.
+- Dependency advisories cleared: `brace-expansion` (dev-only, GHSA-mh99-v99m-4gvg)
+  and `event-listener` (RUSTSEC-2026-0221). `npm audit` and `cargo audit` both
+  report no vulnerabilities.
+
+- **Folio is selectable as the Windows `.pdf` handler.** A PDF downloaded
+  from Chrome kept opening in Acrobat or Edge, and the usual remedy did not
+  work: Folio was absent from *Open with -> Choose another app*, so there was no
+  way to point `.pdf` at it. Tauri's `bundle.fileAssociations` writes the ProgID
+  and the `.pdf` default value, but not the two keys Explorer actually builds
+  the picker from -- `Software\Classes\.pdf\OpenWithProgids` and
+  `Software\Classes\Applications\folio.exe` (with `FriendlyAppName`,
+  `SupportedTypes`, and an open command). `src-tauri/installer.nsh` now writes
+  both, adds an `Application` subkey so the entry is labelled **Folio** rather
+  than "Portable Document Format document", and fires `SHCNE_ASSOCCHANGED` so
+  the picker updates without a shell restart. Uninstall removes only Folio's own
+  `OpenWithProgids` value, leaving other handlers' entries intact.
+
+  What this does *not* do is seize the association: `.pdf`'s current default is
+  held in `UserChoice`, hash-protected so only Explorer can set it, and Chrome's
+  "open downloaded file" is a plain `ShellExecute` that follows it. Reassigning
+  is still a deliberate user action -- via *Open with -> Always*, or the
+  start-screen *Make Folio your default PDF viewer* button, which deep-links to
+  Folio's page in *Settings -> Default apps*. `docs/getting-started.md`
+  troubleshoots the symptom end to end.
 - **Overlays are stamped correctly onto rotated pages.** Placed text, images,
   check marks, signatures, highlights, sticky notes, and the OCR text layer all
   record their position as a fraction of the page *as displayed*, but every
@@ -51,6 +132,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Page geometry is re-measured when the document's bytes change.** The layout
   size cache is keyed by page number and was only refreshed on open, so a page
   that changed shape underneath it kept the box it used to have.
+
+### Security
+
+- The URL handed to the desktop app over `folio://` is scheme-checked before the
+  link is built. It can be recovered from the viewer's fragment, which is chosen
+  by whatever navigated there, so a page could park the user on the viewer with
+  `#file=javascript:…` and wait for a toolbar click. The desktop side already
+  rejected it; this is the outer of two checks rather than the only one.
+- The extension viewer sets `frame-ancestors 'none'`. It must be reachable from
+  any origin for the redirect to work, which also allowed any page to frame it
+  and use load success or failure as an oracle for an authenticated request.
+- The viewer now refuses to fetch anything that is not `http:` or `https:`. The
+  document URL arrives in a fragment from a page navigation, so any site can
+  choose it; `javascript:`, `data:`, and `file:` were previously passed to
+  `fetch` unchecked.
+- The extension's `web_accessible_resources` narrowed from `dist/*` to
+  `dist/index.html`. Only the entry point needs to be reachable from a web
+  origin; the page's own assets are same-origin once it has loaded.
 
 ## [0.5.0] - 2026-08-01
 

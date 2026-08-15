@@ -1,9 +1,10 @@
 import { useState, type DragEvent } from 'react';
 
+import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
-import { Button } from '@/components/common';
+import { Button, pushToast } from '@/components/common';
 import { isTauri, sourceFromFile } from '@/core/document/openDocument';
-import { loadSource, openDocumentViaPicker } from '@/state/actions';
+import { openDocumentViaPicker, openDroppedPdfs } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
 
 /**
@@ -19,9 +20,21 @@ export function EmptyState() {
   const onDrop = async (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'))) {
-      await loadSource(await sourceFromFile(file));
+    const files = Array.from(e.dataTransfer.files ?? []).filter(
+      (file) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'),
+    );
+    if (files.length === 0) return;
+    // Same dispatch point the Tauri native drop listener uses (App.tsx): one
+    // PDF opens normally, two or more open the combine modal. Kept in sync
+    // here rather than re-implemented, and guarded the same way -- a file
+    // that fails to read must not silently drop the rest on the floor.
+    try {
+      const sources = await Promise.all(files.map((file) => sourceFromFile(file)));
+      await openDroppedPdfs(sources);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not read the file';
+      pushToast(`Could not open: ${message}`, 'error');
+      announce(`Could not open the dropped file: ${message}`, true);
     }
   };
 

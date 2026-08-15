@@ -266,6 +266,20 @@ const ICONS = {
       <path d="M20 16v3a1 1 0 0 1-1 1h-3" />
     </>
   ),
+  // Two overlapping pages, evoking several documents folding into one -- the
+  // File > Combine PDFs… menu entry.
+  combine: (
+    <>
+      <rect x="3" y="4" width="12" height="15" rx="2" />
+      <rect x="9" y="7" width="12" height="15" rx="2" />
+    </>
+  ),
+  plus: (
+    <>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof ICONS;

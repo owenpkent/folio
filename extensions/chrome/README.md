@@ -11,11 +11,54 @@ Open PDFs in Folio from the browser, two ways:
 ## Build & load
 
 ```bash
-node extensions/chrome/build.mjs      # builds Folio's web app into dist/, copies the icon
+npm run build:chrome              # stage into extensions/chrome/build/
+npm run package:chrome            # stage, and pack the store .zip
+node extensions/chrome/build.mjs --with-ocr --zip   # …including the OCR runtime
 ```
 
 Then in Chrome: `chrome://extensions` → enable **Developer mode** → **Load
-unpacked** → select `extensions/chrome`.
+unpacked** → select **`extensions/chrome/build`** (not this directory).
+
+The build stages into `build/` rather than in place so it can own the manifest
+version and drop files that should not ship, without those edits showing up as
+churn in the checked-in source. `manifest.version` is derived from
+`package.json`; `npm run check:versions` fails if the checked-in manifest has
+drifted from it.
+
+### Payload
+
+| | Unpacked | Packed |
+| --- | --- | --- |
+| Default | 4.24 MB | 1.26 MB |
+| `--with-ocr` | 12.68 MB | 5.59 MB |
+
+Source maps are excluded: they roughly doubled the package and handed a store
+reviewer several MB of noise.
+
+**OCR is not in the package.** It was 77% of the packed size, and it cannot be
+fetched on demand because the store bans remote code, so it either ships or the
+feature does not exist here. It is also not currently *workable* here:
+`src/features/ocr/recognize.ts` asks for its runtime at absolute paths
+(`/tesseract/…`), which under `chrome-extension://<id>/dist/` resolve above the
+viewer and 404. Bundling the assets would not have made it work. Re-enabling
+means fixing those paths first, not just passing `--with-ocr`.
+
+Builds without OCR drop the commands and the menu row too, so the feature is
+absent rather than present and failing.
+
+### Reproducibility
+
+The `.zip` is a function of the commit: building the same commit twice gives
+byte-identical output. Entries are sorted, timestamps are pinned to the DOS
+epoch, and `SOURCE_DATE_EPOCH` is set from the commit timestamp so the build date
+vite bakes into the bundle stops floating. Verified, not assumed.
+
+The archive is written by `zip.mjs` rather than a dependency, because nothing in
+the tree produced deterministic output.
+
+> Loading it from the command line with `--load-extension` will *appear* to work
+> and silently do nothing: branded Chrome removed that flag in 137. Use the
+> Load unpacked button, or Chromium / Chrome for Testing.
 
 For the desktop hand-off (A) to work, install the Folio desktop app first (it
 registers the `folio://` scheme).
@@ -24,14 +67,57 @@ registers the `folio://` scheme).
 
 | Piece | File |
 | --- | --- |
-| Context menus + toolbar → `folio://open?url=…` | `background.js` |
-| PDF → in-browser viewer redirect (dynamic `declarativeNetRequest`) | `background.js` |
-| The in-browser viewer (Folio web build, loads `#file=<url>`) | `dist/` (generated) + `src/core/document/openFromQuery.ts` |
+| Redirect rules (the interception logic) | `rules.js` |
+| Settings model and validation | `settings.js` |
+| `chrome.storage` access, in one place | `storage.js` |
+| Rule installation, context menus, toolbar | `background.js` |
+| Options page | `options.html` / `options.js` / `options.css` |
+| The in-browser viewer (Folio web build, loads `#file=`) | `dist/` (generated) + `src/core/document/openFromQuery.ts` |
+
+## Settings
+
+Right-click the extension → **Options**, or `chrome://extensions` → Details →
+Extension options. Stored in `chrome.storage.sync`, so they follow the browser
+profile between machines.
+
+- **Open it in Folio's viewer** (default): replaces Chrome's PDF reader.
+- **Leave PDFs to Chrome**: no redirect; the toolbar button and right-click
+  entry still hand the current PDF to the desktop app.
+- **Turn the extension off**: no rules, no menus, nothing.
+- **Sites to leave alone**: one host per line. Subdomains are included, so
+  `example.com` also covers `docs.example.com`.
+
+Turning interception off genuinely uninstalls the redirect rules rather than
+leaving them in place and second-guessing them at redirect time.
+
+### Why there are two redirect rules
+
+They are not interchangeable, and the difference is measurable.
+
+**Rule 1** matches the URL (`…/foo.pdf`) and fires *before the request is sent*.
+The origin serves nothing at all. This is the cheap path, so it carries the
+higher priority.
+
+**Rule 2** matches the response's `content-type`, so it can only fire once the
+response has arrived: the origin serves the whole PDF, Chrome discards it, and
+the viewer fetches it again. That double fetch buys the ability to catch PDFs
+whose URL gives no hint (`/download?id=123`), which is most PDFs served from
+behind an application.
+
+The rules are dynamic rather than a static ruleset because a static rule cannot
+interpolate the matched URL into an extension URL: `extensionPath` takes a fixed
+path, and `regexSubstitution` needs the absolute `chrome-extension://` origin,
+whose id is not known until install.
 
 ## Status & known limits
 
-This is a **preview** and needs a manual Chrome load-test:
+This is a **preview**.
 
+- **`.pdf` links marked as downloads are still opened in the viewer.** A
+  `content-disposition: attachment` on a URL ending in `.pdf` is caught by rule 1
+  at the URL stage, before any response headers exist. Rule 2 does respect the
+  header. Making rule 1 respect it too would move it to the response stage and
+  cost every PDF a double fetch, so the viewer offers a download instead.
 - **Authenticated PDFs:** the in-browser viewer (B) fetches with the extension's
   host permissions, so cookie-gated PDFs generally work. The desktop hand-off
   (A) passes only the *URL* to the app, which re-fetches server-side — that works
@@ -39,5 +125,8 @@ This is a **preview** and needs a manual Chrome load-test:
   native messaging).
 - **Default handler:** Chrome/Windows won't let the extension silently become the
   default; the user confirms via Chrome's prompts / Settings.
-- The `regexFilter` matches `*.pdf` URLs; PDFs served without a `.pdf` path
-  (content-type only) aren't caught yet.
+- **`file://` PDFs are not handled.** Local files need their own interception
+  path and their own verification; the viewer refuses the `file:` scheme rather
+  than half-supporting it.
+  The escape hatch is **File → Download original** in the viewer, which fetches
+  the file as the server sent it.

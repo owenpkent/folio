@@ -17,6 +17,17 @@ export default tseslint.config(
       // Vendored, self-hosted OCR runtime (minified worker + wasm glue).
       'public/tesseract',
       'extensions/vscode/fuzz/_*.cjs',
+      // Staged extension output: a copy of the built web app, plus the
+      // extension sources that are linted at their real location.
+      'extensions/chrome/build',
+      // Output of the pre-Phase-4 build, which staged in place instead of
+      // into build/ (see extensions/chrome/.gitignore, which still lists
+      // these for the same reason: git does not remove ignored files on
+      // pull, so a contributor who built before that change still has them
+      // on disk). The top-level 'dist' pattern above does not cover these:
+      // ESLint's ignore patterns are not gitignore-style path globbing, so
+      // an unanchored 'dist' only matches a literal top-level ./dist, not
+      // extensions/chrome/dist -- verified by lint-ing a file planted there.
       'extensions/chrome/dist',
       'extensions/chrome/icons',
     ],
@@ -79,5 +90,17 @@ export default tseslint.config(
     // Chrome extension service worker: webextension + service worker globals.
     files: ['extensions/chrome/**/*.js'],
     languageOptions: { globals: { ...globals.serviceworker, ...globals.webextensions } },
+  },
+  {
+    // The options page is a document, not a worker: it needs the DOM globals
+    // the block above deliberately withholds.
+    files: ['extensions/chrome/options.js'],
+    languageOptions: { globals: { ...globals.browser, ...globals.webextensions } },
+  },
+  {
+    // Extension unit tests run under Vitest in Node, not in the browser, so
+    // they get Node's globals rather than the service worker's.
+    files: ['extensions/chrome/**/*.test.js'],
+    languageOptions: { globals: { ...globals.node } },
   },
 );
