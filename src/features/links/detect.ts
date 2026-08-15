@@ -9,7 +9,10 @@
  * The matching is deliberately conservative. A false positive here is a menu
  * item offering to copy something that is not an address, which is worse than
  * missing an unusual one: it makes the feature look broken. Anything without a
- * scheme, a `www.`, or a well-known suffix is left alone.
+ * scheme, a `www.`, or a well-known suffix is left alone. That last rule also
+ * costs real addresses: a bare domain (no scheme, no `www.`) under a suffix
+ * that reads as an ordinary English word, e.g. "example.co" or "example.at",
+ * goes undetected too, on purpose. See COMMON_SUFFIXES for the trade.
  */
 
 export type AddressKind = 'email' | 'url';
@@ -30,6 +33,20 @@ export interface DetectedAddress {
  * every abbreviation followed by a word. Requiring a suffix off this list is
  * what separates "example.com" from "etc.and", and it is why the list stays
  * short rather than tracking the full IANA set.
+ *
+ * Deliberately missing every two-letter suffix that is also a common English
+ * word or abbreviation: "it", "at", "in", "us", "me", "be", "no", "co", "de",
+ * and "ie" all used to be here, and each one turned an ordinary sentence
+ * ("the total cost.It was high", "See the appendix.At the end", "File the
+ * report.No changes are needed") into an offer to copy a link that was never
+ * there. A capitalized version of this same problem ("cost.It", "agree.In")
+ * was fixed once already; these are the lowercase remainder of it, and a
+ * syntactic fix does not exist here because a run-together sentence and a
+ * genuine bare domain are character-for-character identical. Trimming them
+ * costs real addresses under those suffixes with no scheme and no `www.`
+ * (see the module doc comment above), which is the accepted trade: a false
+ * positive here reads as a broken feature, a false negative just means
+ * typing `https://` or `www.` in front, both of which still detect fine.
  */
 const COMMON_SUFFIXES = new Set([
   'com',
@@ -45,24 +62,15 @@ const COMMON_SUFFIXES = new Set([
   'ai',
   'app',
   'dev',
-  'co',
-  'me',
   'uk',
-  'us',
   'ca',
   'au',
   'nz',
-  'ie',
-  'de',
   'fr',
   'es',
-  'it',
   'nl',
-  'be',
   'ch',
-  'at',
   'se',
-  'no',
   'dk',
   'fi',
   'pl',
@@ -71,7 +79,6 @@ const COMMON_SUFFIXES = new Set([
   'mx',
   'jp',
   'cn',
-  'in',
   'za',
   'eu',
 ]);

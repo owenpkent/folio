@@ -86,6 +86,32 @@ describe('findAddresses: web addresses', () => {
     expect(values('Check the price.Info about it is elsewhere')).toEqual([]);
   });
 
+  it('leaves the newly-trimmed suffixes alone: an abbreviation glued to a lowercase word', () => {
+    // it/at/in/us/me/be/no/co/de/ie were dropped from COMMON_SUFFIXES (see its
+    // doc comment) for reading as ordinary English words or abbreviations.
+    // The capitalization heuristic in the test above only catches a dropped
+    // space at a SENTENCE boundary (a capitalized next word); these glue an
+    // abbreviation to a lowercase continuation instead, the same shape as
+    // "vs.the" and "etc.and" two tests up, which has no capital letter for
+    // that heuristic to catch. Only dropping the suffix stops these.
+    expect(values('the annual report.co branding stayed')).toEqual([]);
+    expect(values('translate the manual.us edition first')).toEqual([]);
+    expect(values('see Fig.at the bottom of the page')).toEqual([]);
+    expect(values('read No.in the appendix for detail')).toEqual([]);
+    expect(values('the current Rev.no changes are pending')).toEqual([]);
+    expect(values('check the memo.de parting soon')).toEqual([]);
+    expect(values('check the memo.ie leaving today')).toEqual([]);
+  });
+
+  it('keeps detecting io and info, the two suffixes a coincidental word can still collide with', () => {
+    // io and info stay in COMMON_SUFFIXES on purpose (see its doc comment):
+    // neither reads as an English word, so "chapter.io" and "on.info" are an
+    // accepted residual false positive, not something this trim was meant to
+    // fix.
+    expect(values('read chapter.io the results follow')).toEqual(['chapter.io']);
+    expect(values('based on.info the committee decided')).toEqual(['on.info']);
+  });
+
   it('drops a full stop that ends the sentence, not the address', () => {
     expect(values('Read it at example.com.')).toEqual(['example.com']);
     expect(values('Read https://example.com/a.')).toEqual(['https://example.com/a']);
