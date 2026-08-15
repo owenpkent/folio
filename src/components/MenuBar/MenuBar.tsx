@@ -222,6 +222,7 @@ export function MenuBar() {
       label: 'File',
       entries: [
         freeItem('file.open', 'Open', 'folder-open'),
+        freeItem('file.combine', 'Combine PDFs…', 'combine'),
         sep('file-sep-1'),
         docItem('file.save', 'Save', 'save'),
         docItem('file.saveAs', 'Save a copy', 'download'),

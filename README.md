@@ -92,6 +92,9 @@ Folio rendering a two-page form PDF, in light and dark:
 - **OCR** scanned pages with a bundled, offline English engine (tesseract.js): the
   recognized text becomes selectable on screen, is searchable in-app, and is baked
   into the saved PDF as an invisible searchable layer
+- **Combine PDFs** into one document: pick several files from the File menu (or
+  drop them onto the window together), reorder them in the list, and merge; the
+  result opens in the viewer as a new document, ready to review and save
 - In-place text edits use a substituted standard font, one run at a time, with
   no paragraph reflow, and text inside a form the page draws more than once is
   still refused. Rotated and skewed images can be replaced but not moved or

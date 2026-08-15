@@ -1623,6 +1623,72 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Combine PDFs ---- */
+.folio-combine-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Same convention as .folio-search__results: an unbounded list inside a
+     modal/dropdown gets its own scroll region rather than pushing the
+     header and footer off-screen. Without this, a dozen-plus staged files
+     clipped the close button off the top and Cancel/Combine off the bottom. */
+  max-height: 320px;
+  overflow-y: auto;
+}
+.folio-combine-list__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--folio-border);
+  border-radius: var(--folio-radius-sm);
+}
+.folio-combine-list__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.folio-combine-list__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.folio-combine-list__meta {
+  color: var(--folio-text-muted);
+  font-size: 0.8125rem;
+}
+.folio-combine-list__meta.is-error {
+  color: var(--folio-danger);
+}
+.folio-combine-list__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.folio-combine-progress {
+  margin-top: 8px;
+}
+/* Not a bare `p` selector: that would also match the sibling .folio-sr-only
+   paragraph, and this rule's specificity would win over .folio-sr-only's own
+   `margin: -1px` (part of how it clips itself out of the visible layout),
+   nudging that paragraph's invisible 1x1px box out of position. */
+.folio-combine-progress__text {
+  margin: 0 0 4px;
+  font-size: 0.8125rem;
+  color: var(--folio-text-muted);
+}
+.folio-modal__error {
+  margin: 8px 0 0;
+  color: var(--folio-danger);
+  font-size: 0.8125rem;
+}
+
 /* ---- Signing (modal fields + digital signatures) ---- */
 .folio-field {
   display: flex;
@@ -1635,6 +1701,9 @@ kbd {
   color: var(--folio-text-muted);
 }
 .folio-link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   align-self: flex-start;
   margin-bottom: 12px;
   padding: 0;
@@ -1644,8 +1713,12 @@ kbd {
   cursor: pointer;
   font: inherit;
 }
-.folio-link-button:hover {
+.folio-link-button:hover:not(:disabled) {
   text-decoration: underline;
+}
+.folio-link-button:disabled {
+  color: var(--folio-text-muted);
+  cursor: default;
 }
 .folio-add-identity {
   border: 1px solid var(--folio-border);
@@ -1805,13 +1878,15 @@ kbd {
 /* Scrollbars */
 .folio-viewer::-webkit-scrollbar,
 .folio-sidebar__body::-webkit-scrollbar,
-.folio-search__results::-webkit-scrollbar {
+.folio-search__results::-webkit-scrollbar,
+.folio-combine-list::-webkit-scrollbar {
   width: 12px;
   height: 12px;
 }
 .folio-viewer::-webkit-scrollbar-thumb,
 .folio-sidebar__body::-webkit-scrollbar-thumb,
-.folio-search__results::-webkit-scrollbar-thumb {
+.folio-search__results::-webkit-scrollbar-thumb,
+.folio-combine-list::-webkit-scrollbar-thumb {
   background: var(--folio-border);
   border: 3px solid transparent;
   background-clip: content-box;

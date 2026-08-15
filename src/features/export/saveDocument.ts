@@ -8,6 +8,7 @@ import { pushToast } from '@/components/common';
 import { downloadBytes } from '@/core/document/downloadBytes';
 import { isTauri } from '@/core/document/openDocument';
 import { getEngine } from '@/core/pdf';
+import { MIN_PDF_BYTES, PDF_HEADER } from '@/core/pdf/pdfHeader';
 import { stampAnnotations, useAnnotationStore } from '@/features/annotations';
 import { stampEdits, useEditStore } from '@/features/editing';
 import { stampOcrLayer, useOcrStore } from '@/features/ocr';
@@ -170,21 +171,6 @@ async function writeDocument(path: string, bytes: Uint8Array): Promise<void> {
     headers: { 'Folio-Path': encodeURIComponent(path) },
   });
 }
-
-/**
- * The smallest payload that could plausibly be a PDF.
- *
- * A file needs the header, a catalog, a page tree, at least one page object, a
- * cross-reference table and the trailer before it is openable at all; the
- * smallest hand-built valid PDFs are several hundred bytes, and anything this
- * app produces (pdf.js's save, or pdf-lib after stamping) is far larger. The
- * floor only has to separate "a real document" from "a bug produced nothing",
- * so it sits well under any genuine export.
- */
-const MIN_PDF_BYTES = 256;
-
-/** ASCII `%PDF-`, the header every PDF this app writes starts with. */
-const PDF_HEADER = [0x25, 0x50, 0x44, 0x46, 0x2d];
 
 /**
  * Reject bytes that cannot be a document before they are written anywhere.

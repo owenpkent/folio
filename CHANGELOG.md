@@ -35,6 +35,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   dependency set produces deterministic output.
 - **A privacy policy for the extension**, at
   [docs/browser-extension-privacy.md](docs/browser-extension-privacy.md).
+- **Combine PDFs.** File → Combine PDFs… merges two or more PDFs into a single
+  document. Pick files in the dialog, or drop several PDFs onto the window at
+  once, then reorder or remove them in the list before combining (every control
+  is keyboard-reachable and labelled). The merged document opens in the viewer
+  as a new, unsaved file, so Save asks where to put it rather than writing over
+  any of the inputs. A corrupt or password-protected input fails with a message
+  naming the offending file, and a PDF whose header sits behind up to 1&nbsp;KB
+  of preamble junk (the spec allows it) still combines fine.
 
 ### Changed
 
