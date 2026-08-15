@@ -25,7 +25,7 @@ import { OrganizePagesModal, registerPageOpsCommands } from '@/features/pageops'
 import { PlacementHint } from '@/features/placement';
 import { PrintProgressModal, registerPrintCommands } from '@/features/print';
 import { AboutModal } from '@/features/about';
-import { ContextMenu } from '@/features/contextmenu';
+import { ContextMenu, suppressNativeContextMenu } from '@/features/contextmenu';
 import { registerSignatureCommands, SignatureModal } from '@/features/signatures';
 import { registerSigningCommands, SigningModal } from '@/features/signing';
 import { registerTextEditCommands } from '@/features/textedit';
@@ -62,6 +62,10 @@ export function App() {
   useEffect(() => {
     void checkForUpdates(true);
   }, []);
+
+  // Keep the webview's own browser menu off everything but text fields (desktop
+  // only). The document brings its own menu; the chrome around it had WebView2's.
+  useEffect(() => suppressNativeContextMenu(), []);
 
   // Handle folio:// deep links from the browser extension (desktop only).
   useEffect(() => {
