@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
+import { commandRegistry } from '@/commands';
 import { Button, Icon } from '@/components/common';
-import { openCombineModal } from '@/features/combine';
 import { PageActionBar, PageList, usePageOpsStore } from '@/features/pageops';
 import { useViewerStore } from '@/state/viewerStore';
 import { isNarrowViewport } from '@/theme/breakpoints';
@@ -70,9 +70,15 @@ export function Thumbnails() {
           list moves. Deliberately not gated on a document being open -- the
           combine modal takes its inputs from a picker, so building a new PDF
           out of several files is one of the few things worth doing here from
-          an empty viewer. */}
+          an empty viewer.
+
+          Dispatched through the registry rather than calling the feature
+          directly, like every other surface that offers this (File menu,
+          command palette): the registry is what honors a command's `when`
+          guard and what keeps a rejected run from becoming an unhandled
+          rejection nobody sees. */}
       <div className="folio-thumbnails-toolbar">
-        <Button onClick={() => void openCombineModal()}>
+        <Button onClick={() => void commandRegistry.execute('file.combine')}>
           <Icon name="combine" size={16} />
           Combine PDFs…
         </Button>

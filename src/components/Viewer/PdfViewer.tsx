@@ -200,8 +200,17 @@ export function PdfViewer() {
       endReAim?.();
       const container = containerRef.current;
       const el = container?.querySelector<HTMLElement>(`.folio-page[data-page-number="${page}"]`);
-      useViewerStore.getState().clearPendingScroll();
+      // A request that cannot be served yet is left pending rather than
+      // consumed. Opening a document straight to a page issues one in the gap
+      // between the store being marked ready and React committing the pages
+      // for it, and the subscription that hears it there is the one attached
+      // before that commit -- with no container and no page element to scroll
+      // to. Clearing at that point threw the request away, and the effect that
+      // re-attached on the commit a moment later found nothing pending, so the
+      // jump was lost and the reader landed on page 1. Taking it only on the
+      // pass that actually scrolls leaves it there for that re-attach to find.
       if (!container || !el) return;
+      useViewerStore.getState().clearPendingScroll();
 
       const targetTop = () => Math.max(0, el.offsetTop - 16);
       let aimedAt = targetTop();

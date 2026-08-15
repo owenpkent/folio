@@ -26,20 +26,40 @@ export function OcrTextLayer({ pageNumber }: { pageNumber: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ width: 0, height: 0 });
 
+  const words = page?.words;
+  // Whether anything is rendered at all: see the early return below.
+  const rendered = words != null && words.length > 0;
+
   // The layer is sized by the page (inset: 0), so its pixel box is the page's,
   // and every fraction above turns into pixels through it. Re-measured on zoom
   // rather than derived from the scale, which this component is not given.
+  //
+  // Keyed on `rendered`, not []: this component is mounted for every page as
+  // soon as a document opens, but renders nothing until that page has been
+  // recognized, so on the ordinary path (open, then run OCR) `ref.current` is
+  // null the first time round and nothing remounts it afterwards -- the Page
+  // key is per document and page, not per OCR result. With an empty dep list
+  // the observer was never attached, `box` stayed 0x0 for good, and every word
+  // was left at the 1px floor and unscaled.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const measure = () => setBox({ width: el.clientWidth, height: el.clientHeight });
+    const measure = () =>
+      // Same values, same object: ResizeObserver fires on sub-pixel changes
+      // (fractional DPI scaling, an ancestor's scrollbar, a window drag) that
+      // these rounded integers do not see, and a fresh object would re-render
+      // every word span and re-run the two-reflow pass below for a box that
+      // did not move.
+      setBox((prev) =>
+        prev.width === el.clientWidth && prev.height === el.clientHeight
+          ? prev
+          : { width: el.clientWidth, height: el.clientHeight },
+      );
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     measure();
     return () => observer.disconnect();
-  }, []);
-
-  const words = page?.words;
+  }, [rendered]);
 
   // Stretch each word onto its recognized width.
   //
@@ -53,7 +73,14 @@ export function OcrTextLayer({ pageNumber }: { pageNumber: number }) {
     if (!el || !words || box.width === 0) return;
     const spans = Array.from(el.querySelectorAll<HTMLElement>('.folio-ocr-word'));
 
-    for (const span of spans) span.style.transform = 'none';
+    // Clearing the clamp along with the transform matters: a span left clamped
+    // from a previous pass would measure as its clamped width below, and the
+    // scale computed from that would be wrong rather than merely unscaled.
+    for (const span of spans) {
+      span.style.transform = 'none';
+      span.style.maxWidth = '';
+      span.style.overflow = '';
+    }
     // getBoundingClientRect over offsetWidth: it is fractional, and a word
     // rounded to whole pixels before scaling drifts visibly on a long line.
     const natural = spans.map((span) => span.getBoundingClientRect().width);
@@ -61,18 +88,29 @@ export function OcrTextLayer({ pageNumber }: { pageNumber: number }) {
     spans.forEach((span, i) => {
       const target = (words[i]?.rect.width ?? 0) * box.width;
       const measured = natural[i];
+      if (measured > 0 && target > 0) {
+        span.style.transform = `scaleX(${target / measured})`;
+        return;
+      }
       // A zero-width measurement means the span has not been laid out yet (or
       // the word is whitespace); leaving it unscaled is better than dividing
-      // into it and writing a scaleX of Infinity.
-      span.style.transform = measured > 0 && target > 0 ? `scaleX(${target / measured})` : 'none';
+      // into it and writing a scaleX of Infinity. Unscaled still has to be
+      // clamped to the box it was recognized in, though: the glyphs are
+      // transparent, but the selection highlight is not, and a word left at
+      // its full natural width covers the words after it and takes the drag
+      // that belonged to them. A degenerate box (target 0, common for a
+      // mis-segmented glyph) collapses to nothing, which is what it should be.
+      span.style.transform = 'none';
+      span.style.maxWidth = `${target}px`;
+      span.style.overflow = 'hidden';
     });
   }, [words, box.width, box.height]);
 
-  if (!page || page.words.length === 0) return null;
+  if (!words || words.length === 0) return null;
 
   return (
     <div ref={ref} className="folio-ocr-layer">
-      {page.words.map((w, i) => (
+      {words.map((w, i) => (
         <span
           key={i}
           className="folio-ocr-word"

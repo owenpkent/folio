@@ -26,7 +26,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the browser or fetched through a `folio://` link has no path to reopen. The
   note is consumed on the next launch whether or not it is used, so it can
   never reopen twice, and a file the OS hands Folio to open takes priority over
-  it.
+  it. If the restart itself fails, the note goes with it rather than waiting to
+  surprise a later launch. Because the note lives in local storage, which is
+  not a trust boundary, the path is checked on the way back up rather than
+  taken at face value: an absolute local `.pdf`, never a UNC path, so nothing
+  writable on the machine can turn the next launch into a read of a file the
+  reader never opened or an outbound connection to a share. A document with
+  in-place edits says so in the restart prompt, since the restart reopens the
+  file from disk and anything not saved to it is lost. A document that fails to
+  reopen (moved, deleted, or on a drive that is no longer there) is left alone
+  rather than greeting the reader with an error about a file they did not ask
+  for.
 
 ### Fixed
 

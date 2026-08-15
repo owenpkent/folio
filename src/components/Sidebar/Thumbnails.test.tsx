@@ -2,6 +2,7 @@ import { render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type * as OpenDocument from '@/core/document/openDocument';
 import type * as PdfCore from '@/core/pdf';
 
 // No thumbnail is rasterised in these tests (nothing reports as near), but the
@@ -14,8 +15,21 @@ vi.mock('@/core/pdf', async (orig) => {
   };
 });
 
+// Combine prompts for files as soon as it opens. jsdom has no picker, so the
+// real one appends a hidden <input type="file"> to the body and waits on a
+// change event that never comes: a promise that never settles, a node that
+// outlives testing-library's cleanup, and a store write landing outside act()
+// whenever it did.
+vi.mock('@/core/document/openDocument', async (orig) => {
+  const actual = (await orig()) as typeof OpenDocument;
+  return {
+    ...actual,
+    pickAndReadDocuments: vi.fn(async () => ({ sources: [], failed: [] })),
+  };
+});
+
 import { primePageSizeEstimate, resetPageSizes } from '@/core/pdf/pageSizes';
-import { useCombineStore } from '@/features/combine';
+import { registerCombineCommands, useCombineStore } from '@/features/combine';
 import { useViewerStore } from '@/state/viewerStore';
 
 import { Thumbnails } from './Thumbnails';
@@ -34,11 +48,15 @@ describe('Thumbnails', () => {
     // scroll; it only needs to not throw.
     Element.prototype.scrollIntoView = vi.fn();
     useViewerStore.setState({ numPages: 3 });
+    // The panel dispatches file.combine rather than calling the feature, so
+    // the command has to be registered for the button to do anything.
+    registerCombineCommands();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     useViewerStore.getState().reset();
+    useCombineStore.getState().close();
     resetPageSizes();
   });
 

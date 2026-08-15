@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OcrTextLayer } from './OcrTextLayer';
@@ -61,6 +61,11 @@ describe('OcrTextLayer', () => {
     useOcrStore.setState({ pages: {} });
     Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth');
     Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
+    // Assigning to HTMLElement.prototype puts an own property in front of the
+    // real Element.prototype method, and vi.unstubAllGlobals does not undo a
+    // direct prototype assignment. Left in place it would outlive this file and
+    // report every element in the worker as 40x0.
+    Reflect.deleteProperty(HTMLElement.prototype, 'getBoundingClientRect');
   });
 
   it('stretches each word onto its recognized width', () => {
@@ -94,14 +99,36 @@ describe('OcrTextLayer', () => {
     expect(span?.style.fontSize).toBe(`${0.025 * LAYER_HEIGHT}px`);
   });
 
-  it('leaves a word unscaled rather than writing an infinite scale', () => {
+  it('measures itself when the page is recognized after the layer has mounted', () => {
+    // The ordinary path: the layer is mounted for every page as soon as a
+    // document opens and renders nothing until OCR runs, so the element it
+    // measures does not exist on the first pass. Measuring only on mount left
+    // the layer at 0x0 for good, which is every word at the 1px floor and
+    // none of them scaled.
+    render(<OcrTextLayer pageNumber={1} />);
+
+    act(() => {
+      setWords([{ text: 'Congratulations,', rect: { x: 0.1, y: 0.1, w: 0.2, h: 0.02 } }]);
+    });
+
+    const span = document.querySelector<HTMLElement>('.folio-ocr-word');
+    expect(span?.style.transform).toBe(`scaleX(${(0.2 * LAYER_WIDTH) / NATURAL_WIDTH})`);
+    expect(span?.style.fontSize).toBe(`${0.02 * LAYER_HEIGHT}px`);
+  });
+
+  it('clamps an unscaled word to its box rather than writing an infinite scale', () => {
     // A word the browser reports as zero-width has not been laid out yet;
-    // dividing into that measurement yields scaleX(Infinity).
+    // dividing into that measurement yields scaleX(Infinity). Unscaled still
+    // has to be clipped to the recognized box, or the selection highlight
+    // spills over the words after it.
     stubLayout(0);
     setWords([{ text: 'approved', rect: { x: 0.1, y: 0.1, w: 0.2, h: 0.02 } }]);
     render(<OcrTextLayer pageNumber={1} />);
 
-    expect(document.querySelector<HTMLElement>('.folio-ocr-word')?.style.transform).toBe('none');
+    const span = document.querySelector<HTMLElement>('.folio-ocr-word');
+    expect(span?.style.transform).toBe('none');
+    expect(span?.style.maxWidth).toBe(`${0.2 * LAYER_WIDTH}px`);
+    expect(span?.style.overflow).toBe('hidden');
   });
 
   it('renders nothing for a page with no recognized words', () => {

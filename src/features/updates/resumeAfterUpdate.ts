@@ -16,6 +16,34 @@ interface ResumeNote {
 }
 
 /**
+ * Whether a stored path is one worth handing to the file read on the next
+ * launch.
+ *
+ * localStorage is not a trust boundary. Anything that can write the WebView
+ * profile -- a renderer XSS, another local process, a hand-edited profile
+ * directory -- can put a path here, and the Rust side's `read_document`
+ * (src-tauri/src/lib.rs) checks only for a `.pdf` suffix before reading
+ * whatever it is given. Validating the note's shape alone, as this used to,
+ * leaves a "read any file named .pdf on the next launch" primitive behind a
+ * single localStorage write.
+ *
+ * So the value is checked too: an absolute local path that ends in .pdf.
+ * UNC paths are refused as well, because that is the form that turns a
+ * localStorage write into an outbound SMB connection (and the Windows
+ * credential handshake with it) at launch, before the user has touched
+ * anything. The cost is that a document opened from a network share does not
+ * reopen itself after an update; opening it by hand is unaffected, since that
+ * path never comes through here.
+ */
+function isResumablePath(path: string): boolean {
+  if (!path.toLowerCase().endsWith('.pdf')) return false;
+  // \\server\share and //server/share.
+  if (/^[\\/]{2}/.test(path)) return false;
+  // A drive-qualified Windows path (C:\... or C:/...), or a POSIX absolute one.
+  return /^[a-z]:[\\/]/i.test(path) || path.startsWith('/');
+}
+
+/**
  * Remember the open document so the relaunch that finishes an update can
  * reopen it.
  *
@@ -27,10 +55,11 @@ interface ResumeNote {
  */
 export function rememberOpenDocument(): void {
   const path = useDocumentStore.getState().sourcePath;
-  if (!path) {
+  if (!path || !isResumablePath(path)) {
     // Clear rather than leave a previous document's note behind: the user is
-    // about to restart with nothing open, and restoring the document before
-    // last would be worse than restoring none.
+    // about to restart with nothing open (or with something this will not
+    // reopen anyway), and restoring the document before last would be worse
+    // than restoring none.
     forgetOpenDocument();
     return;
   }
@@ -62,7 +91,8 @@ export function forgetOpenDocument(): void {
  *
  * The stored value is re-validated rather than trusted: it is JSON from disk,
  * and a half-written or hand-edited entry should read as "no note" instead of
- * flowing into a file read as an arbitrary shape.
+ * flowing into a file read. Both its shape and its path are checked; see
+ * {@link isResumablePath} for why the path matters as much as the shape.
  */
 export function takeResumeDocument(): ResumeNote | null {
   let raw: string | null;
@@ -78,7 +108,7 @@ export function takeResumeDocument(): ResumeNote | null {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return null;
     const { path, page } = parsed as Partial<ResumeNote>;
-    if (typeof path !== 'string' || path.length === 0) return null;
+    if (typeof path !== 'string' || !isResumablePath(path)) return null;
     const safePage = typeof page === 'number' && Number.isFinite(page) ? Math.floor(page) : 1;
     return { path, page: Math.max(1, safePage) };
   } catch {

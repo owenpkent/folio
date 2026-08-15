@@ -61,6 +61,40 @@ describe('resumeAfterUpdate', () => {
     }
   });
 
+  it('refuses a stored path that is not an absolute local .pdf', () => {
+    // The note is a localStorage entry, so its value is as untrusted as its
+    // shape: whatever can write it would otherwise pick the file the next
+    // launch reads. A UNC path is refused for the extra reason that reaching
+    // it means an outbound SMB connection before the user has done anything.
+    for (const bad of [
+      '/etc/shadow',
+      'C:\\Windows\\System32\\config\\SAM',
+      'relative/statement.pdf',
+      'statement.pdf',
+      '\\\\attacker\\share\\statement.pdf',
+      '//attacker/share/statement.pdf',
+      'file:///C:/docs/statement.pdf',
+      'http://example.com/statement.pdf',
+    ]) {
+      localStorage.setItem(KEY, JSON.stringify({ path: bad, page: 1 }));
+      expect(takeResumeDocument()).toBeNull();
+    }
+  });
+
+  it('accepts an absolute local .pdf on either platform', () => {
+    for (const good of ['/docs/statement.pdf', 'C:\\docs\\statement.PDF', 'D:/docs/a.pdf']) {
+      localStorage.setItem(KEY, JSON.stringify({ path: good, page: 2 }));
+      expect(takeResumeDocument()).toEqual({ path: good, page: 2 });
+    }
+  });
+
+  it('writes nothing for a document whose path it would refuse to reopen', () => {
+    useDocumentStore.setState({ sourcePath: '\\\\server\\share\\statement.pdf' });
+    rememberOpenDocument();
+
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
   it('falls back to page 1 when the stored page is missing or nonsense', () => {
     for (const bad of ['{"path":"/a.pdf"}', '{"path":"/a.pdf","page":"3"}']) {
       localStorage.setItem(KEY, bad);
