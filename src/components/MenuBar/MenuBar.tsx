@@ -11,6 +11,7 @@ import { useContributionStore } from '@/plugins';
 import { isTauri } from '@/core/document/openDocument';
 import { originalDocumentUrl } from '@/core/document/openFromQuery';
 import { ocrAvailable } from '@/features/ocr';
+import { useDocumentMutationStore } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
 import { NARROW_VIEWPORT_QUERY } from '@/theme/breakpoints';
@@ -101,9 +102,10 @@ function shortcutFor(commandId: string): string | undefined {
 
 /** Whether a command can run right now: its own guard if it declares one,
     mirroring the check commandRegistry.execute performs before running it.
-    Used for the Tools menu, which is sourced from arbitrary plugin commands
-    rather than the fixed set below (those disable from `hasDoc` directly, the
-    same signal the toolbar buttons already use). */
+    Every row goes through this. Disabling on `hasDoc` alone (which the
+    document-backed rows used to do) left Save, Print, and OCR enabled while
+    the cross-feature mutation lock was held, so the menu bar and the toolbar
+    disagreed about the very same command. */
 function commandEnabled(commandId: string): boolean {
   const command = commandRegistry.get(commandId);
   return !command?.when || command.when();
@@ -159,15 +161,22 @@ export function MenuBar() {
   // hear about, leaving the menu showing a stale disabled state.
   usePageOpsStore((s) => s.selection.size);
   usePageOpsStore((s) => s.undoStack.length);
+  // Same again for the cross-feature mutation lock, which File's and Edit's
+  // rows now follow through their commands' guards.
+  useDocumentMutationStore((s) => s.active.length);
   const isMobile = useMediaQuery(NARROW_VIEWPORT_QUERY);
 
-  // A row backed by a command that requires an open document, e.g. Save.
+  // A row backed by a command that requires an open document, e.g. Save. The
+  // command's own guard as well as `hasDoc`: several of them (Save, Save a
+  // copy, Print, OCR) also refuse while the cross-feature mutation lock is
+  // held, and a row that stays clickable through that is exactly the
+  // inconsistency the toolbar's disabled Save makes visible.
   const docItem = (commandId: string, label: string, icon: IconName): MenuItemDef => ({
     kind: 'item',
     id: commandId,
     label,
     icon,
-    disabled: !hasDoc,
+    disabled: !hasDoc || !commandEnabled(commandId),
     shortcut: shortcutFor(commandId),
     onSelect: () => run(commandId),
   });
@@ -186,11 +195,14 @@ export function MenuBar() {
   });
 
   // A row backed by a command that works with no document open, e.g. Open.
+  // Still guard-checked: Open and Combine both replace the document, so both
+  // wait on the mutation lock even though neither needs one already open.
   const freeItem = (commandId: string, label: string, icon?: IconName): MenuItemDef => ({
     kind: 'item',
     id: commandId,
     label,
     icon,
+    disabled: !commandEnabled(commandId),
     shortcut: shortcutFor(commandId),
     onSelect: () => run(commandId),
   });
@@ -271,7 +283,9 @@ export function MenuBar() {
         docItem('edit.addCheckmark', 'Add check mark', 'check'),
         // Absent, not disabled, in builds without the OCR runtime: the Chrome
         // extension package leaves it out entirely.
-        ...(ocrAvailable() ? [docItem('ocr.recognizeDocument', 'Recognize text (OCR)', 'scan')] : []),
+        ...(ocrAvailable()
+          ? [docItem('ocr.recognizeDocument', 'Recognize text (OCR)', 'scan')]
+          : []),
         sep('edit-sep-2'),
         docItem('search.toggle', 'Find', 'search'),
       ],

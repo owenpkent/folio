@@ -57,6 +57,11 @@ most of the design:
 - **Nothing calls PDF.js directly except the engine.** All PDF access goes
   through the `PdfEngine` interface in `src/core/pdf`, which is what would let
   the renderer be replaced without touching the UI.
+- **Only one thing may change the document at a time.** Nine features can rewrite
+  or replace the open PDF, and any two of them interleaving loses one of the
+  changes silently. They all go through `withDocumentMutation`; a new one that
+  does not is a race, not a shortcut. See [the document mutation
+  lock](architecture.md#the-document-mutation-lock).
 - **The text layer is not optional.** Every page is a raster `<canvas>` with real
   positioned text over it. That text layer is what screen readers read, what
   selection copies, and what search highlights. The canvas is `aria-hidden`.

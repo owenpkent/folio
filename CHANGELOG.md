@@ -86,7 +86,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Detection is conservative on purpose (a scheme, a `www.`, or a well-known
   suffix), so "Fig.2", "version 1.2.3" and "report.pdf" are left alone, and an
   address PDF.js split across two text runs is rejoined only when the two
-  visually touch, so "visit" and "example.com" never become one.
+  visually touch, so "visit" and "example.com" never become one. A suffix that is
+  also an ordinary English word (`co`, `de`, `it`, `in`, `at`, `us`, `no`, `me`,
+  `be`, `ie`) needs a path as well, which is what separates the short links a
+  document actually prints — `t.co/aB3xY9`, `youtu.be/dQw4w9WgXcQ` — from a
+  sentence that lost the space after its full stop ("File the report.No changes
+  are needed"), a shape OCR produces routinely.
   Hovering an address marks it and shows its target, so you can see it is
   copyable without right-clicking to find out. There is no cursor change on
   purpose: Acrobat's hand cursor is honest because its links are clickable, but
@@ -114,6 +119,46 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Two document changes could run at once and quietly discard each other.** Page
+  operations, in-place text and image editing, Combine, OCR, Save, Print, digital
+  signing, and Open/Close all rewrite or replace the open document, and each only
+  guarded against a second attempt at *itself*. Dropping a PDF on the window
+  mid-page-operation reset every sidecar store to the new file while the page
+  operation went on to reload the old one's bytes and remap the old one's
+  highlights, signatures, and OCR text over them. All of them now go through one
+  lock. Where a control can be disabled up front it is, with a tooltip saying
+  why; anything reached by a keyboard shortcut anyway reports the refusal instead
+  of appearing to do nothing.
+
+  Recognition is the one thing that does **not** freeze the app, because it is
+  also the longest: OCR writes only its own sidecar, so Save, Print, Sign, and
+  both in-place editors stay available for the whole run. Only the operations
+  that renumber or replace pages wait for it.
+- **Print could put OCR text and stamped edits on the wrong pages.** Printing
+  bakes through the same snapshot Save does, but read it with nothing holding
+  the document still, so a print started while a page operation was mid-swap
+  mixed pre-swap bytes with a post-remap sidecar. Save guarded this; print did
+  not.
+- **Save and Sign froze the rest of the app while a file dialog was open.** Both
+  held the document lock across the native Save-as dialog, so page operations,
+  Combine, OCR, both in-place editors, Open, and Close stayed disabled for as
+  long as the user spent picking a folder. The lock now covers preparing the
+  bytes and stops there.
+- **A screen reader was told an image had moved or been deleted when it had
+  not.** The keyboard nudge keys announced the new position, or `Image deleted`,
+  before the Edit images layer had a chance to refuse the change — and it refuses
+  whenever another document change is in flight. The announcement was the only
+  feedback for a keyboard user, and it was the wrong one.
+- **`Ctrl/Cmd + Z` could undo across a failed reload.** An image or text edit
+  invalidated the other features' undo stacks *after* awaiting the document
+  reload, so a reload that rejected left both stacks poppable against bytes they
+  no longer described. Page operations already cleared them first; the other two
+  now match.
+- **Short links stopped being detected as addresses.** Trimming ambiguous
+  two-letter suffixes out of address detection also took `t.co/…` and
+  `youtu.be/…` with it, along with every bare domain under `.de`, `.it`, `.in`,
+  `.at`, `.co`, and `.ie`. Those suffixes are accepted again when the token
+  carries a path, which no run-together sentence does.
 - **A PDF URL containing `&` opened the wrong document.** The extension carries
   the document's URL in the viewer's fragment un-encoded, and the viewer read it
   with `URLSearchParams`, which truncated at the first ampersand: a link to

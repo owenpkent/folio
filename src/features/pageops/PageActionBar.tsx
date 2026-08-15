@@ -1,7 +1,7 @@
 import { Button } from '@/components/common';
 import {
   DOCUMENT_MUTATION_BUSY_TITLE,
-  useDocumentMutationStore,
+  useDocumentMutationBlocked,
 } from '@/state/documentMutationStore';
 import { useViewerStore } from '@/state/viewerStore';
 
@@ -21,9 +21,11 @@ export function PageActionBar() {
   const localBusy = usePageOpsStore((s) => s.busy);
   // Some OTHER feature (text edit, image edit, combine, save, OCR...) is
   // mid-flight rewriting the document; every button here has to wait for it
-  // the same way it already waits for a page op of its own. See
+  // the same way it already waits for a page op of its own. Owner-scoped, so a
+  // page op of our own -- which holds the same lock -- is reported by
+  // `localBusy` below and never as somebody else's change. See
   // documentMutationStore.ts.
-  const crossBusy = useDocumentMutationStore((s) => s.inFlight);
+  const crossBusy = useDocumentMutationBlocked('pageops', 'pages');
   const numPages = useViewerStore((s) => s.numPages);
 
   const count = selection.size;

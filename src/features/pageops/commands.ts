@@ -1,6 +1,6 @@
 import { commandRegistry } from '@/commands';
 import { useTextEditStore } from '@/features/textedit/store';
-import { useDocumentMutationStore } from '@/state/documentMutationStore';
+import { documentMutationBlocked } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
 
@@ -11,7 +11,7 @@ const ready = () => useDocumentStore.getState().status === 'ready';
 /** Ready, not already part-way through rewriting the file, and not blocked
  *  by some OTHER feature doing the same (see documentMutationStore.ts). */
 const idle = () =>
-  ready() && !usePageOpsStore.getState().busy && !useDocumentMutationStore.getState().inFlight;
+  ready() && !usePageOpsStore.getState().busy && !documentMutationBlocked('pageops', 'pages');
 const hasSelection = () => idle() && usePageOpsStore.getState().selection.size > 0;
 /** hasSelection, and the selection is not the whole document — deleting that would leave none. */
 const canDelete = () =>

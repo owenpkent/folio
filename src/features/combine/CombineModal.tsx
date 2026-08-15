@@ -5,7 +5,7 @@ import { useFocusTrap } from '@/a11y/focus';
 import { Button, Icon, IconButton } from '@/components/common';
 import {
   DOCUMENT_MUTATION_BUSY_TITLE,
-  useDocumentMutationStore,
+  useDocumentMutationBlocked,
 } from '@/state/documentMutationStore';
 
 import { addFilesViaPicker, runCombine } from './commands';
@@ -26,7 +26,9 @@ export function CombineModal() {
   const busy = useCombineStore((s) => s.busy);
   // Some OTHER feature is mid-flight rewriting the document; a merge cannot
   // start until it clears (see documentMutationStore.ts and runCombine).
-  const crossBusy = useDocumentMutationStore((s) => s.inFlight);
+  // Owner-scoped, so the button does not blame another feature for the merge
+  // this modal itself is running -- `busy` above is what reports that.
+  const crossBusy = useDocumentMutationBlocked('combine', 'pages');
   const error = useCombineStore((s) => s.error);
   const progress = useCombineStore((s) => s.progress);
   const cancelRequested = useCombineStore((s) => s.cancelRequested);

@@ -6,7 +6,8 @@ import { Button, IconButton } from '@/components/common';
 import { exportDocument, saveBytes } from '@/features/export';
 import {
   DOCUMENT_MUTATION_BUSY_TITLE,
-  useDocumentMutationStore,
+  useDocumentMutationBlocked,
+  withDocumentMutation,
 } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 
@@ -25,8 +26,8 @@ export function SigningModal() {
   const getP12 = useSigningStore((s) => s.getP12);
   // Some OTHER feature is mid-flight rewriting the document; signing reads
   // the same kind of snapshot Save does (see saveDocument.ts's identical
-  // guard), so it waits for the same reason.
-  const crossBusy = useDocumentMutationStore((s) => s.inFlight);
+  // guard), so it waits for the same reason and under the same owner.
+  const crossBusy = useDocumentMutationBlocked('export', 'content');
 
   const [selectedId, setSelectedId] = useState('');
   const [passphrase, setPassphrase] = useState('');
@@ -121,15 +122,23 @@ export function SigningModal() {
       announce('Enter your certificate passphrase', true);
       return;
     }
-    const mutation = useDocumentMutationStore.getState();
-    if (mutation.inFlight) {
-      announce(DOCUMENT_MUTATION_BUSY_TITLE, true);
-      return;
-    }
-    mutation.begin();
     setBusy(true);
     try {
-      const prepared = await exportDocument();
+      // The lock covers preparing the bytes and nothing past it: exportDocument
+      // reads the same snapshot Save does (see saveDocument.ts's
+      // exportUnderLock), while signPdf works from a private copy and saveBytes
+      // opens a native dialog the user may sit on indefinitely. Holding the
+      // lock across that froze every other feature for the duration.
+      const prepared = await withDocumentMutation<Uint8Array | null>(
+        { owner: 'export', scope: 'content' },
+        exportDocument,
+        () => null,
+      );
+      if (!prepared) {
+        announce(DOCUMENT_MUTATION_BUSY_TITLE, true);
+        return;
+      }
+
       const signed = await signPdf(prepared, p12, passphrase, {
         reason: reason.trim() || undefined,
         location: location.trim() || undefined,
@@ -142,7 +151,6 @@ export function SigningModal() {
       announce(`Could not sign the document: ${message}`, true);
     } finally {
       setBusy(false);
-      mutation.end();
     }
   };
 

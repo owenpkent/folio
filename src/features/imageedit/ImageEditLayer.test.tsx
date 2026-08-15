@@ -1,7 +1,8 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type * as Common from '@/components/common';
 import type * as PdfCore from '@/core/pdf';
 import { useDocumentMutationStore } from '@/state/documentMutationStore';
 
@@ -9,9 +10,10 @@ import { useDocumentMutationStore } from '@/state/documentMutationStore';
 // test bodies. vi.hoisted is required (rather than a plain module-scope
 // const) because vi.mock calls are themselves hoisted above the rest of the
 // module; mirrors features/export/saveDocument.test.ts.
-const { getLocatedImages, announce } = vi.hoisted(() => ({
+const { getLocatedImages, announce, pushToast } = vi.hoisted(() => ({
   getLocatedImages: vi.fn(),
   announce: vi.fn(),
+  pushToast: vi.fn(),
 }));
 
 // ImageEditLayer needs a viewport (once an image is selected, it renders
@@ -41,6 +43,13 @@ vi.mock('./locateCache', () => ({
 }));
 
 vi.mock('@/a11y/announcer', () => ({ announce }));
+
+// Only pushToast is replaced: the layer renders Icon from this same barrel, so
+// the rest of it has to stay real.
+vi.mock('@/components/common', async (orig) => ({
+  ...((await orig()) as typeof Common),
+  pushToast,
+}));
 
 import { ImageEditLayer } from './ImageEditLayer';
 import { useImageEditStore } from './store';
@@ -112,8 +121,9 @@ describe('ImageEditLayer document-mutation lock', () => {
   afterEach(() => {
     cleanup();
     useImageEditStore.getState().reset();
-    useDocumentMutationStore.getState().end();
+    useDocumentMutationStore.setState({ active: [] });
     getLocatedImages.mockReset();
+    pushToast.mockReset();
     announce.mockReset();
   });
 
@@ -135,8 +145,43 @@ describe('ImageEditLayer document-mutation lock', () => {
     // failure the lock's release has to survive without being asked to.
     await userEvent.setup().click(deleteButton);
 
+    // The error toast first, and asserted on rather than merely awaited: it is
+    // the only evidence the commit actually ran and actually failed. Checking
+    // the released lock alone proved nothing, because an idle lock is equally
+    // what a SUCCESSFUL commit and a commit that never started leave behind --
+    // so the test would have gone on passing if the mock ever became loadable
+    // or the Delete button stopped appearing.
     await waitFor(() => {
-      expect(useDocumentMutationStore.getState().inFlight).toBe(false);
+      expect(pushToast).toHaveBeenCalledWith(expect.any(String), 'error');
     });
+    expect(useDocumentMutationStore.getState().active).toEqual([]);
+  });
+
+  it('refuses a keyboard delete while another feature holds the lock, and says so', async () => {
+    const editable: LocatedImage = { ...baseImage, name: 'Im1', editable: true };
+    getLocatedImages.mockResolvedValue([editable]);
+    useImageEditStore.setState({ active: true });
+
+    render(<ImageEditLayer pageNumber={1} />);
+
+    const catcher = screen.getByRole('button', { name: /select the first editable image/i });
+    catcher.focus();
+    await userEvent.setup().keyboard('{Enter}');
+    await screen.findByRole('button', { name: 'Delete image' });
+
+    // A page op takes the lock after the image is already selected and focused.
+    act(() => {
+      useDocumentMutationStore.getState().acquire({ owner: 'pageops', scope: 'pages' });
+    });
+
+    announce.mockReset();
+    await userEvent.setup().keyboard('{Delete}');
+
+    // useNudgeKeys used to announce "Image deleted" unconditionally, while the
+    // layer's own busy check quietly refused the delete: the screen-reader user
+    // was told the image was gone while looking at it still there.
+    const said = announce.mock.calls.map((call) => String(call[0])).join(' | ');
+    expect(said).not.toMatch(/deleted/i);
+    expect(useImageEditStore.getState().selected).not.toBeNull();
   });
 });

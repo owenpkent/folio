@@ -6,7 +6,7 @@ import { IconButton } from '@/components/common';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import {
   DOCUMENT_MUTATION_BUSY_TITLE,
-  useDocumentMutationStore,
+  useDocumentMutationBlocked,
 } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 import { focusViewer } from '@/state/viewerElement';
@@ -59,9 +59,12 @@ export function Toolbar() {
   const setDarkScheme = useThemeStore((s) => s.setDarkScheme);
   const isNarrow = useMediaQuery(NARROW_VIEWPORT_QUERY);
   const isCompact = useMediaQuery(COMPACT_VIEWPORT_QUERY);
-  // Some OTHER feature is mid-flight rewriting the document; Save has to wait
-  // for it (see documentMutationStore.ts and saveDocument.ts).
-  const crossBusy = useDocumentMutationStore((s) => s.inFlight);
+  // Some OTHER feature is mid-flight rewriting the document; Save and Open
+  // both have to wait for it (see documentMutationStore.ts, saveDocument.ts,
+  // and state/actions.ts). Two owners because they are two different
+  // operations: an export reads a snapshot, an open replaces the document.
+  const saveBusy = useDocumentMutationBlocked('export', 'content');
+  const openBusy = useDocumentMutationBlocked('document', 'pages');
 
   // The right-group tools, in display order. Everything else that used to live
   // here (plugin buttons, comment, highlight, edit text, add text, add image,
@@ -73,11 +76,11 @@ export function Toolbar() {
     {
       id: 'save',
       icon: 'save',
-      label: crossBusy
+      label: saveBusy
         ? `Save (Ctrl/Cmd + S). ${DOCUMENT_MUTATION_BUSY_TITLE}`
         : 'Save (Ctrl/Cmd + S)',
       menuLabel: 'Save',
-      disabled: !hasDoc || crossBusy,
+      disabled: !hasDoc || saveBusy,
       onClick: () => run('file.save'),
     },
     {
@@ -260,7 +263,12 @@ export function Toolbar() {
         />
         <IconButton
           icon="folder-open"
-          label="Open document (Ctrl/Cmd + O)"
+          label={
+            openBusy
+              ? `Open document (Ctrl/Cmd + O). ${DOCUMENT_MUTATION_BUSY_TITLE}`
+              : 'Open document (Ctrl/Cmd + O)'
+          }
+          disabled={openBusy}
           onClick={() => run('file.open')}
         />
         {hasDoc && docName && (

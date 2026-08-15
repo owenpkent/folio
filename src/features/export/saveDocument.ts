@@ -15,8 +15,9 @@ import { stampEdits, useEditStore } from '@/features/editing';
 import { stampOcrLayer, useOcrStore } from '@/features/ocr';
 import { useSignatureStore, type Signature } from '@/features/signatures';
 import {
+  documentMutationBlocked,
   DOCUMENT_MUTATION_BUSY_TITLE,
-  useDocumentMutationStore,
+  withDocumentMutation,
 } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 
@@ -119,19 +120,10 @@ export async function saveDocumentInPlace(): Promise<void> {
     return;
   }
 
-  // Save reads a snapshot of the engine's bytes plus several stores
-  // (edits, signatures, OCR pages, annotations) that a page op, a text or
-  // image edit, or a combine could otherwise be rewriting mid-read; see
-  // documentMutationStore.ts.
-  const mutation = useDocumentMutationStore.getState();
-  if (mutation.inFlight) {
-    pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
-    return;
-  }
-  mutation.begin();
+  const bytes = await exportUnderLock();
+  if (!bytes) return;
+
   try {
-    const bytes = await exportForSave();
-    if (!bytes) return;
     await writeDocument(sourcePath, bytes);
     pushToast('Saved', 'success');
     announce(`Saved ${info.name}`);
@@ -139,8 +131,6 @@ export async function saveDocumentInPlace(): Promise<void> {
     const message = error instanceof Error ? error.message : 'Write failed';
     announce(`Could not save the document: ${message}`, true);
     pushToast('Could not save the document', 'error');
-  } finally {
-    mutation.end();
   }
 }
 
@@ -149,28 +139,41 @@ export async function saveDocumentToFile(): Promise<void> {
   const { info, status } = useDocumentStore.getState();
   if (status !== 'ready' || !info) return;
 
-  // See saveDocumentInPlace's identical guard above for why.
-  const mutation = useDocumentMutationStore.getState();
-  if (mutation.inFlight) {
-    pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
-    return;
-  }
-  mutation.begin();
-  try {
-    const bytes = await exportForSave();
-    if (!bytes) return;
+  const bytes = await exportUnderLock();
+  if (!bytes) return;
 
-    const base = info.name.replace(/\.pdf$/i, '');
-    const suffix =
-      useSignatureStore.getState().signatures.length > 0
-        ? 'signed'
-        : useEditStore.getState().edits.length > 0
-          ? 'edited'
-          : 'filled';
-    await saveBytes(bytes, `${base} (${suffix}).pdf`);
-  } finally {
-    mutation.end();
-  }
+  const base = info.name.replace(/\.pdf$/i, '');
+  const suffix =
+    useSignatureStore.getState().signatures.length > 0
+      ? 'signed'
+      : useEditStore.getState().edits.length > 0
+        ? 'edited'
+        : 'filled';
+  // Deliberately outside the lock: see exportUnderLock.
+  await saveBytes(bytes, `${base} (${suffix}).pdf`);
+}
+
+/**
+ * {@link exportForSave} with the cross-feature lock held, or null when
+ * something else conflicting is mid-flight (having said so) or the export
+ * itself failed (ditto).
+ *
+ * The lock covers reading the document into bytes and nothing after it. Export
+ * reads a snapshot of the engine's bytes plus several stores (edits,
+ * signatures, OCR pages, annotations) that a page op, a text or image edit, or
+ * a combine could otherwise be rewriting mid-read; see
+ * documentMutationStore.ts. Once those bytes exist they are a private copy that
+ * nothing else can disturb, so writing them out -- which on the Save-a-copy and
+ * signing paths means an open-ended wait on a native file dialog -- happens
+ * with the lock released. Holding it across that dialog froze page ops, both
+ * in-place editors, combine, OCR, Open, and Close for as long as the user took
+ * to pick a folder.
+ */
+async function exportUnderLock(): Promise<Uint8Array | null> {
+  return withDocumentMutation({ owner: 'export', scope: 'content' }, exportForSave, () => {
+    pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
+    return null;
+  });
 }
 
 /**
@@ -283,12 +286,20 @@ export function registerExportCommands(): void {
   if (registered) return;
   registered = true;
 
+  // Both guards include the cross-feature lock so every surface that reads a
+  // command's `when` -- the menu bar, the command palette, the shortcut
+  // dispatcher -- disables Save for the same reason the toolbar button does.
+  // The runtime check in exportUnderLock still stands: a `when` is evaluated
+  // when the surface renders, and the lock can be taken after that.
+  const canExport = () =>
+    useDocumentStore.getState().status === 'ready' && !documentMutationBlocked('export', 'content');
+
   commandRegistry.register({
     id: 'file.save',
     title: 'Save',
     category: 'File',
     keybinding: 'Mod+S',
-    when: () => useDocumentStore.getState().status === 'ready',
+    when: canExport,
     run: () => saveDocumentInPlace(),
   });
 
@@ -297,7 +308,7 @@ export function registerExportCommands(): void {
     title: 'Save a copy…',
     category: 'File',
     keybinding: 'Mod+Shift+S',
-    when: () => useDocumentStore.getState().status === 'ready',
+    when: canExport,
     run: () => saveDocumentToFile(),
   });
 }

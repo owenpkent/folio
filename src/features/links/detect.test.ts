@@ -86,14 +86,15 @@ describe('findAddresses: web addresses', () => {
     expect(values('Check the price.Info about it is elsewhere')).toEqual([]);
   });
 
-  it('leaves the newly-trimmed suffixes alone: an abbreviation glued to a lowercase word', () => {
-    // it/at/in/us/me/be/no/co/de/ie were dropped from COMMON_SUFFIXES (see its
-    // doc comment) for reading as ordinary English words or abbreviations.
-    // The capitalization heuristic in the test above only catches a dropped
-    // space at a SENTENCE boundary (a capitalized next word); these glue an
+  it('leaves the path-only suffixes alone: an abbreviation glued to a lowercase word', () => {
+    // it/at/in/us/me/be/no/co/de/ie are in PATH_ONLY_SUFFIXES (see its doc
+    // comment) for reading as ordinary English words or abbreviations. The
+    // capitalization heuristic in the test above only catches a dropped space
+    // at a SENTENCE boundary (a capitalized next word); these glue an
     // abbreviation to a lowercase continuation instead, the same shape as
     // "vs.the" and "etc.and" two tests up, which has no capital letter for
-    // that heuristic to catch. Only dropping the suffix stops these.
+    // that heuristic to catch. What stops all of them is that prose ends the
+    // token at the suffix, so none of these carries a path.
     expect(values('the annual report.co branding stayed')).toEqual([]);
     expect(values('translate the manual.us edition first')).toEqual([]);
     expect(values('see Fig.at the bottom of the page')).toEqual([]);
@@ -101,6 +102,20 @@ describe('findAddresses: web addresses', () => {
     expect(values('the current Rev.no changes are pending')).toEqual([]);
     expect(values('check the memo.de parting soon')).toEqual([]);
     expect(values('check the memo.ie leaving today')).toEqual([]);
+  });
+
+  it('detects a path-only suffix once the token actually carries a path', () => {
+    // The two most common bare short links in real documents, plus a country
+    // suffix with a path. A path segment is what a run-together sentence never
+    // has, so accepting these costs none of the prose cases above.
+    expect(values('Watch youtu.be/dQw4w9WgXcQ for the demo')).toEqual(['youtu.be/dQw4w9WgXcQ']);
+    expect(values('Shortened to t.co/aB3xY9 for the tweet')).toEqual(['t.co/aB3xY9']);
+    expect(values('See spiegel.de/politik for coverage')).toEqual(['spiegel.de/politik']);
+    // A query or a fragment counts as the path segment too, not just a slash.
+    expect(values('Open youtu.be?v=abc123 now')).toEqual(['youtu.be?v=abc123']);
+    expect(values('Jump to spiegel.de#top please')).toEqual(['spiegel.de#top']);
+    // Still nothing without one, which is the accepted residual miss.
+    expect(values('Coverage at spiegel.de today')).toEqual([]);
   });
 
   it('keeps detecting io and info, the two suffixes a coincidental word can still collide with', () => {

@@ -341,6 +341,16 @@ Use a scanned or image-only PDF (one with no embedded text).
 Results persist per document (fingerprint), so re-opening a recognized PDF does
 not re-run OCR.
 
+A recognition pass can take minutes on a long document, and it does not lock the
+app while it runs. Saving, printing, signing, and both in-place editors stay
+available throughout, because recognition writes only the OCR sidecar and leaves
+the page map exactly as it found it. What *does* wait for it is anything that
+renumbers or replaces the pages underneath it: page operations, Combine, Open,
+and Close, each disabled with an explanatory tooltip until the run finishes or is
+cancelled. See [the document mutation
+lock](architecture.md#the-document-mutation-lock) for the rule and the scopes it
+is built from.
+
 ### How it works
 
 - **Engine:** [tesseract.js](https://github.com/naptha/tesseract.js) (English,
@@ -419,6 +429,7 @@ first; `--with-ocr` alone only makes the package bigger.
 | Image editing: object-model resolution + move/resize/replace/delete | `src/features/imageedit/mutate.ts` |
 | Image editing: overlay, store, commands | `src/features/imageedit/` |
 | Live reload after a commit (swaps engine doc, bumps `docVersion`) | `src/state/actions.ts` (`reloadEditedBytes`) |
+| Cross-feature "one document change at a time" lock | `src/state/documentMutationStore.ts` (`withDocumentMutation`) |
 | Page viewport + raw text items (for hit-testing) | `src/core/pdf/PdfJsEngine.ts` (`getPageViewport`, `getTextItems`) |
 | OCR recognition + worker | `src/features/ocr/recognize.ts` |
 | OCR store, text layer, modal, commands | `src/features/ocr/` |

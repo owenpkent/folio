@@ -294,6 +294,14 @@ are worth more than their line count and why you should be careful editing them:
 - **Forced colors** are emulated with `page.emulateMedia`, not the `forcedColors`
   fixture: the fixture does not take effect here, the media query never
   matches, and every assertion passes vacuously against unstyled defaults.
+- **The document mutation lock releases on a failed commit**
+  (`ImageEditLayer.test.tsx`). The assertion has to be that the commit *failed*
+  (an error toast), not just that the lock ended up free: an idle lock is equally
+  what a successful commit and a commit that never ran leave behind, so the
+  earlier version of this test would have gone on passing if the fixture became
+  loadable or the button stopped rendering. A companion test pins the
+  screen-reader case — a keyboard delete refused while another feature holds the
+  lock must not announce `Image deleted`.
 
 The rule these share: **when you touch one of these, first check it actually
 fails against the unfixed code.** A test that cannot fail is worse than no test,
@@ -493,6 +501,27 @@ Use an image-only / scanned PDF (no embedded text).
   selectable/searchable there (an invisible layer over the image).
 - **Offline/CSP:** with the desktop app, disconnect the network after the first
   run and confirm OCR still works (assets are served from `/tesseract/`, no CDN).
+
+### One document change at a time
+
+Worth a pass by hand, because the failure mode is silent and the interesting
+cases are races. Start a long OCR run on a multi-page scan, then, while it runs:
+
+- Confirm **Save**, **Print**, **Digitally sign**, **Edit text**, and **Edit
+  images** all still work. Recognition writes only its own sidecar, so these are
+  deliberately *not* blocked.
+- Confirm **Pages** operations, **Combine**, **Open**, and **Close** are disabled,
+  each with a tooltip saying another document change is in progress, and that
+  `Ctrl+O` / `Ctrl+W` report the refusal rather than doing nothing.
+
+Then the reverse, which is the corruption case the lock exists for: select some
+pages and start a rotate on a large document, and while it commits, **drop a
+different PDF onto the window**. The drop must be refused with a toast, not
+loaded. Before the lock, it loaded, and the page operation then remapped the old
+document's highlights and signatures onto the new one's bytes.
+
+Finally, with a screen reader on: select an image with the Edit images tool,
+start a page operation, and press `Delete`. It must not say `Image deleted`.
 
 ### Chrome extension
 
