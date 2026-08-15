@@ -6,7 +6,10 @@ import type * as OpenDocument from '@/core/document/openDocument';
 import { useDocumentStore } from '@/state/documentStore';
 
 const { pickAndReadDocuments, loadSource } = vi.hoisted(() => ({
-  pickAndReadDocuments: vi.fn(async () => [] as { name: string; data: Uint8Array }[]),
+  pickAndReadDocuments: vi.fn(async () => ({
+    sources: [] as { name: string; data: Uint8Array }[],
+    failed: [] as string[],
+  })),
   loadSource: vi.fn(async () => undefined),
 }));
 
@@ -18,6 +21,7 @@ vi.mock('@/state/actions', () => ({ loadSource }));
 vi.mock('@/a11y/announcer', () => ({ announce: vi.fn() }));
 
 import { CombineModal } from './CombineModal';
+import { runCombine } from './commands';
 import { useCombineStore } from './store';
 
 async function pdfBytes(pages = 1): Promise<Uint8Array> {
@@ -95,10 +99,12 @@ describe('CombineModal', () => {
     ]);
     render(<CombineModal />);
 
-    // Click synchronously, before the async per-file validation below has a
-    // chance to flag bad.pdf and disable the button (see the next test): this
-    // one is about runCombine's own catch path, not the pre-submit guard.
-    fireEvent.click(screen.getByRole('button', { name: 'Combine' }));
+    // Driven through runCombine directly rather than the button, because the
+    // button is (correctly) disabled while any file is still being read or has
+    // failed to read -- that pre-submit guard is the next test. This one is
+    // about runCombine's own catch path: a merge that fails once started has
+    // to leave the modal open with the reason showing, not close over it.
+    await runCombine();
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/bad\.pdf/);
     expect(useCombineStore.getState().modalOpen).toBe(true);
@@ -144,7 +150,10 @@ describe('CombineModal', () => {
     ]);
     render(<CombineModal />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Combine' }));
+    // Both files have to finish staging before Combine is clickable at all.
+    const combine = await screen.findByRole('button', { name: 'Combine' });
+    await waitFor(() => expect(combine).toBeEnabled());
+    fireEvent.click(combine);
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(useCombineStore.getState().modalOpen).toBe(true);

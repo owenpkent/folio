@@ -1,7 +1,7 @@
 import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { pushToast } from '@/components/common';
-import { pickAndReadDocuments } from '@/core/document/openDocument';
+import { describeUnreadable, pickAndReadDocuments } from '@/core/document/openDocument';
 import { loadSourceHoldingLock } from '@/state/actions';
 import { DOCUMENT_MUTATION_BUSY_TITLE, withDocumentMutation } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
@@ -27,20 +27,34 @@ const FORMS_DEGRADED_WARNING =
  * uses that to decide whether there is anything worth announcing.
  *
  * A file the OS refuses to hand over (permission denied, mid-pick removal)
- * must not take the whole batch down with it: without the try/catch, one bad
- * file among a multi-select made this reject, and neither the good files nor
- * an error ever reached the store.
+ * must not take the whole batch down with it. That is why the read returns a
+ * {@link BatchRead} rather than rejecting: the files that read fine are
+ * staged, and the ones that did not are named in the modal's error line. The
+ * try/catch is the outer backstop for a picker that fails outright.
  */
 export async function addFilesViaPicker(): Promise<number> {
   try {
-    const sources = await pickAndReadDocuments();
-    if (sources.length === 0) return 0;
-    useCombineStore
-      .getState()
-      .addFiles(
-        sources.map((source) => ({ name: source.name ?? 'Untitled.pdf', bytes: source.data })),
-      );
-    return sources.length;
+    const { sources, failed } = await pickAndReadDocuments();
+    // Counted rather than assumed: addFiles can decline the batch outright
+    // (a merge in flight, or the file ceiling), and reporting "Added 3 files"
+    // over a list that did not change would be worse than saying nothing.
+    const before = useCombineStore.getState().files.length;
+    if (sources.length > 0) {
+      useCombineStore
+        .getState()
+        .addFiles(
+          sources.map((source) => ({ name: source.name ?? 'Untitled.pdf', bytes: source.data })),
+        );
+    }
+    const added = useCombineStore.getState().files.length - before;
+    // After addFiles, never before: adding files clears `error`, so setting
+    // this first would wipe the very message being set.
+    if (failed.length > 0) {
+      const message = describeUnreadable(failed);
+      useCombineStore.getState().setError(message);
+      announce(`${message}. ${added} added.`, true);
+    }
+    return added;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Could not read one or more of those files';

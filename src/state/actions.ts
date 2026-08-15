@@ -59,20 +59,27 @@ export async function openDocumentViaPicker(): Promise<void> {
  * Dropping more files while the combine modal is already open adds to the
  * staged list instead of replacing it: `open()` resets `busy` and wipes
  * whatever was already staged, which would also cut off a merge in progress.
+ * That check comes before the single-file branch, not after it, because a
+ * lone dropped PDF is the case that used to slip past: the drop listener is a
+ * window-level one that the modal's focus trap does nothing about, so one
+ * file dropped over an open modal called loadSource and reset the whole
+ * viewer underneath it -- and a merge finishing afterwards then clobbered the
+ * dropped file straight back. (Whether a merge is actually in flight is the
+ * store's call; addFiles refuses while busy.)
  */
 export async function openDroppedPdfs(sources: BytesDocumentSource[]): Promise<void> {
   if (sources.length === 0) return;
-  if (sources.length === 1) {
-    await loadSource(sources[0]);
-    return;
-  }
   const seed = sources.map((s) => ({ name: s.name ?? 'Untitled.pdf', bytes: s.data }));
   const combine = useCombineStore.getState();
   if (combine.modalOpen) {
     combine.addFiles(seed);
-  } else {
-    combine.open(seed);
+    return;
   }
+  if (sources.length === 1) {
+    await loadSource(sources[0]);
+    return;
+  }
+  combine.open(seed);
 }
 
 /**
