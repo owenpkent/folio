@@ -3,7 +3,7 @@ import { useState, type DragEvent } from 'react';
 import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { Button, pushToast } from '@/components/common';
-import { isTauri, sourceFromFile } from '@/core/document/openDocument';
+import { describeUnreadable, isTauri, readFileBatch } from '@/core/document/openDocument';
 import { openDocumentViaPicker, openDroppedPdfs } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
 
@@ -27,10 +27,16 @@ export function EmptyState() {
     // Same dispatch point the Tauri native drop listener uses (App.tsx): one
     // PDF opens normally, two or more open the combine modal. Kept in sync
     // here rather than re-implemented, and guarded the same way -- a file
-    // that fails to read must not silently drop the rest on the floor.
+    // that fails to read must not drop the rest on the floor, which is what
+    // Promise.all did here until readFileBatch replaced it.
     try {
-      const sources = await Promise.all(files.map((file) => sourceFromFile(file)));
-      await openDroppedPdfs(sources);
+      const { sources, failed } = await readFileBatch(files);
+      if (failed.length > 0) {
+        const message = describeUnreadable(failed);
+        pushToast(message, 'error');
+        announce(message, true);
+      }
+      if (sources.length > 0) await openDroppedPdfs(sources);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not read the file';
       pushToast(`Could not open: ${message}`, 'error');

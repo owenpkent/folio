@@ -1,19 +1,28 @@
 import {
+  PDFArray,
+  PDFBool,
   PDFDict,
   PDFDocument,
   PDFHexString,
   PDFName,
+  PDFNumber,
   PDFObjectCopier,
   PDFPage,
+  PDFPageLeaf,
   PDFString,
 } from 'pdf-lib';
 
-import { MIN_PDF_BYTES, PDF_HEADER } from '@/core/pdf/pdfHeader';
+import { hasPdfHeader, MIN_PDF_BYTES } from '@/core/pdf/pdfHeader';
 
 /** One PDF to fold into the combined document, in the order it should appear. */
 export interface CombineInput {
   name: string;
-  bytes: Uint8Array;
+  /**
+   * The raw file. Optional because the combine modal drops its copy once
+   * {@link stagePdf} has parsed it into `doc` (see `PendingFile.bytes`);
+   * exactly one of `bytes` and `doc` has to be present.
+   */
+  bytes?: Uint8Array;
   /**
    * Already-parsed document, when a caller (the combine modal's staging
    * list, via {@link stagePdf}) parsed it earlier to read a page count.
@@ -21,6 +30,21 @@ export interface CombineInput {
    */
   doc?: PDFDocument;
 }
+
+/**
+ * Ceilings on what one merge will accept.
+ *
+ * Every input is held as a parsed object graph for the length of the run and
+ * the merged document grows into a copy of all of them, so an unbounded
+ * combine is a memory-exhaustion hang reachable through ordinary use (drop
+ * forty large PDFs at once). The print feature already sets the convention of
+ * refusing up front and saying how to proceed rather than falling over
+ * halfway; these are the equivalent for combine. Generous enough that no
+ * realistic merge meets them, low enough that a runaway one stops.
+ */
+export const MAX_COMBINE_INPUTS = 50;
+export const MAX_COMBINE_INPUT_BYTES = 256 * 1024 * 1024;
+export const MAX_COMBINE_PAGES = 10_000;
 
 /** Progress and cancellation hooks for {@link combinePdfs}. */
 export interface CombineOptions {
@@ -55,13 +79,15 @@ export interface CombineResult {
    */
   formsMerged: boolean;
   /**
-   * True when the forms merge actually lost something: two inputs used the
-   * same top-level `/DR` resource key (most commonly both having their own
-   * `/Font` dict) for resources that are not the same, and the first input's
-   * mapping won, so the later input's is not in the merged document. This
+   * True when the forms merge actually lost something. Either two inputs used
+   * the same top-level `/DR` resource key (most commonly both having their
+   * own `/Font` dict) for resources that are not the same, and the first
+   * input's mapping won, so the later input's is not in the merged document;
+   * or an input carried an `/XFA` packet, which is a second form definition
+   * in its own right and cannot be merged with another at all. The `/DR` case
    * only changes a field's rendered appearance if it is regenerated later
    * (typically by re-editing the field after the combine), not how the
-   * document first opens, but it is a real, if narrow, loss -- unlike
+   * document first opens, but both are a real, if narrow, loss -- unlike
    * {@link formsMerged}, which is also true for a merge with nothing to warn
    * about, this is the flag that should actually trigger a warning.
    */
@@ -88,10 +114,13 @@ const PAGES_PER_YIELD = 8;
  * (best-effort; see {@link CombineResult.formsMerged} and
  * {@link CombineResult.formsDegraded}).
  *
- * Each input is validated with {@link looksLikePdf} before pdf-lib ever
- * touches it, and `PDFDocument.load` is never called with `ignoreEncryption`,
- * so a corrupt or password-protected file fails loudly (naming the offending
- * file) rather than silently combining a document nobody could actually open.
+ * An input this function has to parse itself is validated with
+ * {@link looksLikePdf} first; one that arrives already parsed (the modal's
+ * staging list, which ran the same check through {@link stagePdf}) is taken
+ * as given rather than re-validated against bytes it may no longer hold.
+ * Either way `PDFDocument.load` is never called with `ignoreEncryption`, so a
+ * corrupt or password-protected file fails loudly, naming the offending file,
+ * rather than silently combining a document nobody could actually open.
  */
 export async function combinePdfs(
   inputs: CombineInput[],
@@ -100,11 +129,23 @@ export async function combinePdfs(
   if (inputs.length < 2) {
     throw new Error('Choose at least two PDFs to combine');
   }
+  if (inputs.length > MAX_COMBINE_INPUTS) {
+    throw new Error(
+      `Combine takes up to ${MAX_COMBINE_INPUTS} files at once. Combine them in batches, then combine the results.`,
+    );
+  }
 
-  const out = await PDFDocument.create();
+  // updateMetadata: false here as well as on every load() below. pdf-lib
+  // stamps its own Producer and Creator onto a document at create() time and
+  // again at save() time, and copyMetadata only overwrites them when the
+  // first input has its own -- so without this the merged file claims pdf-lib
+  // as its producer whenever the first input named none, which is exactly the
+  // outcome loadInput's comment says this code prevents.
+  const out = await PDFDocument.create({ updateMetadata: false });
   let firstSrc: PDFDocument | null = null;
   let formsMerged = false;
   let formsDegraded = false;
+  let pagesCopied = 0;
   // Shared across every input, not reset per file: a top-level field name
   // from input 3 has to be checked against inputs 1 and 2 as well.
   const usedFieldNames = new Set<string>();
@@ -132,16 +173,33 @@ export async function combinePdfs(
       // the other.
       const copier = PDFObjectCopier.for(src.context, out.context);
       const srcPages = src.getPages();
+      if (pagesCopied + srcPages.length > MAX_COMBINE_PAGES) {
+        throw new Error(
+          `These files add up to more than ${MAX_COMBINE_PAGES} pages, which is more than one combine can hold. Combine them in smaller groups.`,
+        );
+      }
       for (let p = 0; p < srcPages.length; p++) {
         // Checked per page, not just per input: a cancel requested partway
         // through one large document used to only be noticed after every one
         // of its pages had already been copied.
         if (options.isCancelled?.()) throw new CombineCancelledError();
-        const copiedPageDict = copier.copy(srcPages[p].node);
-        const ref = out.context.register(copiedPageDict);
-        out.addPage(PDFPage.of(copiedPageDict, ref, out));
+        // Copied by *ref*, not by node. Passing the node object copies it
+        // outside the copier's src-ref-to-dest-ref cache, so a widget
+        // annotation's own /P (which is a ref) later drags in a second,
+        // orphaned copy of the same page. Going through the ref puts one page
+        // object in the cache for everything else that points at it.
+        const pageRef = copier.copy(srcPages[p].ref);
+        const pageNode = out.context.lookup(pageRef);
+        // The copier copies a page leaf as a page leaf; `lookup` just has no
+        // overload for that subclass of PDFDict. The check narrows the type
+        // and would catch the copied graph not being what this assumes.
+        if (!(pageNode instanceof PDFPageLeaf)) {
+          throw new Error('the copied page is not a page object');
+        }
+        out.addPage(PDFPage.of(pageNode, pageRef, out));
         if ((p + 1) % PAGES_PER_YIELD === 0) await yieldToUi();
       }
+      pagesCopied += srcPages.length;
       const form = mergeAcroForm(out, src, copier, usedFieldNames);
       if (form.merged) formsMerged = true;
       if (form.degraded) formsDegraded = true;
@@ -163,10 +221,26 @@ export async function combinePdfs(
 
   if (firstSrc) copyMetadata(out, firstSrc);
 
-  return { bytes: await out.save(), formsMerged, formsDegraded };
+  // Checked here and again below, either side of save(). On a large output
+  // save() is the single longest step and the only work left once the loop
+  // above is done, so a cancel arriving during it used to be noticed by
+  // nobody: the caller went straight on to load the result, replacing
+  // whatever document the user was actually looking at.
+  if (options.isCancelled?.()) throw new CombineCancelledError();
+  const bytes = await out.save();
+  if (options.isCancelled?.()) throw new CombineCancelledError();
+
+  return { bytes, formsMerged, formsDegraded };
 }
 
-/** Carry title/author/subject/keywords/creator/producer forward from `first`. */
+/**
+ * Carry title/author/subject/keywords/creator/producer and the two dates
+ * forward from `first`.
+ *
+ * The dates are copied rather than left unset because `out` is created with
+ * `updateMetadata: false` (see {@link combinePdfs}), which stops pdf-lib
+ * stamping its own producer but also stops it filling in any dates at all.
+ */
 function copyMetadata(out: PDFDocument, first: PDFDocument): void {
   out.setTitle(first.getTitle() ?? COMBINED_TITLE);
   const author = first.getAuthor();
@@ -182,6 +256,10 @@ function copyMetadata(out: PDFDocument, first: PDFDocument): void {
   if (creator !== undefined) out.setCreator(creator);
   const producer = first.getProducer();
   if (producer !== undefined) out.setProducer(producer);
+  const creationDate = first.getCreationDate();
+  if (creationDate !== undefined) out.setCreationDate(creationDate);
+  const modificationDate = first.getModificationDate();
+  if (modificationDate !== undefined) out.setModificationDate(modificationDate);
 }
 
 /** Whether {@link mergeAcroForm} found fields at all, and whether merging
@@ -218,17 +296,81 @@ function mergeAcroForm(
 
   const outAcroForm = out.catalog.getOrCreateAcroForm();
   for (const [, ref] of srcFields) {
-    const srcFieldDict = src.context.lookup(ref, PDFDict);
-    const copiedDict = copier.copy(srcFieldDict);
-    disambiguateFieldName(copiedDict, usedFieldNames);
-    const copiedRef = out.context.register(copiedDict);
+    // Copied by *ref*, and emphatically not `register(copier.copy(dict))`.
+    // The copier is keyed by source ref, and the page loop above has already
+    // copied and registered this very object as the page's widget annotation:
+    // handing it the dict returns that same cached copy, but `register` never
+    // checks whether an object already has a ref, so it minted a second one.
+    // /AcroForm/Fields then pointed at an object no page referenced, which is
+    // precisely the desync the copier is shared to prevent -- filling a
+    // merged field wrote to the orphan while the viewer painted the widget.
+    const copiedRef = copier.copy(ref);
+    disambiguateFieldName(out.context.lookup(copiedRef, PDFDict), usedFieldNames);
     outAcroForm.addField(copiedRef);
   }
 
-  const degraded = mergeDefaultResources(outAcroForm.dict, srcAcroForm.dict, copier);
+  const droppedResources = mergeDefaultResources(outAcroForm.dict, srcAcroForm.dict, copier);
   mergeDefaultAppearance(outAcroForm.dict, srcAcroForm.dict, copier);
+  const droppedXfa = mergeAcroFormSettings(out, outAcroForm.dict, srcAcroForm.dict, copier);
 
-  return { merged: true, degraded };
+  return { merged: true, degraded: droppedResources || droppedXfa };
+}
+
+/**
+ * Carry the AcroForm-level entries that are not the field tree itself forward
+ * from `srcDict`, and report whether anything had to be dropped.
+ *
+ * `getOrCreateAcroForm()` starts from a bare `{ Fields: [] }`, so every key
+ * not handled here is simply lost. /NeedAppearances is the one with visible
+ * consequences: a form whose fields carry no appearance streams relies on the
+ * viewer to generate them, and nothing downstream compensates -- because this
+ * merge only ever touches the low-level catalog AcroForm and never calls
+ * `out.getForm()`, pdf-lib's own `updateFieldAppearances` pass at save time is
+ * a no-op on an unpopulated form cache. Without the flag those fields render
+ * blank in the merged document while still holding their values.
+ */
+function mergeAcroFormSettings(
+  out: PDFDocument,
+  outDict: PDFDict,
+  srcDict: PDFDict,
+  copier: PDFObjectCopier,
+): boolean {
+  // Any input needing generated appearances means the merged document does.
+  if (srcDict.lookupMaybe(PDFName.of('NeedAppearances'), PDFBool)?.asBoolean()) {
+    outDict.set(PDFName.of('NeedAppearances'), PDFBool.True);
+  }
+
+  // Bit flags (1 = the document contains signature fields, 2 = append-only),
+  // so they are OR-ed: a later input's flags must not clear an earlier one's.
+  const sigFlags = srcDict.lookupMaybe(PDFName.of('SigFlags'), PDFNumber);
+  if (sigFlags) {
+    const existing = outDict.lookupMaybe(PDFName.of('SigFlags'), PDFNumber)?.asNumber() ?? 0;
+    outDict.set(PDFName.of('SigFlags'), PDFNumber.of(existing | sigFlags.asNumber()));
+  }
+
+  // A single default quadding for the whole form, so the first input wins,
+  // the same way /DA does.
+  const quadding = srcDict.lookupMaybe(PDFName.of('Q'), PDFNumber);
+  if (quadding && !outDict.has(PDFName.of('Q'))) {
+    outDict.set(PDFName.of('Q'), PDFNumber.of(quadding.asNumber()));
+  }
+
+  // Calculation order: append this input's entries after any already carried
+  // over, which preserves each input's own internal ordering.
+  const srcCalcOrder = srcDict.lookupMaybe(PDFName.of('CO'), PDFArray);
+  if (srcCalcOrder) {
+    let outCalcOrder = outDict.lookupMaybe(PDFName.of('CO'), PDFArray);
+    if (!outCalcOrder) {
+      outCalcOrder = PDFArray.withContext(out.context);
+      outDict.set(PDFName.of('CO'), outCalcOrder);
+    }
+    for (const entry of srcCalcOrder.asArray()) outCalcOrder.push(copier.copy(entry));
+  }
+
+  // /XFA is a whole second form definition (an XML packet describing its own
+  // layout and logic) and two of them do not compose into one. Reported as a
+  // degraded merge rather than dropped in silence.
+  return srcDict.has(PDFName.of('XFA'));
 }
 
 /**
@@ -245,7 +387,14 @@ function disambiguateFieldName(dict: PDFDict, usedNames: Set<string>): void {
     name = `${original} (${suffix})`;
   }
   usedNames.add(name);
-  if (name !== original) dict.set(PDFName.of('T'), PDFString.of(name));
+  // PDFHexString.fromText, not PDFString.of. A literal PDF string is written
+  // one byte per code unit, so `PDFString.of` truncates every non-Latin-1
+  // character to 8 bits (a Japanese field name comes back as mojibake, and
+  // pdf-lib stores /T as a hex string in the first place, so this would be
+  // downgrading an encoding that was already correct). It also emits the text
+  // unescaped, so a name containing `)` closed the string early and produced
+  // a file that will not parse -- on the one path this function exists for.
+  if (name !== original) dict.set(PDFName.of('T'), PDFHexString.fromText(name));
 }
 
 /**
@@ -319,15 +468,19 @@ function looksLikePdf(bytes: Uint8Array): boolean {
   // under it cannot be a real PDF regardless of what bytes happen to appear
   // in it, so there is no point scanning for a header at all.
   if (bytes.length < MIN_PDF_BYTES) return false;
-  const limit = Math.min(bytes.length - PDF_HEADER.length, HEADER_SEARCH_LIMIT);
-  for (let start = 0; start <= limit; start++) {
-    if (PDF_HEADER.every((byte, i) => bytes[start + i] === byte)) return true;
-  }
-  return false;
+  return hasPdfHeader(bytes, HEADER_SEARCH_LIMIT);
 }
 
 async function loadInput(input: CombineInput): Promise<PDFDocument> {
   if (input.doc) return input.doc;
+  if (!input.bytes) {
+    throw new Error(`"${input.name}" has not been read yet`);
+  }
+  if (input.bytes.byteLength > MAX_COMBINE_INPUT_BYTES) {
+    throw new Error(
+      `"${input.name}" is too large to combine (over ${Math.round(MAX_COMBINE_INPUT_BYTES / (1024 * 1024))}MB).`,
+    );
+  }
   if (!looksLikePdf(input.bytes)) {
     throw new Error(`"${input.name}" does not look like a PDF`);
   }

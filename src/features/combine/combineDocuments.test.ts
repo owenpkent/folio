@@ -1,7 +1,22 @@
-import { PDFDict, PDFDocument, PDFName } from 'pdf-lib';
+import {
+  PDFArray,
+  PDFBool,
+  PDFDict,
+  PDFDocument,
+  PDFHexString,
+  PDFName,
+  PDFNumber,
+  PDFRef,
+  PDFString,
+} from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 
-import { CombineCancelledError, combinePdfs, stagePdf } from './combineDocuments';
+import {
+  CombineCancelledError,
+  combinePdfs,
+  MAX_COMBINE_INPUTS,
+  stagePdf,
+} from './combineDocuments';
 
 /** A tiny PDF with one page per size given, so pages from different inputs
  * are distinguishable by width after merging. */
@@ -66,6 +81,79 @@ async function encryptedPdfBytes(): Promise<Uint8Array> {
   );
   doc.context.trailerInfo.Encrypt = encryptRef;
   return doc.save();
+}
+
+/** A PDF with no Info dict entries at all, for checking that combining does
+ * not invent a Producer of its own. `PDFDocument.create()` stamps pdf-lib as
+ * the producer unless told not to, so the opt-out is needed on both ends. */
+async function pdfWithoutMetadata(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create({ updateMetadata: false });
+  doc.addPage([100, 100]);
+  return doc.save();
+}
+
+/** A form PDF carrying the AcroForm-level settings that are not the field
+ * tree: the ones a merge starting from a bare `{ Fields: [] }` silently drops. */
+async function pdfWithAcroFormSettings(name: string): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([100, 100]);
+  const field = doc.getForm().createTextField(name);
+  field.setText('x');
+  field.addToPage(page, { x: 10, y: 10, width: 60, height: 20 });
+
+  const acroForm = doc.catalog.getOrCreateAcroForm();
+  acroForm.dict.set(PDFName.of('NeedAppearances'), PDFBool.True);
+  acroForm.dict.set(PDFName.of('SigFlags'), PDFNumber.of(1));
+  acroForm.dict.set(PDFName.of('Q'), PDFNumber.of(1));
+  return doc.save();
+}
+
+/** Every widget annotation the pages carry, in page order. */
+function pageWidgetRefs(doc: PDFDocument): PDFRef[] {
+  const refs: PDFRef[] = [];
+  for (const page of doc.getPages()) {
+    const annots = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+    if (!annots) continue;
+    for (const entry of annots.asArray()) {
+      if (entry instanceof PDFRef) refs.push(entry);
+    }
+  }
+  return refs;
+}
+
+/** Every top-level `/AcroForm/Fields` entry, as strings. */
+function topLevelFieldRefs(doc: PDFDocument): string[] {
+  const fields = doc.catalog.getAcroForm()?.dict.lookupMaybe(PDFName.of('Fields'), PDFArray);
+  if (!fields) return [];
+  return fields
+    .asArray()
+    .filter((entry): entry is PDFRef => entry instanceof PDFRef)
+    .map((ref) => ref.toString());
+}
+
+/**
+ * The field object a page's widget annotation belongs to. pdf-lib's
+ * `addToPage` makes the widget a separate object from the field and links it
+ * back with `/Parent`; a field with no separate widget is its own.
+ */
+function fieldOfWidget(doc: PDFDocument, widgetRef: PDFRef): { ref: string; dict: PDFDict } {
+  const widget = doc.context.lookup(widgetRef, PDFDict);
+  const parent = widget.get(PDFName.of('Parent'));
+  if (!(parent instanceof PDFRef)) return { ref: widgetRef.toString(), dict: widget };
+  return { ref: parent.toString(), dict: doc.context.lookup(parent, PDFDict) };
+}
+
+/**
+ * The value a viewer would show for the first widget on `pageIndex`, reached
+ * from the page rather than from the form: page -> annotation -> its field.
+ */
+function valueViaPageWidget(doc: PDFDocument, pageIndex: number): string | undefined {
+  const annots = doc.getPage(pageIndex).node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+  const widgetRef = annots?.get(0);
+  if (!(widgetRef instanceof PDFRef)) return undefined;
+  return fieldOfWidget(doc, widgetRef)
+    .dict.lookupMaybe(PDFName.of('V'), PDFString, PDFHexString)
+    ?.decodeText();
 }
 
 /** Bytes that pass the `%PDF-` / length gate but are not a real PDF
@@ -223,6 +311,63 @@ describe('combinePdfs', () => {
     ).rejects.toBeInstanceOf(CombineCancelledError);
   });
 
+  it('stops when cancelled after the last page is copied, before the result is handed back', async () => {
+    const a = await pdfBytes([100]);
+    const b = await pdfBytes([100]);
+    let cancelled = false;
+
+    // Cancel exactly when the copy loop has finished its last input, which
+    // leaves save() as the only work left. On a large merge that is the
+    // longest single step, and with no checkpoint either side of it a cancel
+    // arriving then was ignored outright: the caller went straight on to
+    // load the result over whatever document the user was looking at.
+    await expect(
+      combinePdfs(
+        [
+          { name: 'a.pdf', bytes: a },
+          { name: 'b.pdf', bytes: b },
+        ],
+        {
+          onProgress: (done, total) => {
+            if (done === total) cancelled = true;
+          },
+          isCancelled: () => cancelled,
+        },
+      ),
+    ).rejects.toBeInstanceOf(CombineCancelledError);
+  });
+
+  it('refuses more inputs than one merge can hold, and says what to do instead', async () => {
+    const one = await pdfBytes([100]);
+    const tooMany = Array.from({ length: MAX_COMBINE_INPUTS + 1 }, (_, i) => ({
+      name: `f${i}.pdf`,
+      bytes: one,
+    }));
+
+    // Guard-and-explain, the way the print feature refuses a document too
+    // long for one pass: nothing else bounds this, and every input is held
+    // as a parsed object graph while the merged copy grows alongside them.
+    await expect(combinePdfs(tooMany)).rejects.toThrow(/in batches/);
+  });
+
+  it('does not stamp pdf-lib as the producer of a merge whose first input names none', async () => {
+    const a = await pdfWithoutMetadata();
+    const b = await pdfWithoutMetadata();
+
+    const result = await combinePdfs([
+      { name: 'a.pdf', bytes: a },
+      { name: 'b.pdf', bytes: b },
+    ]);
+
+    // The `updateMetadata: false` guard was on the per-input load() calls but
+    // not on the create() that builds the document actually saved, so a first
+    // input with no Producer of its own left pdf-lib's signature on the
+    // output -- exactly what loadInput's comment says the code prevents.
+    const merged = await PDFDocument.load(result.bytes, { updateMetadata: false });
+    expect(merged.getProducer()).toBeUndefined();
+    expect(merged.getCreator()).toBeUndefined();
+  });
+
   it('reports progress once per input, ending at the total', async () => {
     const a = await pdfBytes([100]);
     const b = await pdfBytes([100]);
@@ -345,6 +490,134 @@ describe('combinePdfs', () => {
         .map((f) => f.getName());
       expect(names.filter((n) => n === 'Group.Name')).toHaveLength(1);
       expect(merged.getForm().getTextField('Group.Name').getText()).toBe('Alice');
+    });
+
+    it('lists in /AcroForm/Fields the same field objects the page widgets point back to', async () => {
+      const a = await pdfWithTextField('Alpha', 'A');
+      const b = await pdfWithTextField('Beta', 'B');
+
+      const result = await combinePdfs([
+        { name: 'a.pdf', bytes: a },
+        { name: 'b.pdf', bytes: b },
+      ]);
+
+      // The structural half of the desync. The copier had already copied and
+      // registered each field while following its widget's /Parent, but
+      // `register` never checks whether an object already has a ref, so
+      // copying it again minted a second one: /Fields listed objects that no
+      // widget on any page belonged to, and the field tree and the visible
+      // widgets became two disconnected graphs.
+      const merged = await PDFDocument.load(result.bytes);
+      const fieldRefs = new Set(topLevelFieldRefs(merged));
+      const widgets = pageWidgetRefs(merged);
+      expect(fieldRefs.size).toBe(2);
+      expect(widgets).toHaveLength(2);
+      for (const widgetRef of widgets) {
+        expect(fieldRefs.has(fieldOfWidget(merged, widgetRef).ref)).toBe(true);
+      }
+    });
+
+    it('shows a value filled through the form API on the page the widget sits on', async () => {
+      const a = await pdfWithTextField('Alpha', 'A');
+      const b = await pdfWithTextField('Beta', 'B');
+
+      const result = await combinePdfs([
+        { name: 'a.pdf', bytes: a },
+        { name: 'b.pdf', bytes: b },
+      ]);
+
+      // The user-visible half: with the two graphs disconnected, setText
+      // wrote to the orphaned copy in /Fields while the widget the viewer
+      // paints still belonged to the other one, so typing into a merged form
+      // field neither appeared nor persisted.
+      const merged = await PDFDocument.load(result.bytes);
+      merged.getForm().getTextField('Alpha').setText('FILLED');
+      const reloaded = await PDFDocument.load(await merged.save());
+
+      expect(valueViaPageWidget(reloaded, 0)).toBe('FILLED');
+      expect(valueViaPageWidget(reloaded, 1)).toBe('B');
+    });
+
+    it('leaves every widget attached to a page the merged document actually has', async () => {
+      const a = await pdfWithTextField('Alpha', 'A');
+      const b = await pdfWithTextField('Beta', 'B');
+
+      const result = await combinePdfs([
+        { name: 'a.pdf', bytes: a },
+        { name: 'b.pdf', bytes: b },
+      ]);
+
+      // Copying each page by object rather than by ref put it outside the
+      // copier's cache, so a widget's own /P dragged in a second, orphaned
+      // copy of the page it sits on -- a page the document's own page tree
+      // knew nothing about.
+      const merged = await PDFDocument.load(result.bytes);
+      const pageRefs = new Set(merged.getPages().map((page) => page.ref.toString()));
+      for (const widgetRef of pageWidgetRefs(merged)) {
+        const parentPage = merged.context.lookup(widgetRef, PDFDict).get(PDFName.of('P'));
+        expect(parentPage).toBeInstanceOf(PDFRef);
+        expect(pageRefs.has((parentPage as PDFRef).toString())).toBe(true);
+      }
+    });
+
+    it('keeps a renamed field readable when the colliding name is not ASCII', async () => {
+      const a = await pdfWithTextField('氏名', 'Alice');
+      const b = await pdfWithTextField('氏名', 'Bob');
+
+      const result = await combinePdfs([
+        { name: 'a.pdf', bytes: a },
+        { name: 'b.pdf', bytes: b },
+      ]);
+
+      // Written as a literal PDF string, the renamed copy came back as
+      // mojibake: literal strings are one byte per code unit, so every
+      // character above U+00FF was truncated to 8 bits.
+      const names = (await PDFDocument.load(result.bytes))
+        .getForm()
+        .getFields()
+        .map((f) => f.getName());
+      expect(names.sort()).toEqual(['氏名', '氏名 (2)']);
+    });
+
+    it('still produces a loadable PDF when the colliding name contains a delimiter', async () => {
+      const a = await pdfWithTextField('a)b', 'Alice');
+      const b = await pdfWithTextField('a)b', 'Bob');
+
+      const result = await combinePdfs([
+        { name: 'a.pdf', bytes: a },
+        { name: 'b.pdf', bytes: b },
+      ]);
+
+      // Unescaped in a literal string, the `)` closed the string early and
+      // the output would not parse at all -- on the one path the renaming
+      // exists for, two copies of the same form.
+      const merged = await PDFDocument.load(result.bytes);
+      const names = merged
+        .getForm()
+        .getFields()
+        .map((f) => f.getName());
+      expect(names.sort()).toEqual(['a)b', 'a)b (2)']);
+    });
+
+    it('carries the AcroForm settings that are not the field tree', async () => {
+      const a = await pdfWithAcroFormSettings('Alpha');
+      const b = await pdfWithTextField('Beta', 'B');
+
+      const result = await combinePdfs([
+        { name: 'a.pdf', bytes: a },
+        { name: 'b.pdf', bytes: b },
+      ]);
+
+      // NeedAppearances is the one with visible consequences: dropping it
+      // leaves fields that hold their values rendering blank, because nothing
+      // downstream generates the appearance streams they were relying on.
+      const merged = await PDFDocument.load(result.bytes, { updateMetadata: false });
+      const acroForm = merged.catalog.getAcroForm();
+      expect(acroForm?.dict.lookupMaybe(PDFName.of('NeedAppearances'), PDFBool)?.asBoolean()).toBe(
+        true,
+      );
+      expect(acroForm?.dict.lookupMaybe(PDFName.of('SigFlags'), PDFNumber)?.asNumber()).toBe(1);
+      expect(acroForm?.dict.lookupMaybe(PDFName.of('Q'), PDFNumber)?.asNumber()).toBe(1);
     });
 
     it('does not set formsMerged when no input has form fields', async () => {

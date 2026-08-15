@@ -3,13 +3,20 @@ import { create } from 'zustand';
 
 import { uid } from '@/core/id';
 
-import { stagePdf } from './combineDocuments';
+import { MAX_COMBINE_INPUT_BYTES, MAX_COMBINE_INPUTS, stagePdf } from './combineDocuments';
 
 /** A file staged for the next combine run, in the order it will be merged. */
 export interface PendingFile {
   id: string;
   name: string;
-  bytes: Uint8Array;
+  /**
+   * The raw file, dropped once {@link stagePdf} has parsed it into `doc`.
+   * Nothing reads it after that -- the merge takes `doc` -- and holding both
+   * kept a second full copy of every staged file resident for as long as the
+   * modal stayed open, on top of the parsed graph and the merged document
+   * being built from it.
+   */
+  bytes?: Uint8Array;
   /** Undefined while the page count is still being read. */
   pageCount?: number;
   /** Set when the file could not be read (corrupt, encrypted, not a PDF). */
@@ -107,6 +114,38 @@ export const useCombineStore = create<CombineState>((set, get) => ({
     }),
 
   addFiles: (newFiles) => {
+    if (newFiles.length === 0) return;
+    const current = get();
+
+    // Refused outright while a merge is in flight. runCombine snapshotted its
+    // inputs before these arrived, so they would sit in the list looking
+    // included while being no part of the merge -- and its success path calls
+    // close(), which wipes the whole list without warning. Losing the user's
+    // files silently is worse than saying no.
+    if (current.busy) {
+      set({ error: 'Finish or cancel the combine in progress before adding more files.' });
+      return;
+    }
+
+    // Ceilings, because nothing else bounds this: the list holds every file's
+    // parsed object graph at once and the merge then builds a copy of all of
+    // them, so an unbounded staging list is a memory-exhaustion hang reachable
+    // by dropping a folder onto the window.
+    if (current.files.length + newFiles.length > MAX_COMBINE_INPUTS) {
+      set({
+        error: `Combine takes up to ${MAX_COMBINE_INPUTS} files at once. Combine them in batches, then combine the results.`,
+      });
+      return;
+    }
+    const oversized = newFiles.filter((f) => f.bytes.byteLength > MAX_COMBINE_INPUT_BYTES);
+    if (oversized.length > 0) {
+      const limitMb = Math.round(MAX_COMBINE_INPUT_BYTES / (1024 * 1024));
+      set({
+        error: `"${oversized[0].name}" is too large to combine (over ${limitMb}MB).`,
+      });
+      return;
+    }
+
     const entries: PendingFile[] = newFiles.map((f) => ({
       id: uid('combine'),
       name: f.name,
@@ -123,12 +162,18 @@ export const useCombineStore = create<CombineState>((set, get) => ({
     // whole object would keep its `.bytes` (and, once parsed, `.doc`) alive
     // for as long as this promise is pending, even if the user removes the
     // file from the list before it settles.
-    for (const entry of entries) {
+    entries.forEach((entry, i) => {
       const id = entry.id;
-      void stagePdf(entry.bytes, entry.name)
+      // Read from the seed, not from `entry`: `PendingFile.bytes` is optional
+      // (it is dropped on success below) while a seed always has them.
+      void stagePdf(newFiles[i].bytes, newFiles[i].name)
         .then(({ pageCount, doc }) => {
           set((s) => ({
-            files: s.files.map((f) => (f.id === id ? { ...f, pageCount, doc } : f)),
+            // `bytes: undefined` releases the raw file now that `doc` holds
+            // everything the merge needs from it (see PendingFile.bytes).
+            files: s.files.map((f) =>
+              f.id === id ? { ...f, pageCount, doc, bytes: undefined } : f,
+            ),
           }));
         })
         .catch((error: unknown) => {
@@ -137,7 +182,7 @@ export const useCombineStore = create<CombineState>((set, get) => ({
             files: s.files.map((f) => (f.id === id ? { ...f, error: message } : f)),
           }));
         });
-    }
+    });
   },
 
   // Each of these clears `error` on an actual change, same as addFiles: an
