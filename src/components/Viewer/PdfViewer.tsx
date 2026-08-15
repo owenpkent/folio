@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { announce } from '@/a11y/announcer';
 import { getEngine } from '@/core/pdf';
 import { primePageSizeEstimate, subscribePageSizes } from '@/core/pdf/pageSizes';
-import { useContextMenu } from '@/features/contextmenu';
+import { NATIVE_CONTEXT_MENU_TARGETS, useContextMenu } from '@/features/contextmenu';
 import { AddressHint, copyTargetAt, useTrackAddressHover } from '@/features/links';
 import { watchDevicePixelRatio } from '@/hooks/watchDevicePixelRatio';
 import { focusViewer, setViewerElement } from '@/state/viewerElement';
@@ -387,9 +387,7 @@ export function PdfViewer() {
   // to the native menu so copy/paste there still works.
   const onContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as Element;
-    if (target.closest('input, textarea, [contenteditable="true"], [data-context-native]')) {
-      return;
-    }
+    if (target.closest(NATIVE_CONTEXT_MENU_TARGETS)) return;
     e.preventDefault();
     const selectionText = window.getSelection()?.toString() ?? '';
 

@@ -53,6 +53,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   of their recognized box rather than nine tenths of it, so the highlight covers
   the word instead of riding above it, and no longer clipped, so a highlight
   cannot be cut off at the edge of a word.
+- **Right-clicking outside the document no longer opens a browser menu.** The
+  desktop app replaced the webview's menu over the pages themselves, but nowhere
+  else: right-clicking the sidebar, the toolbar, a dialog, or the splash screen
+  answered with WebView2's own -- Back, Reload, Save as, Print, Inspect --
+  offering navigation a PDF viewer does not have, actions that duplicate Folio's
+  with different behavior, and a route into the page's markup. Folio is a
+  document window, not a browser tab, and the frame it runs inside no longer
+  shows through it. Text fields keep their native menu, since cut, copy, and
+  paste live nowhere else; that includes the form fields drawn over a page.
+  Browser-build behavior is unchanged, where the surrounding page really is a
+  page in a tab and the browser's menu is the reader's to keep.
 
 ## [0.6.0] - 2026-08-15
 
