@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
-import { useFocusTrap } from '@/a11y/focus';
-import { Button, IconButton } from '@/components/common';
+import { Button, Modal } from '@/components/common';
 import { isTauri } from '@/core/document/openDocument';
 import { checkForUpdates } from '@/features/updates';
 import { useViewerStore } from '@/state/viewerStore';
@@ -17,20 +16,6 @@ export function AboutModal() {
   const open = useViewerStore((s) => s.aboutModalOpen);
   const setOpen = useViewerStore((s) => s.setAboutModalOpen);
   const [checking, setChecking] = useState(false);
-  const dialogRef = useRef<HTMLDivElement>(null);
-
-  useFocusTrap(dialogRef, open);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, setOpen]);
-
-  if (!open) return null;
 
   const close = () => setOpen(false);
 
@@ -54,46 +39,31 @@ export function AboutModal() {
   ];
 
   return (
-    <div className="folio-modal-backdrop">
-      <div
-        ref={dialogRef}
-        className="folio-modal folio-modal--narrow"
-        role="dialog"
-        aria-modal="true"
-        aria-label="About Folio"
-      >
-        <div className="folio-modal__header">
-          <h2 className="folio-modal__title">About Folio</h2>
-          <IconButton icon="x" label="Close" onClick={close} />
-        </div>
-
-        <div className="folio-modal__body">
-          <dl className="folio-about">
-            {rows.map((r) => (
-              <div key={r.label} className="folio-about__row">
-                <dt className="folio-about__label">{r.label}</dt>
-                <dd className="folio-about__value">{r.value}</dd>
-              </div>
-            ))}
-          </dl>
-          {!isTauri() && (
-            <p className="folio-modal__hint">
-              Automatic updates are available in the desktop app.
-            </p>
-          )}
-        </div>
-
-        <div className="folio-modal__footer">
-          {isTauri() && (
-            <Button onClick={onCheck} disabled={checking}>
-              {checking ? 'Checking…' : 'Check for updates'}
-            </Button>
-          )}
-          <Button variant="primary" onClick={close}>
-            Close
-          </Button>
-        </div>
+    <Modal open={open} title="About Folio" onDismiss={close} size="narrow">
+      <div className="folio-modal__body">
+        <dl className="folio-about">
+          {rows.map((r) => (
+            <div key={r.label} className="folio-about__row">
+              <dt className="folio-about__label">{r.label}</dt>
+              <dd className="folio-about__value">{r.value}</dd>
+            </div>
+          ))}
+        </dl>
+        {!isTauri() && (
+          <p className="folio-modal__hint">Automatic updates are available in the desktop app.</p>
+        )}
       </div>
-    </div>
+
+      <div className="folio-modal__footer">
+        {isTauri() && (
+          <Button onClick={onCheck} disabled={checking}>
+            {checking ? 'Checking…' : 'Check for updates'}
+          </Button>
+        )}
+        <Button variant="primary" onClick={close}>
+          Close
+        </Button>
+      </div>
+    </Modal>
   );
 }

@@ -1,7 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 
-import { useFocusTrap } from '@/a11y/focus';
-import { Button, IconButton } from '@/components/common';
+import { Button, Modal } from '@/components/common';
 import { useViewerStore } from '@/state/viewerStore';
 
 import { PageActionBar } from './PageActionBar';
@@ -29,18 +28,8 @@ export function OrganizePagesModal() {
   const open = usePageOpsStore((s) => s.organizing);
   const setOrganizing = usePageOpsStore((s) => s.setOrganizing);
   const numPages = useViewerStore((s) => s.numPages);
-  const dialogRef = useRef<HTMLDivElement>(null);
 
-  useFocusTrap(dialogRef, open);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOrganizing(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, setOrganizing]);
+  const close = () => setOrganizing(false);
 
   // Closing the document while the organizer is up would leave it showing an
   // empty grid over nothing.
@@ -48,49 +37,38 @@ export function OrganizePagesModal() {
     if (open && numPages === 0) setOrganizing(false);
   }, [open, numPages, setOrganizing]);
 
-  if (!open) return null;
-
-  const close = () => setOrganizing(false);
-
   return (
-    <div className="folio-modal-backdrop">
-      <div
-        ref={dialogRef}
-        className="folio-modal folio-modal--wide folio-organize"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Organize pages"
-      >
-        <div className="folio-modal__header">
-          <h2 className="folio-modal__title">Organize pages</h2>
-          <IconButton icon="x" label="Close" onClick={close} />
-        </div>
+    <Modal
+      open={open}
+      title="Organize pages"
+      onDismiss={close}
+      size="wide"
+      className="folio-organize"
+    >
+      <p className="folio-modal__hint">
+        Drag a page to move it. Pick out several with the checkboxes, or press Space on a page, then
+        use the actions below. Ctrl+Z undoes the last change.
+      </p>
 
-        <p className="folio-modal__hint">
-          Drag a page to move it. Pick out several with the checkboxes, or press Space on a page,
-          then use the actions below. Ctrl+Z undoes the last change.
-        </p>
-
-        <div className="folio-modal__body folio-organize__body">
-          <PageList
-            layout="grid"
-            scrollRoot=".folio-organize__body"
-            scale={GRID_SCALE}
-            rootMargin="600px 0px"
-            // A plain click means "take me there": without this the viewer
-            // navigates behind the still-open modal and nothing closes,
-            // leaving the click looking like it did nothing at all.
-            onNavigate={close}
-          />
-        </div>
-
-        <div className="folio-modal__footer folio-organize__footer">
-          <PageActionBar />
-          <Button variant="primary" onClick={close}>
-            Done
-          </Button>
-        </div>
+      <div className="folio-modal__body folio-organize__body">
+        <PageList
+          layout="grid"
+          scrollRoot=".folio-organize__body"
+          scale={GRID_SCALE}
+          rootMargin="600px 0px"
+          // A plain click means "take me there": without this the viewer
+          // navigates behind the still-open modal and nothing closes,
+          // leaving the click looking like it did nothing at all.
+          onNavigate={close}
+        />
       </div>
-    </div>
+
+      <div className="folio-modal__footer folio-organize__footer">
+        <PageActionBar />
+        <Button variant="primary" onClick={close}>
+          Done
+        </Button>
+      </div>
+    </Modal>
   );
 }
