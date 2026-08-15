@@ -40,7 +40,10 @@ Folio rendering a two-page form PDF, in light and dark:
 - Continuous auto-scroll (teleprompter-style), with adjustable speed and keyboard control
 - Classic application menu bar (File, Edit, View, Annotate, Sign, Tools, Help)
   with full keyboard operation; the toolbar keeps the everyday buttons
-- Acrobat-style right-click context menu for common tools and actions
+- Acrobat-style right-click context menu for common tools and actions, including
+  **copy an email or web address** without selecting it by hand: hovering one
+  marks it, and the menu shows where a link actually points before you copy it,
+  which is not always what the page prints over it
 - Thumbnail strip and document outline (bookmarks)
 - Fast in-document text search with a results list
 - Print to the system print dialog, with everything you placed on the page

@@ -68,6 +68,7 @@ Each layer maps to a real directory in the repository.
 | Accessibility | `src/a11y/` | Announcer (live region), focus trap, keyboard shortcut dispatch, skip link |
 | Annotations | `src/features/annotations/` | Annotation model, `store` (localStorage sidecar), `bake` (embeds highlights/notes as real `/Highlight` and `/Text` annotations on save), and tools |
 | Editing | `src/features/editing/` | Add text boxes, images, and check/cross mark stamps (typewriter tool + placement), per-document `store`, and pdf-lib baking (`stampEdits`) |
+| Addresses | `src/features/links/` | Finding the email or web address under a point so the context menu can copy it: `detect` (a conservative scanner over extracted text), `resolve` (hit-testing PDF user-space geometry, and rejoining a run PDF.js split), and `copyTarget` (the three sources -- link annotations, page text, and the OCR sidecar -- with a `/Link` annotation winning over printed text). Also the hover affordance: `store`, `useTrackAddressHover` (one resolve per frame, with a generation counter so a slow answer cannot overwrite a newer one), and `AddressHint` |
 | Page operations | `src/features/pageops/` | Delete, reorder, and rotate pages: the declarative `PagePlan` and its pdf-lib application (`mutate`), the mark-and-sweep that takes a deleted page's content out of the file (`gc`), the selection and undo `store`, the shared page list used by both the thumbnail sidebar and the organizer, and the remapping that carries page-keyed sidecar state across a plan (`pageState`). See [page-operations.md](page-operations.md) |
 | Click to place | `src/features/placement/` | The shared "click where it goes" mode used by add-text, add-image, add-check-mark, and signatures: a transient store holding the armed placement, the per-page click catcher, the hint banner (which also carries the keyboard path and the cancel affordances), and `rectAt` (anchor a rect at a point and keep it on the page) |
 | Text editing (in place) | `src/features/textedit/` | Edit text already on a page: a content-stream tokenizer/interpreter that locates show-text operators (`contentStream.ts`), a pdf-lib splice-and-redraw step (`mutate.ts`), the click-to-edit overlay, and a transient (not persisted) undo stack in `store` |
@@ -138,6 +139,7 @@ interface PdfEngine {
   getPageText(pageNumber: number): Promise<string>;
   getPageViewport(pageNumber: number, scale: number): Promise<PageViewport>;
   getTextItems(pageNumber: number): Promise<PageTextItems>;
+  getPageLinks(pageNumber: number): Promise<PageLink[]>;
   getOutline(): Promise<OutlineNode[]>;
   getMetadata(): Promise<PdfMetadata>;
   search(query: string, options?: { limit?: number }): Promise<SearchMatch[]>;

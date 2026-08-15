@@ -1,10 +1,12 @@
 import type { PageViewport, PDFPageProxy } from 'pdfjs-dist';
 
+import type { TextItemLike } from './textHit';
 import type {
   DocumentSource,
   OutlineNode,
   PageDimensions,
   PageImage,
+  PageLink,
   PdfDocumentInfo,
   PdfMetadata,
   RenderLayerOptions,
@@ -28,6 +30,17 @@ type PageTextContent = Awaited<ReturnType<PDFPageProxy['getTextContent']>>;
 export interface PageTextItems {
   items: PageTextContent['items'];
   styles: PageTextContent['styles'];
+  /** Carried only so this can serve as `TextLayer`'s `textContentSource`, which
+   *  requires it; nothing here reads it. */
+  lang: PageTextContent['lang'];
+  /**
+   * {@link items} filtered down to the entries that carry a string, cached
+   * alongside them rather than recomputed by each caller: the hover path
+   * scans this list on every animation frame, and a fresh `.filter()` over a
+   * page's whole item list on every one of those was allocation churn for a
+   * result that never changes between calls for the same page.
+   */
+  textItems: TextItemLike[];
 }
 
 /**
@@ -111,6 +124,13 @@ export interface PdfEngine {
    * Cached like {@link getPageText}.
    */
   getTextItems(pageNumber: number): Promise<PageTextItems>;
+
+  /**
+   * The page's `/Link` annotations that point at an external target, with their
+   * rectangles in PDF user space so a click or a right-click can be hit-tested
+   * against them. See {@link PageLink}.
+   */
+  getPageLinks(pageNumber: number): Promise<PageLink[]>;
 
   /** The document outline / bookmarks, flattened to a tree of {@link OutlineNode}. */
   getOutline(): Promise<OutlineNode[]>;

@@ -153,16 +153,19 @@ start and sharing one would delete the exports CI feeds to veraPDF.
 
 `e2e/global-setup.ts` generates the fixtures with pdf-lib and writes them to
 `e2e/fixtures/` (gitignored, regenerated each run). Nothing binary is committed.
-There are three: `form.pdf`, a two-page PDF with an empty fillable text field, a
+There are four: `form.pdf`, a two-page PDF with an empty fillable text field, a
 checkbox, and a radio group; `filled-form.pdf`, a single page whose only content
-is three text fields that already hold values; and `pages.pdf`, four portrait
-pages each printing the position it started in. The second is deliberately
-otherwise blank, so any ink on the rendered canvas is a form widget that should
-have been left to the annotation layer, which is what makes the doubled-text
-assertion below possible. The third exists because after a reorder every page
-still renders and only the words on them say whether the right one moved.
+is three text fields that already hold values; `addresses.pdf`, a page carrying
+an email address, a web address, and a `/Link` annotation whose declared target
+is deliberately nothing like the words printed over it; and `pages.pdf`, four
+portrait pages each printing the position it started in. The second is
+deliberately otherwise blank, so any ink on the rendered canvas is a form widget
+that should have been left to the annotation layer, which is what makes the
+doubled-text assertion below possible. The fourth exists because after a reorder
+every page still renders, and only the words on them say whether the right one
+moved.
 
-There are nine specs.
+There are eleven specs.
 
 **`e2e/smoke.spec.ts`** covers the core document flows:
 
@@ -239,6 +242,15 @@ signature does the same with its aspect ratio locked, and two guards that matter
 more than the happy path -- arrows *inside* a text box move the caret rather than
 the box, and a nudge key moves the item **without** also scrolling the document
 out from under it.
+
+**`e2e/links.spec.ts`**: copying an email or web address from the right-click
+menu, asserted against the real clipboard rather than the announcement alone.
+The one that matters most is the `/Link` annotation case: the menu has to show
+and copy the target the document declared, not the "Click here for details"
+printed over it. It aims its right-clicks through PDF user-space geometry rather
+than at a text-layer span, so it measures the hit test rather than how PDF.js
+happens to lay its spans out. It also covers the hover affordance, including
+that `Escape` dismisses the hint without the pointer moving.
 
 **`e2e/pages.spec.ts`** -- page operations end to end: deleting a selected page
 and putting it back with **Ctrl+Z**, reordering by drag and by **Alt+↓** (with

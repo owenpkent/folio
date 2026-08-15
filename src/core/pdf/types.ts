@@ -46,6 +46,19 @@ export interface PageDimensions {
   height: number;
 }
 
+/**
+ * A `/Link` annotation on a page that points somewhere outside the document.
+ *
+ * The `url` is the one PDF.js resolved and protocol-checked, never the raw
+ * `unsafeUrl` off the annotation: a hostile document can name any scheme it
+ * likes, and only PDF.js's own allow-list decides what becomes a real target.
+ */
+export interface PageLink {
+  url: string;
+  /** `[x0, y0, x1, y1]` in PDF user space, as the annotation declares it. */
+  rect: [number, number, number, number];
+}
+
 export interface RenderPageOptions {
   scale: number;
   canvas: HTMLCanvasElement;

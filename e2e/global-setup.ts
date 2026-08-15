@@ -10,7 +10,96 @@ import { PDFDocument, PDFName, PDFString, StandardFonts } from 'pdf-lib';
 export default async function globalSetup(): Promise<void> {
   await writeFixture('e2e/fixtures/form.pdf', await buildEmptyForm());
   await writeFixture('e2e/fixtures/filled-form.pdf', await buildFilledForm());
+  await writeFixture('e2e/fixtures/addresses.pdf', await buildAddresses());
   await writeFixture('e2e/fixtures/pages.pdf', await buildNumberedPages());
+}
+
+/** The page size every address in {@link buildAddresses} is positioned against. */
+export const ADDRESSES_PAGE = { width: 420, height: 594 };
+
+/**
+ * Where each thing sits, in PDF user space, so the spec can aim a right-click
+ * at it without depending on the text layer being laid out.
+ */
+export const ADDRESSES = {
+  email: { text: 'owen@example.com', x: 60, y: 500 },
+  url: { text: 'www.example.com', x: 60, y: 460 },
+  /** A real /Link annotation whose target is not what the page prints over it. */
+  link: {
+    text: 'Click here for details',
+    x: 60,
+    y: 400,
+    rect: [58, 394, 240, 414] as const,
+    target: 'https://declared.example.com/real-target',
+  },
+  /**
+   * Prose sharing a line with an address, drawn as a single `drawText` call so
+   * PDF.js emits it as one text item -- the shape the hit test has to get
+   * right. `x`/`y` mark the start of the line, well before the address itself.
+   */
+  prose: { text: 'For questions please contact owen2@example.com', x: 60, y: 340 },
+  /**
+   * In the right half of the page, so the hover hint's label -- anchored
+   * under the address's own left edge by default -- is the case that flips to
+   * hang from the right edge instead. Ends well short of x=420 (the page's
+   * own width) on purpose: PDF.js's text extraction silently drops glyphs
+   * whose position falls outside the page, so text drawn running off the
+   * page edge (this fixture's first version) never fully reaches
+   * getTextContent() in the first place, which made it useless for testing
+   * anything downstream of that. `y` matches `email`'s, known to stay inside
+   * the viewport at whatever scale fit-width actually computes (which varies
+   * far more across environments than a hand guess accounts for -- 228% in
+   * one real run, not the ~140% first assumed here).
+   */
+  rightHalf: { text: 'a@bc.co', x: 340, y: 500 },
+};
+
+/**
+ * A page carrying an email address, a web address, a `/Link` annotation, a
+ * line of prose that shares its text item with an address, and an address in
+ * the right half of the page.
+ *
+ * The link's visible text says nothing about where it goes, which is the case
+ * the copy row exists to make legible: the menu shows the declared target, not
+ * the words printed over it. The prose line is about the hit test itself:
+ * PDF.js emits one text item per line, so an address is usually not alone in
+ * its item. The right-half address is about the hover hint's label: anchored
+ * under the address's own edge, it hangs from whichever side keeps it off the
+ * page, and links.spec.ts checks that decision directly.
+ */
+async function buildAddresses(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const page = doc.addPage([ADDRESSES_PAGE.width, ADDRESSES_PAGE.height]);
+
+  for (const entry of [
+    ADDRESSES.email,
+    ADDRESSES.url,
+    ADDRESSES.link,
+    ADDRESSES.prose,
+    ADDRESSES.rightHalf,
+  ]) {
+    page.drawText(entry.text, { x: entry.x, y: entry.y, size: 14, font });
+  }
+
+  const { context } = doc;
+  const annot = context.register(
+    context.obj({
+      Type: 'Annot',
+      Subtype: 'Link',
+      Rect: [...ADDRESSES.link.rect],
+      // No visible border: the point is that nothing on the page says where it goes.
+      Border: [0, 0, 0],
+      A: context.obj({
+        Type: 'Action',
+        S: 'URI',
+        URI: PDFString.of(ADDRESSES.link.target),
+      }),
+    }),
+  );
+  page.node.set(PDFName.of('Annots'), context.obj([annot]));
+
+  return doc.save();
 }
 
 async function writeFixture(path: string, bytes: Uint8Array): Promise<void> {

@@ -425,6 +425,21 @@ kbd {
 }
 .folio-context-menu__label {
   flex: 1;
+  min-width: 0;
+}
+/* The address a copy row will act on, shown under its label so the user sees
+   what they are copying: a document's link is free to point somewhere its
+   visible text does not admit to, and the end of the string is usually where
+   that shows -- "accounts.google.com.attacker.tld" reads as Google right up
+   until the last label. Wrapped rather than truncated, so that tail is never
+   the part that gets cut off; the row's title attribute still carries the
+   whole thing for the mouse-hover tooltip. */
+.folio-context-menu__detail {
+  display: block;
+  max-width: 32ch;
+  overflow-wrap: anywhere;
+  color: var(--folio-text-muted);
+  font-size: 0.8rem;
 }
 .folio-context-menu__check {
   display: inline-flex;
@@ -939,6 +954,67 @@ kbd {
   align-items: center;
   gap: 20px;
   min-height: min-content;
+  /* The address hint positions itself against this box. */
+  position: relative;
+  /* Deliberately NOT overflow: hidden. This is a block box with an auto width
+     (fills .folio-viewer's content box) holding flex items that are not
+     stretched on the cross axis (align-items: center): at any zoom above
+     fit-width, .folio-page is wider than this box by design and overflows it,
+     centered, on purpose -- that overflow is what .folio-viewer's own
+     overflow: auto turns into the horizontal scroll range zooming in and the
+     hand tool both depend on. Clipping it here starves .folio-viewer of that
+     overflow entirely: no scrollbar, scrollLeft stuck at zero range, zoom-in
+     silently unreachable past fit-width. The hint's label is kept from
+     overhanging this box in the first place instead (see .is-flipped-x/y
+     below), which is what the overflow-hidden version of this comment was
+     really trying to fix.
+  */
+}
+/* Highlight over the email or web address under the pointer, marking it as
+   something the right-click menu will offer to copy. Never captures the
+   pointer: it sits over the text layer, and swallowing events here would break
+   selecting the very text it is drawing attention to. */
+.folio-address-hint {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  border-bottom: 2px solid var(--folio-accent);
+  background: color-mix(in srgb, var(--folio-accent) 14%, transparent);
+  border-radius: 2px;
+}
+/* The target itself, under the address. Anchored rather than following the
+   pointer so it can be moved onto without vanishing (WCAG 2.2 SC 1.4.13).
+   Defaults to hanging below-and-right of the address; useTrackAddressHover
+   flips it per axis (see .is-flipped-x/y) when the address sits far enough
+   into the right or bottom portion of its page that the default position
+   would overhang the page box, so the label never grows .folio-pages' own
+   scrollable region. */
+.folio-address-hint__label {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  max-width: 46ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--folio-border);
+  background: var(--folio-surface);
+  color: var(--folio-text);
+  font-size: 0.8rem;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
+}
+/* Hangs from the address's right edge, extending back over the page, instead
+   of from its left edge extending off it. */
+.folio-address-hint__label.is-flipped-x {
+  left: auto;
+  right: 0;
+}
+/* Hangs above the address instead of below it. */
+.folio-address-hint__label.is-flipped-y {
+  top: auto;
+  bottom: calc(100% + 4px);
 }
 .folio-page {
   position: relative;
@@ -1095,6 +1171,12 @@ kbd {
   border-radius: var(--folio-radius);
   color: var(--folio-text-muted);
   box-shadow: var(--folio-shadow);
+  /* .folio-pages is a positioned element (the address hint anchors against
+     it), which without this paints its pages -- later in tree order -- on top
+     of this message while a replacement document is loading and the previous
+     one's pages are still mounted underneath. Clear of every z-index inside
+     .folio-page (highest currently 8). */
+  z-index: 10;
 }
 
 /* Empty state */
