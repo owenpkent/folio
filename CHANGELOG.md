@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-15
+
 ### Added
 
 - **The Chrome extension grew up.** It was a preview that only caught URLs
@@ -186,8 +188,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   verbatim.
 - `SOURCE_DATE_EPOCH` is honoured when set, so the build date baked into the
   bundle stops two builds of the same commit from differing.
-- Dependency advisories cleared: `brace-expansion` (dev-only, GHSA-mh99-v99m-4gvg)
-  and `event-listener` (RUSTSEC-2026-0221). `npm audit` and `cargo audit` both
+- Dependency advisories cleared: `brace-expansion` (dev-only, GHSA-mh99-v99m-4gvg),
+  `nanoid` (dev-only via Vite's PostCSS, GHSA-2v37-7h3g-55p8), and
+  `event-listener` (RUSTSEC-2026-0221). `npm audit` and `cargo audit` both
   report no vulnerabilities.
 
 - **Folio is selectable as the Windows `.pdf` handler.** A PDF downloaded
@@ -975,7 +978,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
   cargo-deny policy.
 
-[Unreleased]: https://github.com/owenpkent/folio/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/owenpkent/folio/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/owenpkent/folio/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/owenpkent/folio/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/owenpkent/folio/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/owenpkent/folio/compare/v0.3.0...v0.3.1

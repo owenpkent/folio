@@ -1,6 +1,6 @@
 {
   "name": "folio",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "A world-class, open-source PDF viewer. Fast, accessible, extensible, dark-mode native.",
   "type": "module",
   "license": "MIT",
