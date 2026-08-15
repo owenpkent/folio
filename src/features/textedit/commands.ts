@@ -3,6 +3,7 @@ import { pushToast } from '@/components/common';
 import { usePageOpsStore } from '@/features/pageops/store';
 import { useSigningStore } from '@/features/signing';
 import { reloadEditedBytes } from '@/state/actions';
+import { useDocumentMutationStore } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 
 import { useTextEditStore } from './store';
@@ -42,15 +43,26 @@ export function registerTextEditCommands(): void {
     title: 'Undo text edit',
     category: 'Edit',
     keybinding: 'Mod+z',
-    when: () => ready() && useTextEditStore.getState().active,
+    // !inFlight: some OTHER feature is mid-flight rewriting the document (see
+    // documentMutationStore.ts); undoing on top of that would race it.
+    when: () =>
+      ready() &&
+      useTextEditStore.getState().active &&
+      !useDocumentMutationStore.getState().inFlight,
     run: async () => {
       const bytes = useTextEditStore.getState().popUndo();
       if (!bytes) return;
-      await reloadEditedBytes(bytes);
-      // Page ops keep a separate undo stack bound to the same chord (see
-      // pageops/commands.ts); its snapshots describe bytes from before this
-      // reload and would silently discard it if used now.
-      usePageOpsStore.getState().clearUndo();
+      const mutation = useDocumentMutationStore.getState();
+      mutation.begin();
+      try {
+        await reloadEditedBytes(bytes);
+        // Page ops keep a separate undo stack bound to the same chord (see
+        // pageops/commands.ts); its snapshots describe bytes from before this
+        // reload and would silently discard it if used now.
+        usePageOpsStore.getState().clearUndo();
+      } finally {
+        mutation.end();
+      }
     },
   });
 }

@@ -10,6 +10,10 @@ import {
 } from '@/core/pdf';
 import { usePageOpsStore } from '@/features/pageops/store';
 import { reloadEditedBytes } from '@/state/actions';
+import {
+  DOCUMENT_MUTATION_BUSY_TITLE,
+  useDocumentMutationStore,
+} from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 import { formWidgetAt } from '@/state/formsLayer';
 import { useViewerStore } from '@/state/viewerStore';
@@ -50,6 +54,10 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
   const active = useTextEditStore((s) => s.active);
   const session = useTextEditStore((s) => s.session);
   const scale = useViewerStore((s) => s.scale);
+  // Some OTHER feature is mid-flight rewriting the document; starting a new
+  // edit session on top of that is exactly the collision documentMutationStore
+  // exists to prevent, so the catcher that opens one goes inert until it clears.
+  const crossBusy = useDocumentMutationStore((s) => s.inFlight);
   const rootRef = useRef<HTMLDivElement>(null);
   const pageIndex = pageNumber - 1;
 
@@ -154,6 +162,18 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
       return;
     }
 
+    // The catcher that opens a session already goes inert during a
+    // cross-feature mutation (see crossBusy above), but a session already
+    // open when one starts elsewhere reaches this regardless of that: guard
+    // the actual save/reload round trip too, not just the entry point.
+    const mutation = useDocumentMutationStore.getState();
+    if (mutation.inFlight) {
+      pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
+      onFailure();
+      return;
+    }
+    mutation.begin();
+
     void (async () => {
       try {
         const bytes = await getEngine().saveDocument();
@@ -183,6 +203,8 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
           error instanceof TexteditError ? error.message : 'Could not save this text edit';
         pushToast(message, 'error');
         onFailure();
+      } finally {
+        mutation.end();
       }
     })();
   };
@@ -198,6 +220,8 @@ export function TextEditLayer({ pageNumber }: { pageNumber: number }) {
           type="button"
           className="folio-textedit-hit"
           aria-label="Click text on the page to edit it"
+          disabled={crossBusy}
+          title={crossBusy ? DOCUMENT_MUTATION_BUSY_TITLE : undefined}
           onClick={handleClick}
         />
       )}

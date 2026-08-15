@@ -1,8 +1,9 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type * as PdfCore from '@/core/pdf';
+import { useDocumentMutationStore } from '@/state/documentMutationStore';
 
 // Mock function references shared between the vi.mock factories below and the
 // test bodies. vi.hoisted is required (rather than a plain module-scope
@@ -104,5 +105,38 @@ describe('ImageEditLayer keyboard activation', () => {
 
     expect(useImageEditStore.getState().selected).toBeNull();
     expect(announce).toHaveBeenCalledWith(expect.stringMatching(/no editable image/i), true);
+  });
+});
+
+describe('ImageEditLayer document-mutation lock', () => {
+  afterEach(() => {
+    cleanup();
+    useImageEditStore.getState().reset();
+    useDocumentMutationStore.getState().end();
+    getLocatedImages.mockReset();
+    announce.mockReset();
+  });
+
+  it('releases the cross-feature lock even when a commit fails', async () => {
+    const editable: LocatedImage = { ...baseImage, name: 'Im1', editable: true };
+    getLocatedImages.mockResolvedValue([editable]);
+    useImageEditStore.setState({ active: true });
+
+    render(<ImageEditLayer pageNumber={1} />);
+
+    const catcher = screen.getByRole('button', { name: /select the first editable image/i });
+    catcher.focus();
+    await userEvent.setup().keyboard('{Enter}');
+
+    const deleteButton = await screen.findByRole('button', { name: 'Delete image' });
+    // getEngine().saveDocument() (mocked above) resolves to an empty
+    // Uint8Array, which is not a loadable PDF, so commitImageEdit's own
+    // PDFDocument.load rejects this commit on its own -- exactly the kind of
+    // failure the lock's release has to survive without being asked to.
+    await userEvent.setup().click(deleteButton);
+
+    await waitFor(() => {
+      expect(useDocumentMutationStore.getState().inFlight).toBe(false);
+    });
   });
 });

@@ -13,6 +13,7 @@ import { resetPageSizes } from '@/core/pdf/pageSizes';
 import { useTextEditStore } from '@/features/textedit/store';
 import { useSigningStore } from '@/features/signing';
 import { reloadEditedBytes } from '@/state/actions';
+import { useDocumentMutationStore } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
 
@@ -64,10 +65,15 @@ function warnIfSigned(): void {
  */
 export async function commitPagePlan(plan: PagePlan, announcement: string): Promise<boolean> {
   const ops = usePageOpsStore.getState();
+  const mutation = useDocumentMutationStore.getState();
   // Each commit serialises the whole document and reloads it, so a second one
-  // starting mid-flight would be reading bytes the first has already replaced.
-  if (ops.busy) return false;
+  // starting mid-flight would be reading bytes the first has already
+  // replaced -- ops.busy guards a second page op, mutation.inFlight guards
+  // every OTHER feature that can also rewrite the document (see
+  // documentMutationStore.ts).
+  if (ops.busy || mutation.inFlight) return false;
   ops.setBusy(true);
+  mutation.begin();
   warnIfSigned();
 
   let snapshot: PageOpsSnapshot | undefined;
@@ -106,16 +112,19 @@ export async function commitPagePlan(plan: PagePlan, announcement: string): Prom
     return false;
   } finally {
     usePageOpsStore.getState().setBusy(false);
+    mutation.end();
   }
 }
 
 /** Step back one page operation, restoring both the bytes and what was placed on them. */
 export async function undoPageOp(): Promise<boolean> {
   const ops = usePageOpsStore.getState();
-  if (ops.busy) return false;
+  const mutation = useDocumentMutationStore.getState();
+  if (ops.busy || mutation.inFlight) return false;
   const snapshot = ops.popUndo();
   if (!snapshot) return false;
   ops.setBusy(true);
+  mutation.begin();
 
   try {
     const wasOn = useViewerStore.getState().currentPage;
@@ -137,6 +146,7 @@ export async function undoPageOp(): Promise<boolean> {
     return false;
   } finally {
     usePageOpsStore.getState().setBusy(false);
+    mutation.end();
   }
 }
 

@@ -1,4 +1,8 @@
 import { Button } from '@/components/common';
+import {
+  DOCUMENT_MUTATION_BUSY_TITLE,
+  useDocumentMutationStore,
+} from '@/state/documentMutationStore';
 import { useViewerStore } from '@/state/viewerStore';
 
 import { deleteSelectedPages, nudgeSelection, rotateSelection } from './operations';
@@ -14,7 +18,12 @@ import { usePageOpsStore } from './store';
  */
 export function PageActionBar() {
   const selection = usePageOpsStore((s) => s.selection);
-  const busy = usePageOpsStore((s) => s.busy);
+  const localBusy = usePageOpsStore((s) => s.busy);
+  // Some OTHER feature (text edit, image edit, combine, save, OCR...) is
+  // mid-flight rewriting the document; every button here has to wait for it
+  // the same way it already waits for a page op of its own. See
+  // documentMutationStore.ts.
+  const crossBusy = useDocumentMutationStore((s) => s.inFlight);
   const numPages = useViewerStore((s) => s.numPages);
 
   const count = selection.size;
@@ -35,18 +44,31 @@ export function PageActionBar() {
       <p className="folio-sr-only" role="status">
         {countText}
       </p>
-      {count > 0 && <PageActionBarContent selection={selection} busy={busy} numPages={numPages} />}
+      {count > 0 && (
+        <PageActionBarContent
+          selection={selection}
+          localBusy={localBusy}
+          crossBusy={crossBusy}
+          numPages={numPages}
+        />
+      )}
     </>
   );
 }
 
 interface PageActionBarContentProps {
   selection: ReadonlySet<number>;
-  busy: boolean;
+  localBusy: boolean;
+  crossBusy: boolean;
   numPages: number;
 }
 
-function PageActionBarContent({ selection, busy, numPages }: PageActionBarContentProps) {
+function PageActionBarContent({
+  selection,
+  localBusy,
+  crossBusy,
+  numPages,
+}: PageActionBarContentProps) {
   const count = selection.size;
   // Deleting every page would leave no document, so the last page stays put.
   const canDelete = count < numPages;
@@ -56,6 +78,14 @@ function PageActionBarContent({ selection, busy, numPages }: PageActionBarConten
   const { min, max } = selectionExtent(selection);
   const atTop = min === 1;
   const atBottom = max === numPages;
+  // Every button that actually rewrites the document waits on both busy
+  // flags; Clear below does not, since changing the selection touches
+  // nothing outside this store and is safe no matter what else is running.
+  const busy = localBusy || crossBusy;
+  // The cross-feature reason takes priority over a button's own structural
+  // reason when both apply: it is the transient one, and the one the user is
+  // least likely to already know about.
+  const busyTitle = crossBusy ? DOCUMENT_MUTATION_BUSY_TITLE : undefined;
 
   return (
     <div className="folio-page-actions" role="group" aria-label="Actions for the selected pages">
@@ -73,31 +103,31 @@ function PageActionBarContent({ selection, busy, numPages }: PageActionBarConten
         <Button
           onClick={() => void nudgeSelection(-1)}
           disabled={busy || atTop}
-          title={atTop ? 'Already at the start of the document.' : undefined}
+          title={busyTitle ?? (atTop ? 'Already at the start of the document.' : undefined)}
         >
           Move up
         </Button>
         <Button
           onClick={() => void nudgeSelection(1)}
           disabled={busy || atBottom}
-          title={atBottom ? 'Already at the end of the document.' : undefined}
+          title={busyTitle ?? (atBottom ? 'Already at the end of the document.' : undefined)}
         >
           Move down
         </Button>
-        <Button onClick={() => void rotateSelection(-1)} disabled={busy}>
+        <Button onClick={() => void rotateSelection(-1)} disabled={busy} title={busyTitle}>
           Rotate left
         </Button>
-        <Button onClick={() => void rotateSelection(1)} disabled={busy}>
+        <Button onClick={() => void rotateSelection(1)} disabled={busy} title={busyTitle}>
           Rotate right
         </Button>
         <Button
           onClick={() => void deleteSelectedPages()}
           disabled={busy || !canDelete}
-          title={canDelete ? undefined : 'A document has to keep at least one page.'}
+          title={busyTitle ?? (canDelete ? undefined : 'A document has to keep at least one page.')}
         >
           Delete
         </Button>
-        <Button onClick={() => usePageOpsStore.getState().clearSelection()} disabled={busy}>
+        <Button onClick={() => usePageOpsStore.getState().clearSelection()} disabled={localBusy}>
           Clear
         </Button>
       </div>

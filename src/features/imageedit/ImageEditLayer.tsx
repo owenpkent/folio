@@ -5,7 +5,15 @@ import { useNudgeKeys, type NudgeRect } from '@/a11y/useNudgeKeys';
 import { Icon, pushToast } from '@/components/common';
 import { convertToViewportRectangle, getEngine, type PageViewport } from '@/core/pdf';
 import { pickImageFile } from '@/features/editing/commands';
+// Store only, not the feature barrel: see actions.ts's own comment on the
+// same import for why (pulls in UI this layer has no business importing).
+import { usePageOpsStore } from '@/features/pageops/store';
+import { useTextEditStore } from '@/features/textedit/store';
 import { reloadEditedBytes } from '@/state/actions';
+import {
+  DOCUMENT_MUTATION_BUSY_TITLE,
+  useDocumentMutationStore,
+} from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 import { formWidgetAt } from '@/state/formsLayer';
 import { useViewerStore } from '@/state/viewerStore';
@@ -16,6 +24,20 @@ import { useImageEditStore } from './store';
 import type { ImageEditRect, LocatedImage, SelectedImage } from './types';
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+
+/**
+ * Page ops and text edit each keep their own undo stack bound to Mod+z (see
+ * pageops/operations.ts's swapInDocument and textedit/commands.ts), and each
+ * already invalidates the other's on a commit of its own. Image editing has
+ * no undo stack of its own to protect the same way, but a commit here still
+ * has to invalidate both of theirs: once this reload lands, their snapshots
+ * describe bytes from before it, and undoing with either would silently
+ * discard this image edit, with no signal that anything was lost.
+ */
+function invalidateOtherUndoStacks(): void {
+  usePageOpsStore.getState().clearUndo();
+  useTextEditStore.getState().clearUndo();
+}
 
 /**
  * How long after the last nudge key before the edit is written to the document.
@@ -121,6 +143,12 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
   const scale = useViewerStore((s) => s.scale);
   const currentPage = useViewerStore((s) => s.currentPage);
   const docVersion = useDocumentStore((s) => s.docVersion);
+  // Some OTHER feature is mid-flight rewriting the document; selecting an
+  // image stays fine (it touches nothing outside this layer's own store),
+  // but every action that would actually commit a change waits for it, the
+  // same way it would wait for an image edit of its own. See
+  // documentMutationStore.ts.
+  const crossBusy = useDocumentMutationStore((s) => s.inFlight);
   const pageIndex = pageNumber - 1;
   const isThisPage = selected != null && selected.pageIndex === pageIndex;
   // The catcher is a real focusable button covering the whole page, so mounting
@@ -242,6 +270,17 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
 
   /** Serialize, mutate, and live-reload: the same commit path in-place text edits use. */
   const commitMove = async (rect: ImageEditRect, current: SelectedImage) => {
+    const mutation = useDocumentMutationStore.getState();
+    if (mutation.inFlight) {
+      // startDrag/startResize/onNudge below all check this before a gesture
+      // even starts, but something else can still win the race after one is
+      // already under way; undo the attempt visually rather than leaving it
+      // to commit silently once the other feature is done.
+      pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
+      setPreviewCssRect(null);
+      return;
+    }
+    mutation.begin();
     try {
       const bytes = await getEngine().saveDocument();
       const result = await commitImageEdit({
@@ -255,11 +294,13 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
       // once previewCssRect clears in `finally`.
       select({ ...current, rect });
       await reloadEditedBytes(result);
+      invalidateOtherUndoStacks();
     } catch (error) {
       const message = error instanceof ImageEditError ? error.message : 'Could not move this image';
       pushToast(message, 'error');
     } finally {
       setPreviewCssRect(null);
+      mutation.end();
     }
   };
 
@@ -318,7 +359,10 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
 
   const onNudge = (next: NudgeRect) => {
     const page = pageBox();
-    if (!page || !viewport || !selected) return;
+    // crossBusy: see startDrag's identical guard above -- commitMove would
+    // refuse this once the debounce below fires anyway, so refuse the
+    // keypress's own preview move too rather than letting it settle back.
+    if (!page || !viewport || !selected || crossBusy) return;
     const nextCss = {
       x: next.x * page.width,
       y: next.y * page.height,
@@ -349,8 +393,11 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
     // above) now reaches here too, and without this the drag would run to
     // completion visually, then revert with a toast on pointerup once
     // commitMove's own editable check fails it -- a more confusing dead end
-    // than simply not starting the drag.
-    if (e.button !== 0 || !viewport || !selected || !selectedInfo?.transformable) return;
+    // than simply not starting the drag. crossBusy is the same idea for
+    // another feature's mid-flight mutation: commitMove already refuses it,
+    // so refuse the drag itself rather than letting it run to a revert too.
+    if (e.button !== 0 || !viewport || !selected || !selectedInfo?.transformable || crossBusy)
+      return;
     if (!selectedInfo.editable) return;
     const pageRect = pageRectFrom(e.currentTarget);
     if (!pageRect) return;
@@ -401,8 +448,9 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
   };
 
   const startResize = (e: PointerEvent<HTMLSpanElement>) => {
-    // selectedInfo.editable: see startDrag's identical guard above.
-    if (e.button !== 0 || !viewport || !selected || !selectedInfo?.transformable) return;
+    // selectedInfo.editable, crossBusy: see startDrag's identical guard above.
+    if (e.button !== 0 || !viewport || !selected || !selectedInfo?.transformable || crossBusy)
+      return;
     if (!selectedInfo.editable) return;
     const pageRect = pageRectFrom(e.currentTarget);
     if (!pageRect) return;
@@ -455,8 +503,17 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
 
   const handleReplace = async () => {
     if (!selected) return;
+    // Before the busy check, not after: picking a file is a human-scale
+    // wait, so anything else that was mid-flight when this was clicked has
+    // almost certainly finished by the time the picker resolves.
     const picked = await pickImageFile();
     if (!picked) return;
+    const mutation = useDocumentMutationStore.getState();
+    if (mutation.inFlight) {
+      pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
+      return;
+    }
+    mutation.begin();
     try {
       const bytes = await getEngine().saveDocument();
       const result = await commitImageEdit({
@@ -466,6 +523,7 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
         action: { kind: 'replace', dataUrl: picked.dataUrl, mime: picked.mime },
       });
       await reloadEditedBytes(result);
+      invalidateOtherUndoStacks();
       // The operator now draws a freshly embedded image under a brand-new
       // resource name (see commitImageEdit's replace path), so `selected`'s
       // own name is stale: re-resolve by rect (name-agnostic, since that's
@@ -485,11 +543,19 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
       const message =
         error instanceof ImageEditError ? error.message : 'Could not replace this image';
       pushToast(message, 'error');
+    } finally {
+      mutation.end();
     }
   };
 
   const handleDelete = async () => {
     if (!selected) return;
+    const mutation = useDocumentMutationStore.getState();
+    if (mutation.inFlight) {
+      pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
+      return;
+    }
+    mutation.begin();
     try {
       const bytes = await getEngine().saveDocument();
       const result = await commitImageEdit({
@@ -500,10 +566,13 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
       });
       select(null);
       await reloadEditedBytes(result);
+      invalidateOtherUndoStacks();
     } catch (error) {
       const message =
         error instanceof ImageEditError ? error.message : 'Could not delete this image';
       pushToast(message, 'error');
+    } finally {
+      mutation.end();
     }
   };
 
@@ -546,6 +615,8 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
             <button
               type="button"
               className="folio-imageedit__replace"
+              disabled={crossBusy}
+              title={crossBusy ? DOCUMENT_MUTATION_BUSY_TITLE : undefined}
               onClick={() => void handleReplace()}
             >
               Replace image…
@@ -555,7 +626,8 @@ export function ImageEditLayer({ pageNumber }: { pageNumber: number }) {
             type="button"
             className="folio-edit__delete"
             aria-label="Delete image"
-            title="Delete image"
+            title={crossBusy ? DOCUMENT_MUTATION_BUSY_TITLE : 'Delete image'}
+            disabled={crossBusy}
             onClick={() => void handleDelete()}
           >
             <Icon name="x" size={13} />

@@ -2,6 +2,7 @@ import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { pushToast } from '@/components/common';
 import { getEngine } from '@/core/pdf';
+import { useDocumentMutationStore } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 import { useViewerStore } from '@/state/viewerStore';
 
@@ -33,10 +34,16 @@ async function recognizeOnePage(pageNumber: number): Promise<void> {
 
 /** OCR the whole document, page by page, with progress and cancellation. */
 export async function recognizeDocument(): Promise<void> {
-  if (!ready() || useOcrStore.getState().status === 'running') return;
+  const mutation = useDocumentMutationStore.getState();
+  // Recognition writes into the OCR store page by page, over a run that can
+  // take minutes on a long document; a page op's snapshot/restore/remap of
+  // that same store (see pageops/pageState.ts) mid-run would race it. See
+  // documentMutationStore.ts.
+  if (!ready() || useOcrStore.getState().status === 'running' || mutation.inFlight) return;
   const total = useViewerStore.getState().numPages;
   const store = useOcrStore.getState();
   store.start(total);
+  mutation.begin();
   try {
     for (let page = 1; page <= total; page++) {
       if (useOcrStore.getState().cancelRequested) break;
@@ -50,15 +57,19 @@ export async function recognizeDocument(): Promise<void> {
     const message = error instanceof Error ? error.message : 'OCR failed';
     useOcrStore.getState().fail(message);
     pushToast(`OCR failed: ${message}`, 'error');
+  } finally {
+    mutation.end();
   }
 }
 
 /** OCR just the page the user is viewing. */
 export async function recognizeCurrentPage(): Promise<void> {
-  if (!ready() || useOcrStore.getState().status === 'running') return;
+  const mutation = useDocumentMutationStore.getState();
+  if (!ready() || useOcrStore.getState().status === 'running' || mutation.inFlight) return;
   const page = useViewerStore.getState().currentPage;
   const store = useOcrStore.getState();
   store.start(1);
+  mutation.begin();
   try {
     await recognizeOnePage(page);
     useOcrStore.getState().finish();
@@ -68,6 +79,8 @@ export async function recognizeCurrentPage(): Promise<void> {
     const message = error instanceof Error ? error.message : 'OCR failed';
     useOcrStore.getState().fail(message);
     pushToast(`OCR failed: ${message}`, 'error');
+  } finally {
+    mutation.end();
   }
 }
 

@@ -14,6 +14,10 @@ import { stampAnnotations, useAnnotationStore } from '@/features/annotations';
 import { stampEdits, useEditStore } from '@/features/editing';
 import { stampOcrLayer, useOcrStore } from '@/features/ocr';
 import { useSignatureStore, type Signature } from '@/features/signatures';
+import {
+  DOCUMENT_MUTATION_BUSY_TITLE,
+  useDocumentMutationStore,
+} from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 
 /**
@@ -115,9 +119,19 @@ export async function saveDocumentInPlace(): Promise<void> {
     return;
   }
 
-  const bytes = await exportForSave();
-  if (!bytes) return;
+  // Save reads a snapshot of the engine's bytes plus several stores
+  // (edits, signatures, OCR pages, annotations) that a page op, a text or
+  // image edit, or a combine could otherwise be rewriting mid-read; see
+  // documentMutationStore.ts.
+  const mutation = useDocumentMutationStore.getState();
+  if (mutation.inFlight) {
+    pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
+    return;
+  }
+  mutation.begin();
   try {
+    const bytes = await exportForSave();
+    if (!bytes) return;
     await writeDocument(sourcePath, bytes);
     pushToast('Saved', 'success');
     announce(`Saved ${info.name}`);
@@ -125,6 +139,8 @@ export async function saveDocumentInPlace(): Promise<void> {
     const message = error instanceof Error ? error.message : 'Write failed';
     announce(`Could not save the document: ${message}`, true);
     pushToast('Could not save the document', 'error');
+  } finally {
+    mutation.end();
   }
 }
 
@@ -133,17 +149,28 @@ export async function saveDocumentToFile(): Promise<void> {
   const { info, status } = useDocumentStore.getState();
   if (status !== 'ready' || !info) return;
 
-  const bytes = await exportForSave();
-  if (!bytes) return;
+  // See saveDocumentInPlace's identical guard above for why.
+  const mutation = useDocumentMutationStore.getState();
+  if (mutation.inFlight) {
+    pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
+    return;
+  }
+  mutation.begin();
+  try {
+    const bytes = await exportForSave();
+    if (!bytes) return;
 
-  const base = info.name.replace(/\.pdf$/i, '');
-  const suffix =
-    useSignatureStore.getState().signatures.length > 0
-      ? 'signed'
-      : useEditStore.getState().edits.length > 0
-        ? 'edited'
-        : 'filled';
-  await saveBytes(bytes, `${base} (${suffix}).pdf`);
+    const base = info.name.replace(/\.pdf$/i, '');
+    const suffix =
+      useSignatureStore.getState().signatures.length > 0
+        ? 'signed'
+        : useEditStore.getState().edits.length > 0
+          ? 'edited'
+          : 'filled';
+    await saveBytes(bytes, `${base} (${suffix}).pdf`);
+  } finally {
+    mutation.end();
+  }
 }
 
 /**

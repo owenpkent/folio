@@ -25,6 +25,7 @@ import { detectSignatures, useSigningStore, type DetectedSignature } from '@/fea
 import { useTextEditStore } from '@/features/textedit/store';
 import { pluginHost } from '@/plugins/PluginHost';
 
+import { useDocumentMutationStore } from './documentMutationStore';
 import { useDocumentStore } from './documentStore';
 import { useViewerStore } from './viewerStore';
 
@@ -71,6 +72,17 @@ export async function loadSource(source: DocumentSource): Promise<void> {
   const doc = useDocumentStore.getState();
   const viewer = useViewerStore.getState();
 
+  // Only acquire the cross-feature lock if nobody already holds it: combine
+  // calls this at the end of its own already-locked run (see runCombine in
+  // features/combine/commands.ts), and releasing the lock here, before
+  // combine's own cleanup after this call has run, would let something else
+  // start while combine is still finishing up. Every other caller (Open, a
+  // dropped file, a deep link, a launch file) reaches this with the lock
+  // free, so it owns it for the duration of this load.
+  const mutation = useDocumentMutationStore.getState();
+  const ownsLock = !mutation.inFlight;
+  if (ownsLock) mutation.begin();
+
   doc.setStatus('loading');
   try {
     // Before loadDocument, not after: pdf.js transfers the byte array to its
@@ -116,25 +128,42 @@ export async function loadSource(source: DocumentSource): Promise<void> {
     const message = error instanceof Error ? error.message : 'Failed to open document';
     doc.setError(message);
     announce(`Could not open document: ${message}`, true);
+  } finally {
+    // Unconditional: a load that threw still has to release a lock this
+    // function acquired, or every other mutating entry point stays disabled
+    // forever over one failed open.
+    if (ownsLock) mutation.end();
   }
 }
 
 export async function closeDocument(): Promise<void> {
-  await getEngine().closeDocument();
-  resetPageSizes();
-  useDocumentStore.getState().reset();
-  useViewerStore.getState().reset();
-  useAnnotationStore.getState().reset();
-  useSignatureStore.getState().reset();
-  useEditStore.getState().reset();
-  useOcrStore.getState().reset();
-  useTextEditStore.getState().reset();
-  usePageOpsStore.getState().reset();
-  usePlacementStore.getState().cancel();
-  useAddressHover.getState().clear();
-  useSigningStore.getState().setDetected([]);
-  document.title = 'Folio';
-  announce('Closed document');
+  // Closing replaces the engine's document with nothing, exactly the kind of
+  // change a mid-flight page op / text edit / image edit could be reloading
+  // on top of; see documentMutationStore.ts. This command has a single call
+  // site (defaultCommands.ts), so unlike loadSource it never has to worry
+  // about nesting inside another already-locked operation.
+  const mutation = useDocumentMutationStore.getState();
+  if (mutation.inFlight) return;
+  mutation.begin();
+  try {
+    await getEngine().closeDocument();
+    resetPageSizes();
+    useDocumentStore.getState().reset();
+    useViewerStore.getState().reset();
+    useAnnotationStore.getState().reset();
+    useSignatureStore.getState().reset();
+    useEditStore.getState().reset();
+    useOcrStore.getState().reset();
+    useTextEditStore.getState().reset();
+    usePageOpsStore.getState().reset();
+    usePlacementStore.getState().cancel();
+    useAddressHover.getState().clear();
+    useSigningStore.getState().setDetected([]);
+    document.title = 'Folio';
+    announce('Closed document');
+  } finally {
+    mutation.end();
+  }
 }
 
 /**

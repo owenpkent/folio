@@ -3,6 +3,7 @@ import { commandRegistry } from '@/commands';
 import { pushToast } from '@/components/common';
 import { pickAndReadDocuments } from '@/core/document/openDocument';
 import { loadSource } from '@/state/actions';
+import { useDocumentMutationStore } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 
 import { CombineCancelledError, combinePdfs } from './combineDocuments';
@@ -73,7 +74,12 @@ let inFlight = false;
  * over any one of the inputs.
  */
 export async function runCombine(): Promise<void> {
-  if (inFlight) return;
+  const mutation = useDocumentMutationStore.getState();
+  // inFlight guards a second combine run; mutation.inFlight guards every
+  // OTHER feature that can also rewrite the document (see
+  // documentMutationStore.ts) -- a page op, a text or image edit, a save,
+  // all funnel through the same loadSource this run ends with.
+  if (inFlight || mutation.inFlight) return;
   const store = useCombineStore.getState();
   if (store.files.length < 2) {
     store.setError('Add at least two PDFs to combine');
@@ -81,6 +87,7 @@ export async function runCombine(): Promise<void> {
   }
 
   inFlight = true;
+  mutation.begin();
   // Snapshotted now, not read again until the merge is done: the row controls
   // that could change this list are disabled for as long as `busy` is true
   // (see CombineModal), so this stays the list the user actually saw.
@@ -136,6 +143,7 @@ export async function runCombine(): Promise<void> {
     }
   } finally {
     inFlight = false;
+    mutation.end();
     useCombineStore.getState().endRun();
   }
 }
