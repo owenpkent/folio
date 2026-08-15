@@ -32,6 +32,16 @@ const pageCount = (page: Page) => page.locator('.folio-pagebox__total');
 const selectPage = (page: Page, n: number) =>
   page.getByRole('checkbox', { name: `Select page ${n}` }).click({ force: true });
 
+/**
+ * The selection count as the action bar shows it, scoped to that one group.
+ *
+ * The same text also lives in an always-mounted, visually hidden live region
+ * (see PageActionBar.tsx) so the 0-to-1 transition still gets announced; an
+ * unscoped getByText for this text therefore matches both.
+ */
+const selectedCount = (page: Page, text: string) =>
+  page.getByRole('group', { name: 'Actions for the selected pages' }).getByText(text);
+
 /** The word printed on the document's first page, read from its text layer. */
 async function firstPageWord(page: Page): Promise<string> {
   const layer = page.locator('.folio-text-layer').first();
@@ -56,7 +66,7 @@ test.describe('page operations', () => {
     await openFixture(page);
 
     for (const n of [1, 2, 3, 4]) await selectPage(page, n);
-    await expect(page.getByText('4 pages selected')).toBeVisible();
+    await expect(selectedCount(page, '4 pages selected')).toBeVisible();
 
     // The action bar's Delete is the one surface that can offer this, so it is
     // the one that has to say no.
@@ -141,6 +151,6 @@ test.describe('page operations', () => {
     await page.keyboard.press('Enter');
 
     await expect(check).toHaveAttribute('aria-checked', 'true');
-    await expect(page.getByText('1 page selected')).toBeVisible();
+    await expect(selectedCount(page, '1 page selected')).toBeVisible();
   });
 });

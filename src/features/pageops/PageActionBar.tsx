@@ -60,8 +60,13 @@ function PageActionBarContent({ selection, busy, numPages }: PageActionBarConten
   return (
     <div className="folio-page-actions" role="group" aria-label="Actions for the selected pages">
       {/* Plain text, not a second live region: the always-mounted one above
-          already owns announcing this. */}
-      <p className="folio-page-actions__count">
+          already owns announcing this. aria-hidden so it is not *also* a
+          second static-text copy of the same information in the
+          accessibility tree -- two nodes carrying identical text is worse
+          than what it replaces, not just redundant with it: a screen reader
+          user tabbing into this group would hit the count twice, once from
+          the announcement and once as this paragraph's own content. */}
+      <p className="folio-page-actions__count" aria-hidden="true">
         {count} {count === 1 ? 'page' : 'pages'} selected
       </p>
       <div className="folio-page-actions__buttons">

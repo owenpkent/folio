@@ -622,16 +622,32 @@ kbd {
 .folio-thumbnails-panel {
   display: flex;
   flex-direction: column;
+  /* Fills .folio-sidebar__body's box (a definite height: it stretches to
+     .folio-sidebar's height as a row flex item) so .folio-thumbnails-scroll
+     below has a bounded height of its own to scroll within, and the action
+     bar has a fixed amount of room below it rather than sharing scrollable
+     space with the page list. */
+  height: 100%;
+  min-height: 0;
   gap: 12px;
+}
+/* The list scrolls in its own box, separate from the action bar: see the
+   comment in Thumbnails.tsx on why that box can no longer be
+   .folio-sidebar__body itself. */
+.folio-thumbnails-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 .folio-page-card {
   position: relative;
   /* Forms a stacking context (position: relative + an explicit z-index, even
      0) so the check button's z-index below is scoped to this card instead of
-     competing directly with .folio-page-actions, which is position: sticky
-     and so forms one of its own regardless of z-index. Without this the
-     check's z-index: 1 escapes to whichever ancestor context is nearest and
-     paints on top of the sticky action bar instead of under it. */
+     escaping to whichever ancestor context is nearest. Belt and braces
+     alongside .folio-thumbnails-scroll above: that is what keeps a card from
+     ever sitting under .folio-page-actions in the first place, but a card
+     should not depend on that to keep its own controls layered correctly
+     among themselves regardless. */
   z-index: 0;
   display: flex;
   justify-content: center;
@@ -712,8 +728,14 @@ kbd {
   width: 210px;
 }
 .folio-page-actions {
-  position: sticky;
-  bottom: 0;
+  /* A row of its own below .folio-thumbnails-scroll (see global.css and
+     Thumbnails.tsx), not a layer floating on top of it: this used to be
+     position: sticky, which kept it visible by overlapping whatever card
+     the scroll position put underneath it -- including that card's own
+     checkbox, so a click meant for the checkbox could land on a button here
+     instead. In the organizer's footer this was always inert (nothing
+     between it and .folio-organize__footer ever scrolls), so removing it
+     changes nothing there. */
   display: flex;
   flex-wrap: wrap;
   align-items: center;

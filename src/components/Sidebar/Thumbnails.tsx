@@ -30,7 +30,7 @@ export function Thumbnails() {
   // the effect would run once against a null ref, find no scroller, and never
   // look again once a PDF actually opened.
   useEffect(() => {
-    const scroller = containerRef.current?.closest('.folio-sidebar__body');
+    const scroller = containerRef.current?.querySelector('.folio-thumbnails-scroll');
     if (!scroller) return;
     const markUserScroll = () => {
       lastUserScrollRef.current = Date.now();
@@ -65,17 +65,31 @@ export function Thumbnails() {
 
   return (
     <div className="folio-thumbnails-panel" ref={containerRef}>
-      <PageList
-        layout="column"
-        scrollRoot=".folio-sidebar__body"
-        scale={THUMB_SCALE}
-        rootMargin="300px 0px"
-        onNavigate={() => {
-          // On narrow viewports the sidebar is a drawer covering the page;
-          // picking a page means "show it", so dismiss the drawer.
-          if (isNarrowViewport()) setSidebarOpen(false);
-        }}
-      />
+      {/*
+       * The scrolling region is its own element, separate from the action
+       * bar below: the action bar used to live inside .folio-sidebar__body
+       * (the scrolling element) and rely on position: sticky to stay visible
+       * at the bottom, which means floating *over* whatever thumbnail
+       * happened to be scrolled to that spot. That is fine for a bar with
+       * nothing clickable behind it, and wrong for one sitting over a
+       * checkbox: whichever element paints on top also receives the click,
+       * so a click aimed at a covered checkbox lands on the bar instead.
+       * Giving the bar its own row below the scrolling list, rather than a
+       * layer on top of it, means there is no card it can ever cover.
+       */}
+      <div className="folio-thumbnails-scroll">
+        <PageList
+          layout="column"
+          scrollRoot=".folio-thumbnails-scroll"
+          scale={THUMB_SCALE}
+          rootMargin="300px 0px"
+          onNavigate={() => {
+            // On narrow viewports the sidebar is a drawer covering the page;
+            // picking a page means "show it", so dismiss the drawer.
+            if (isNarrowViewport()) setSidebarOpen(false);
+          }}
+        />
+      </div>
       {!organizing && <PageActionBar />}
     </div>
   );
