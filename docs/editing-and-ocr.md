@@ -351,6 +351,14 @@ cancelled. See [the document mutation
 lock](architecture.md#the-document-mutation-lock) for the rule and the scopes it
 is built from.
 
+Saving, printing, or signing part-way through a run **asks first**, because the
+export is a snapshot: it bakes the pages recognized so far and leaves the rest
+image-only, so the copy is searchable for some of its pages and not for others
+with nothing in the file to say which. The dialog names how far the run has got
+(*40 of 300 pages have recognized text so far*) and offers **Save anyway** or
+**Wait for recognition**; dismissing it with `Escape` waits. A single-page run
+(`ocr.recognizePage`) does not ask, being over in seconds.
+
 ### How it works
 
 - **Engine:** [tesseract.js](https://github.com/naptha/tesseract.js) (English,
@@ -430,6 +438,8 @@ first; `--with-ocr` alone only makes the package bigger.
 | Image editing: overlay, store, commands | `src/features/imageedit/` |
 | Live reload after a commit (swaps engine doc, bumps `docVersion`) | `src/state/actions.ts` (`reloadEditedBytes`) |
 | Cross-feature "one document change at a time" lock | `src/state/documentMutationStore.ts` (`withDocumentMutation`) |
+| "OCR is still running" prompt on the bake paths | `src/features/ocr/confirmIncompleteOcr.ts` |
+| The shared yes/no dialog it uses | `src/components/common/confirmStore.ts`, `ConfirmHost.tsx` |
 | Page viewport + raw text items (for hit-testing) | `src/core/pdf/PdfJsEngine.ts` (`getPageViewport`, `getTextItems`) |
 | OCR recognition + worker | `src/features/ocr/recognize.ts` |
 | OCR store, text layer, modal, commands | `src/features/ocr/` |

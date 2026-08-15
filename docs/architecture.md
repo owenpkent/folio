@@ -310,6 +310,8 @@ The three scopes and the single rule that relates them:
 
 Conflict is symmetric, and everything excludes everything **except `content` and `sidecar`, which may overlap**. That exemption is the point of having scopes: recognition can run for minutes on a long document, and blocking Save, Print, Sign, and both in-place editors for its whole duration was a freeze over a conflict it does not actually have. A text edit leaves the page map exactly as OCR found it. A page operation does not, so that still waits.
 
+The exemption has one cost, and it is paid explicitly rather than silently. An export taken mid-run bakes the pages recognized so far and leaves the rest image-only: nothing in the output is *wrong*, but a copy saved 40 pages into a 300-page run is searchable for 40 pages and not for the other 260, with nothing in the file to say which. So the three bake paths (Save, Print, digital signing) ask first, via `confirmIncompleteOcr` (`src/features/ocr/`), and ask **before** taking the lock — a question is a human-scale wait, the same rule that keeps the native file dialog outside it.
+
 Three properties fall out of the design rather than being maintained by hand:
 
 - **Owner identity.** A feature asks `documentMutationBlocked(owner, scope)`, which ignores the caller's own in-flight work. Without it, every control a feature disables while it works blames "another document change" for the change the user just asked *that feature* to make.

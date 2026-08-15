@@ -13,6 +13,7 @@ import { pushToast } from '@/components/common';
 import { mapWithConcurrency } from '@/core/concurrency';
 import { ensureWorker, pdfWasmUrl } from '@/core/pdf/setupWorker';
 import { exportDocument } from '@/features/export';
+import { confirmIncompleteOcr } from '@/features/ocr';
 import {
   documentMutationBlocked,
   DOCUMENT_MUTATION_BUSY_TITLE,
@@ -177,6 +178,17 @@ export async function printDocument(): Promise<void> {
   if (useDocumentStore.getState().status !== 'ready') return;
   if (inFlight) return;
   inFlight = true;
+
+  // Before any of the run's own state is set up, and before the mutation lock:
+  // a recognition pass still filling in the OCR sidecar would otherwise be
+  // baked half-done into the printout with nothing said about it. `inFlight`
+  // is already true, so a second Ctrl+P cannot stack a second question behind
+  // this one; it has to be cleared by hand on this path because the try/finally
+  // that normally does it has not been entered yet.
+  if (!(await confirmIncompleteOcr('print'))) {
+    inFlight = false;
+    return;
+  }
 
   const objectUrls: string[] = [];
   let root: HTMLDivElement | null = null;

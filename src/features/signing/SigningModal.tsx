@@ -4,6 +4,7 @@ import { announce } from '@/a11y/announcer';
 import { useFocusTrap } from '@/a11y/focus';
 import { Button, IconButton } from '@/components/common';
 import { exportDocument, saveBytes } from '@/features/export';
+import { confirmIncompleteOcr } from '@/features/ocr';
 import {
   DOCUMENT_MUTATION_BUSY_TITLE,
   useDocumentMutationBlocked,
@@ -122,6 +123,12 @@ export function SigningModal() {
       announce('Enter your certificate passphrase', true);
       return;
     }
+    // Before setBusy and before the lock: a recognition pass still filling in
+    // the OCR sidecar would otherwise be baked half-done into a signed copy,
+    // which is the worst of the three to get quietly wrong -- a signature says
+    // these are the final bytes.
+    if (!(await confirmIncompleteOcr('sign'))) return;
+
     setBusy(true);
     try {
       // The lock covers preparing the bytes and nothing past it: exportDocument

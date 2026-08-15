@@ -33,7 +33,8 @@ vi.mock('@/core/pdf', async (orig) => {
   return { ...actual, getEngine: () => ({ saveDocument: mockSaveDocument }) };
 });
 
-import { useToastStore } from '@/components/common';
+import { useConfirmStore, useToastStore } from '@/components/common';
+import { useOcrStore } from '@/features/ocr';
 import { useSignatureStore } from '@/features/signatures';
 import { useDocumentStore } from '@/state/documentStore';
 
@@ -53,6 +54,8 @@ describe('saveDocumentInPlace', () => {
     vi.clearAllMocks();
     useDocumentStore.getState().reset();
     useToastStore.setState({ toasts: [] });
+    useOcrStore.getState().reset();
+    useConfirmStore.setState({ pending: null });
   });
   afterEach(() => setTauri(false));
 
@@ -72,6 +75,51 @@ describe('saveDocumentInPlace', () => {
     });
     expect(saveDialog).not.toHaveBeenCalled();
     expect(useToastStore.getState().toasts).toMatchObject([{ kind: 'success' }]);
+  });
+
+  /**
+   * Start a save with a whole-document OCR run part-way through, wait for the
+   * question that provokes, and answer it. Drives the real confirm store rather
+   * than mocking it: the wiring from the export path through to a dialog is
+   * exactly what these two tests are for.
+   */
+  async function saveDuringOcrRun(answer: boolean): Promise<void> {
+    setTauri(true);
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/docs/report.pdf' });
+    invoke.mockResolvedValue(undefined);
+    // A run that has started but not yet stored a page. `pages` stays empty on
+    // purpose: a stored page would send exportDocument down its pdf-lib
+    // stamping path, and the stub bytes above are not a loadable document, so
+    // the export would fail for a reason that has nothing to do with the gate
+    // under test. What makes the gate fire is `status` and `progress.total`.
+    useOcrStore.setState({
+      status: 'running',
+      pages: {},
+      progress: { current: 1, total: 300, page: 0 },
+    });
+
+    const saving = saveDocumentInPlace();
+    await vi.waitFor(() => expect(useConfirmStore.getState().pending).not.toBeNull());
+    useConfirmStore.getState().answer(useConfirmStore.getState().pending!.id, answer);
+    await saving;
+  }
+
+  it('writes nothing when the user chooses to wait for an unfinished OCR run', async () => {
+    // Saving now would bake a text layer covering only the pages recognized so
+    // far and leave the rest image-only, with nothing in the file to say which
+    // is which.
+    await saveDuringOcrRun(false);
+
+    // Nothing written, and no error either: waiting is a choice, not a failure.
+    expect(invoke).not.toHaveBeenCalled();
+    expect(mockSaveDocument).not.toHaveBeenCalled();
+    expect(useToastStore.getState().toasts).toEqual([]);
+  });
+
+  it('writes when the user chooses to save anyway during an OCR run', async () => {
+    await saveDuringOcrRun(true);
+
+    expect(invoke).toHaveBeenCalledWith('write_document', exported, expect.anything());
   });
 
   it('percent-encodes a non-ASCII destination path', async () => {

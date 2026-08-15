@@ -5,7 +5,7 @@ import { announce } from '@/a11y/announcer';
 import { SkipLink } from '@/a11y/SkipLink';
 import { useKeyboardShortcuts } from '@/a11y/useKeyboardShortcuts';
 import { registerDefaultCommands } from '@/commands';
-import { pushToast, ToastHost } from '@/components/common';
+import { ConfirmHost, pushToast, ToastHost } from '@/components/common';
 import { MenuBar } from '@/components/MenuBar/MenuBar';
 import { SearchBar } from '@/components/Search/SearchBar';
 import { Sidebar } from '@/components/Sidebar/Sidebar';
@@ -154,6 +154,9 @@ export function App() {
       <CombineModal />
       <AboutModal />
       <ContextMenu />
+      {/* Last, so a question about something one of the modals above kicked off
+          renders over it rather than behind it. */}
+      <ConfirmHost />
       <ToastHost />
     </div>
   );

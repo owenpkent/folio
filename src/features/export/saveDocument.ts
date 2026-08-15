@@ -12,7 +12,7 @@ import { placeRect } from '@/core/pdf/pageGeometry';
 import { hasPdfHeader, MIN_PDF_BYTES } from '@/core/pdf/pdfHeader';
 import { stampAnnotations, useAnnotationStore } from '@/features/annotations';
 import { stampEdits, useEditStore } from '@/features/editing';
-import { stampOcrLayer, useOcrStore } from '@/features/ocr';
+import { confirmIncompleteOcr, stampOcrLayer, useOcrStore } from '@/features/ocr';
 import { useSignatureStore, type Signature } from '@/features/signatures';
 import {
   documentMutationBlocked,
@@ -170,6 +170,10 @@ export async function saveDocumentToFile(): Promise<void> {
  * to pick a folder.
  */
 async function exportUnderLock(): Promise<Uint8Array | null> {
+  // Before the lock, not inside it: a question is a human-scale wait, and the
+  // same rule that keeps the native file dialog outside the lock applies here.
+  if (!(await confirmIncompleteOcr('save'))) return null;
+
   return withDocumentMutation({ owner: 'export', scope: 'content' }, exportForSave, () => {
     pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
     return null;
