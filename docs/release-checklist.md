@@ -88,6 +88,23 @@ On the EV-cert Windows host:
 
   Then right-click any `.pdf` → *Open with* → *Choose another app*: **Folio** is listed, under that name. See `docs/testing.md` → *Default PDF viewer*.
 
+- [ ] Uninstalling while Folio holds the `.pdf` default does not strand
+  Windows on "How do you want to open this file?" forever. This is the one
+  check in this section that `docs/testing.md`'s *Uninstall cleanup* item
+  does not cover: that item confirms the registry keys are gone, not what
+  Explorer actually does once they are. It also only reproduces on a machine
+  or VM where Folio has actually *held* the default -- `NSIS_HOOK_POSTUNINSTALL`
+  in `src-tauri/installer.nsh` only deletes the per-user `UserChoice` key
+  when its `ProgId` is Folio's, so an install that never became the default
+  has nothing there to delete, and the check proves nothing.
+
+  On such a machine: install the build, right-click a `.pdf` → *Open with* →
+  *Choose another app* → pick Folio → **Always**, uninstall Folio, then
+  double-click a `.pdf`. Confirm the "How do you want to open this file?"
+  prompt does not reappear on every click from then on, and that the reader
+  that was the default before Folio (or a single fresh prompt, if there was
+  none) takes over instead.
+
 ---
 
 ## 4. Distribution / infra
