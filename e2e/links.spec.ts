@@ -142,19 +142,53 @@ test.describe('copying addresses', () => {
     await expect(hint).toBeVisible();
   });
 
-  test('the hint survives the pointer moving onto a label that overhangs the page edge', async ({
+  test('flips the label to hang from the right edge in the right half of the page', async ({
     page,
   }) => {
-    await hoverAt(page, ADDRESSES.edge.x + 2, ADDRESSES.edge.y + 5);
+    await hoverAt(page, ADDRESSES.rightHalf.x + 2, ADDRESSES.rightHalf.y + 5);
     const hint = page.locator('.folio-address-hint');
     await expect(hint).toBeVisible();
 
-    // Close to the page's right edge, the label hangs past the page box into
-    // .folio-pages: closest('.folio-page') is null there, which used to clear
-    // the hint at exactly the boundary WCAG 2.2 SC 1.4.13 exists to cover.
-    const label = (await hint.locator('.folio-address-hint__label').boundingBox())!;
-    await page.mouse.move(label.x + label.width - 2, label.y + label.height / 2);
+    // Anchored under the address's own left edge by default; past the page's
+    // midpoint it flips to hang from the right edge instead, back over the
+    // page, so it does not grow .folio-pages' own scrollable region (that
+    // region has to stay exactly what the pages themselves contribute -- see
+    // the comment on .folio-pages in global.css).
+    const label = hint.locator('.folio-address-hint__label');
+    await expect(label).toHaveClass(/is-flipped-x/);
 
+    // Hoverable regardless of which side it hangs from.
+    const box = (await label.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(hint).toBeVisible();
+  });
+
+  test('the hint survives the pointer moving onto a label wider than a zoomed-out page', async ({
+    page,
+  }) => {
+    // The label is real CSS text, so its rendered width does not shrink with
+    // the page; at a low enough scale it is wider than the whole page
+    // regardless of which edge it hangs from. That is a reliable way to force
+    // a label to overhang -- unlike drawing an address running off the page
+    // edge, PDF.js silently drops the glyphs that fall outside it, so that
+    // approach never has a full address to hover in the first place -- and it
+    // does not depend on guessing what scale fit-width lands on.
+    const zoomOut = page.getByRole('button', { name: /Zoom out/ });
+    for (let i = 0; i < 15; i += 1) await zoomOut.click();
+
+    await hoverAt(page, ADDRESSES.email.x + 5, ADDRESSES.email.y + 2);
+    const hint = page.locator('.folio-address-hint');
+    await expect(hint).toBeVisible();
+
+    const label = (await hint.locator('.folio-address-hint__label').boundingBox())!;
+    const pageBox = (await page.locator('.folio-page').first().boundingBox())!;
+    // The premise this test relies on: confirm the label really is wider than
+    // the page at this scale, so the assertion below is not vacuous.
+    expect(label.width).toBeGreaterThan(pageBox.width);
+
+    // closest('.folio-page') is null past the page box, which used to clear
+    // the hint at exactly the boundary WCAG 2.2 SC 1.4.13 exists to cover.
+    await page.mouse.move(label.x + label.width - 2, label.y + label.height / 2);
     await expect(hint).toBeVisible();
   });
 

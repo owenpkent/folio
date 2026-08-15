@@ -38,26 +38,33 @@ export const ADDRESSES = {
    */
   prose: { text: 'For questions please contact owen2@example.com', x: 60, y: 340 },
   /**
-   * Close enough to the page's right edge that the hover hint's label --
-   * anchored under the address's own left edge, not the pointer -- overhangs
-   * past the page box into `.folio-pages`, whatever the fit-width scale turns
-   * out to be: the page is 420 units wide, so 20 units of margin is a small
-   * fraction of it at any scale a 1280px-wide viewport can produce.
+   * In the right half of the page, so the hover hint's label -- anchored
+   * under the address's own left edge by default -- is the case that flips to
+   * hang from the right edge instead. Ends well short of x=420 (the page's
+   * own width) on purpose: PDF.js's text extraction silently drops glyphs
+   * whose position falls outside the page, so text drawn running off the
+   * page edge (this fixture's first version) never fully reaches
+   * getTextContent() in the first place, which made it useless for testing
+   * anything downstream of that. `y` matches `email`'s, known to stay inside
+   * the viewport at whatever scale fit-width actually computes (which varies
+   * far more across environments than a hand guess accounts for -- 228% in
+   * one real run, not the ~140% first assumed here).
    */
-  edge: { text: 'a@bc.co', x: 400, y: 280 },
+  rightHalf: { text: 'a@bc.co', x: 340, y: 500 },
 };
 
 /**
  * A page carrying an email address, a web address, a `/Link` annotation, a
- * line of prose that shares its text item with an address, and an address
- * near the page's right edge.
+ * line of prose that shares its text item with an address, and an address in
+ * the right half of the page.
  *
  * The link's visible text says nothing about where it goes, which is the case
  * the copy row exists to make legible: the menu shows the declared target, not
- * the words printed over it. The prose line and the edge address are both
- * about the hit test itself: PDF.js emits one text item per line, so an
- * address is usually not alone in its item, and a hint anchored under one can
- * overhang past the page it is on.
+ * the words printed over it. The prose line is about the hit test itself:
+ * PDF.js emits one text item per line, so an address is usually not alone in
+ * its item. The right-half address is about the hover hint's label: anchored
+ * under the address's own edge, it hangs from whichever side keeps it off the
+ * page, and links.spec.ts checks that decision directly.
  */
 async function buildAddresses(): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -69,7 +76,7 @@ async function buildAddresses(): Promise<Uint8Array> {
     ADDRESSES.url,
     ADDRESSES.link,
     ADDRESSES.prose,
-    ADDRESSES.edge,
+    ADDRESSES.rightHalf,
   ]) {
     page.drawText(entry.text, { x: entry.x, y: entry.y, size: 14, font });
   }
