@@ -1,4 +1,4 @@
-import { PDFDocument, PDFHexString } from 'pdf-lib';
+import { degrees, PDFDocument, PDFHexString, PDFPage } from 'pdf-lib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type * as PdfCore from '@/core/pdf';
@@ -284,5 +284,32 @@ describe('exportDocument document identity', () => {
 
     expect(out).toBe(source);
     expect(extractTrailerId(out)).toEqual(sourceId);
+  });
+
+  it('places a signature where the user saw it on a 90°-rotated page', async () => {
+    // Same fixture pageGeometry.test.ts checks placeRect against: a 400x600
+    // MediaBox turned 90 degrees (displayed as 600x400), and a rect a quarter
+    // in from the left, half way down, half the displayed width, a quarter of
+    // the displayed height. placeRect resolves that to {x: 300, y: 150,
+    // width: 300, height: 100, rotate: degrees(90)}.
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([400, 600]);
+    page.setRotation(degrees(90));
+    const source = await doc.save();
+    mockSaveDocument.mockResolvedValueOnce(source);
+
+    const rect = { x: 0.25, y: 0.5, width: 0.5, height: 0.25 };
+    useSignatureStore.setState({ signatures: [{ ...oneSignature, rect }] });
+
+    const drawImage = vi.spyOn(PDFPage.prototype, 'drawImage');
+    try {
+      await exportDocument();
+      expect(drawImage).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ x: 300, y: 150, width: 300, height: 100, rotate: degrees(90) }),
+      );
+    } finally {
+      drawImage.mockRestore();
+    }
   });
 });

@@ -32,7 +32,9 @@ Four capabilities:
 > a corrupt file. Embedded images can be moved, resized, and replaced the same
 > way, except a rotated or skewed image can only be replaced (moving or
 > resizing it is refused), and an image inside a Form XObject is not editable
-> yet at all. Page operations, redaction, and non-Latin text remain on the
+> yet at all. Deleting, reordering, and rotating pages ship (see
+> [page-operations.md](page-operations.md)); inserting, splitting, and merging
+> pages, along with redaction and non-Latin text, remain on the
 > [roadmap](../ROADMAP.md).
 
 ## Editing: text boxes, images, and check marks

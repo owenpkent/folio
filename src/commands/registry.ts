@@ -36,7 +36,15 @@ class CommandRegistryImpl implements CommandRegistry {
       return;
     }
     if (command.when && !command.when()) return;
-    await command.run(ctx);
+    try {
+      await command.run(ctx);
+    } catch (error) {
+      // A command that throws (or a promise it returns that rejects) would
+      // otherwise surface as an unhandled rejection with no message the user
+      // ever sees, since most callers (keyboard shortcuts, menu items) fire
+      // this and move on without awaiting it themselves.
+      console.error(`[folio] command "${id}" failed:`, error);
+    }
   }
 
   subscribe(listener: () => void): Unsubscribe {

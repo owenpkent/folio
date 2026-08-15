@@ -11,6 +11,7 @@ import { useEditStore } from '@/features/editing';
 import { useOcrStore } from '@/features/ocr';
 // Store only, not the feature barrel: that also exports components, which pull
 // in UI modules this low-level orchestration module has no business importing.
+import { usePageOpsStore } from '@/features/pageops/store';
 import { usePlacementStore } from '@/features/placement/store';
 import { useSignatureStore } from '@/features/signatures';
 import { detectSignatures, useSigningStore, type DetectedSignature } from '@/features/signing';
@@ -91,6 +92,9 @@ export async function loadSource(source: DocumentSource): Promise<void> {
     // Not persisted (nothing to load per fingerprint), but a fresh document is
     // never mid-edit, so any leftover session/undo history from a prior one goes.
     useTextEditStore.getState().reset();
+    // Same again for page ops: a selection and an undo stack of the last
+    // document's bytes mean nothing here, and restoring one would be a disaster.
+    usePageOpsStore.getState().reset();
     usePlacementStore.getState().cancel();
     useSigningStore.getState().setDetected(detected);
     document.title = `${info.name} · Folio`;
@@ -118,6 +122,7 @@ export async function closeDocument(): Promise<void> {
   useEditStore.getState().reset();
   useOcrStore.getState().reset();
   useTextEditStore.getState().reset();
+  usePageOpsStore.getState().reset();
   usePlacementStore.getState().cancel();
   useSigningStore.getState().setDetected([]);
   document.title = 'Folio';
@@ -139,11 +144,19 @@ export async function reloadEditedBytes(bytes: Uint8Array): Promise<void> {
   // Same ordering rule as loadSource: read the bytes before the engine takes
   // (and detaches) them. Callers must not touch `bytes` after this returns.
   const detected = detectSignaturesSafely({ kind: 'bytes', data: bytes });
-  await engine.loadDocument({ kind: 'bytes', data: bytes, name: doc.info.name });
+  const info = await engine.loadDocument({ kind: 'bytes', data: bytes, name: doc.info.name });
   useDocumentStore.getState().bumpDocVersion();
   // Pages repaint in place on a docVersion bump (Page.tsx re-runs its canvas /
   // text-layer / annotation-layer effects rather than remounting), so scroll
   // position is never disturbed and needs no explicit preservation here.
+
+  // Page operations are the only feature that can change the page count, but
+  // nothing else here refreshes it: without this, info.numPages keeps the
+  // open-time count and anything that loops over "every page" (the Word Count
+  // plugin, ai/documentText.ts) runs past the end of a document that just
+  // lost pages. The fingerprint is deliberately left alone -- see the doc
+  // comment above.
+  useDocumentStore.getState().setNumPages(info.numPages);
 
   useSigningStore.getState().setDetected(detected);
 }

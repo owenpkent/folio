@@ -43,6 +43,35 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   any of the inputs. A corrupt or password-protected input fails with a message
   naming the offending file, and a PDF whose header sits behind up to 1&nbsp;KB
   of preamble junk (the spec allows it) still combines fine.
+- **Delete, reorder, and rotate pages.** Pages can be picked out in the
+  thumbnail sidebar or in a new full-window **Pages → Organize pages** grid, then
+  dragged to a new position, moved with **Alt+↑/↓**, turned with **Ctrl+[** and
+  **Ctrl+]**, or deleted. Every operation is one undo step (**Ctrl+Z**), and each
+  is committed as a whole-document plan rather than a sequence of moves, so
+  dragging a page across ninety positions rewrites the file once. Reordering
+  happens inside the existing document rather than by copying pages into a fresh
+  one, which is what keeps the outline, the AcroForm, and the document metadata
+  that `pdf-lib`'s `copyPages` drops. Selection, dragging, and keyboard operation
+  are the same code in both surfaces, so they cannot drift apart.
+- **Deleting a page removes its content from the file.** Unlinking a page from
+  the page tree, which is all `pdf-lib` does, leaves its content stream, images,
+  and annotations in the saved bytes for anyone willing to run a parser over
+  them. Deleting now runs a mark-and-sweep that refuses to walk through a dropped
+  page, so nothing only that page owned survives, and scrubs the references that
+  are left dangling: bookmark destinations, named destinations, `/OpenAction`,
+  link targets, and structure-tree page pointers. The page's annotations and the
+  structure elements describing them go with it, because `/AcroForm /Fields` and
+  a tagged document's `/StructTreeRoot` both reach a widget by a path that never
+  touches the page: without that, deleting the page holding a filled field left
+  its values and their appearance streams in the file. Form fields whose every
+  widget is gone are pruned from the AcroForm too. One case is deliberately left
+  alone and documented rather than guessed at: an image only the deleted page
+  drew, but which the producer put in a `/Resources` on the page *tree* node, is
+  still reachable by inheritance and stays. Because this sweep is the only code
+  in Folio that deletes objects, and because **Save** writes over the file the
+  document came from, the rewritten bytes are parsed and their page count checked
+  before they are used: a result that cannot be read back is refused and the open
+  document is left untouched.
 
 ### Changed
 
@@ -92,6 +121,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   start-screen *Make Folio your default PDF viewer* button, which deep-links to
   Folio's page in *Settings -> Default apps*. `docs/getting-started.md`
   troubleshoots the symptom end to end.
+- **Overlays are stamped correctly onto rotated pages.** Placed text, images,
+  check marks, signatures, highlights, sticky notes, and the OCR text layer all
+  record their position as a fraction of the page *as displayed*, but every
+  stamper measured against the unrotated MediaBox and drew without a rotation. On
+  any document that ships with a page turned 90°, 180°, or 270° — which looked
+  right on screen — saving or printing put the overlay in the wrong corner and
+  sideways. All four bake paths now go through one shared view-space to
+  user-space mapping. Output for unrotated pages is unchanged.
+- **Page geometry is re-measured when the document's bytes change.** The layout
+  size cache is keyed by page number and was only refreshed on open, so a page
+  that changed shape underneath it kept the box it used to have.
 
 ### Security
 

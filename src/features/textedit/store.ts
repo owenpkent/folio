@@ -55,6 +55,14 @@ interface TextEditState {
   endSession(): void;
   pushUndo(bytes: Uint8Array): void;
   popUndo(): Uint8Array | null;
+  /**
+   * Drop the whole undo stack without restoring anything. Page operations
+   * keep their own separate undo stack bound to the same Mod+z chord (see
+   * pageops/commands.ts); once either one commits or undoes, the other's
+   * snapshots are byte-states from before that change, so they get
+   * invalidated here rather than left around to silently discard it later.
+   */
+  clearUndo(): void;
   reset(): void;
 }
 
@@ -87,6 +95,8 @@ export const useTextEditStore = create<TextEditState>((set, get) => ({
     set({ undoStack: undoStack.slice(0, -1) });
     return popped;
   },
+
+  clearUndo: () => set({ undoStack: [] }),
 
   reset: () => {
     clearLocatedRunsCache();

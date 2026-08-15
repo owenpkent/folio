@@ -41,6 +41,8 @@ interface AnnotationState {
   moveNote(id: string, anchor: { x: number; y: number }): void;
   setNote(id: string, note: string): void;
   remove(id: string): void;
+  /** Replace the whole collection: page ops rewriting page numbers in bulk, or restoring an undo snapshot. */
+  replaceAll(annotations: Annotation[]): void;
 }
 
 export const useAnnotationStore = create<AnnotationState>((set, get) => {
@@ -119,6 +121,11 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => {
 
     remove: (id) => {
       set((s) => ({ annotations: s.annotations.filter((a) => a.id !== id) }));
+      persist();
+    },
+
+    replaceAll: (annotations) => {
+      set({ annotations });
       persist();
     },
   };

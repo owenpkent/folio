@@ -1,8 +1,8 @@
 // @vitest-environment node
 import zlib from 'node:zlib';
 
-import { PDFDocument } from 'pdf-lib';
-import { describe, expect, it } from 'vitest';
+import { degrees, PDFDocument } from 'pdf-lib';
+import { describe, expect, it, vi } from 'vitest';
 
 import { stampOcrLayer } from './bake';
 import type { OcrPage } from './types';
@@ -83,5 +83,33 @@ describe('stampOcrLayer', () => {
   it('is a no-op for an empty page list', async () => {
     const pdf = await PDFDocument.load(await onePagePdf());
     await expect(stampOcrLayer(pdf, [])).resolves.toBeUndefined();
+  });
+
+  it('places a word where the user saw it on a 90°-rotated page', async () => {
+    // Same fixture pageGeometry.test.ts checks placeRect/offsetInFrame
+    // against: a 400x600 MediaBox turned 90 degrees (displayed as 600x400),
+    // and a word box a quarter in from the left, half way down, half the
+    // displayed width, a quarter of the displayed height. placeRect resolves
+    // that to {x: 300, y: 150, width: 300, height: 100, rotate: degrees(90)}.
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([400, 600]);
+    page.setRotation(degrees(90));
+    const ocrPage: OcrPage = {
+      pageNumber: 1,
+      text: 'HELLO',
+      words: [{ text: 'HELLO', rect: { x: 0.25, y: 0.5, width: 0.5, height: 0.25 } }],
+    };
+
+    const drawText = vi.spyOn(page, 'drawText');
+    await stampOcrLayer(doc, [ocrPage]);
+
+    // size = max(4, height*0.9) = 90. The baseline sits height*0.15 = 15
+    // above the box's bottom edge, along the placement's own axes: on this
+    // turn that is 15 in negative user-x from the anchor (see
+    // offsetInFrame's 90-degree case), landing at x=300-15=285, y=150.
+    expect(drawText).toHaveBeenCalledWith(
+      'HELLO',
+      expect.objectContaining({ x: 285, y: 150, size: 90, rotate: degrees(90) }),
+    );
   });
 });

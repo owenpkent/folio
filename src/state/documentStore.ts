@@ -37,6 +37,15 @@ interface DocumentState {
   setSourcePath(path: string | null): void;
   setBooted(): void;
   bumpDocVersion(): void;
+  /**
+   * Update the page count on an already-loaded document, without touching
+   * status, metadata, or docVersion. For an in-place byte swap (a page
+   * operation): unlike {@link setLoaded} this is still the same logical
+   * document, just with a page count that may have just changed underneath it.
+   */
+  setNumPages(numPages: number): void;
+  /** Replace the outline, without disturbing anything else `setLoaded` sets. */
+  setOutline(outline: OutlineNode[]): void;
   reset(): void;
 }
 
@@ -58,6 +67,8 @@ export const useDocumentStore = create<DocumentState>((set) => ({
   setSourcePath: (sourcePath) => set({ sourcePath }),
   setBooted: () => set({ booting: false }),
   bumpDocVersion: () => set((s) => ({ docVersion: s.docVersion + 1 })),
+  setNumPages: (numPages) => set((s) => (s.info ? { info: { ...s.info, numPages } } : {})),
+  setOutline: (outline) => set({ outline }),
   reset: () =>
     set({
       status: 'empty',

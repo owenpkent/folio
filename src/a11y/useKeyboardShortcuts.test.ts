@@ -108,6 +108,23 @@ describe('useKeyboardShortcuts', () => {
     expect(run).toHaveBeenCalledTimes(2);
   });
 
+  it('swallows OS key repeat for a one-shot command on a modified arrow key', () => {
+    // pageops.moveUp/moveDown bind Alt+ArrowUp/Down: a bare 'ArrowUp' is in
+    // REPEATABLE_KEYS because paging through a document should keep working
+    // while it is held, but Alt+ArrowUp moves a page once per press, not
+    // roughly thirty times a second for as long as the chord is held.
+    const run = vi.fn();
+    commandRegistry.register({ id: 'test.kb', title: 'T', keybinding: 'Alt+ArrowUp', run });
+    renderHook(() => useKeyboardShortcuts());
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', altKey: true }));
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowUp', altKey: true, repeat: true }),
+    );
+
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   it('does not run a command whose when() is false', () => {
     const run = vi.fn();
     commandRegistry.register({

@@ -140,8 +140,8 @@ only by the second run**. That gap once shipped a real bug: the Vite 8 bump
 ([#62](https://github.com/owenpkent/folio/pull/62)) broke digital signing
 outright, because rolldown and esbuild disagree about what a default import of a
 CommonJS module means (see the `__esModule` guard in
-`src/test/buildToolchain.test.ts`). Nothing else could see it — `tsc` reads the
-`.d.ts`, and Vitest runs in Node, whose interop matches esbuild — and the
+`src/test/buildToolchain.test.ts`). Nothing else could see it -- `tsc` reads the
+`.d.ts`, and Vitest runs in Node, whose interop matches esbuild -- and the
 dev-server run caught it only by coincidence, because the dep optimizer happened
 to make the same choice as the bundler.
 
@@ -153,14 +153,16 @@ start and sharing one would delete the exports CI feeds to veraPDF.
 
 `e2e/global-setup.ts` generates the fixtures with pdf-lib and writes them to
 `e2e/fixtures/` (gitignored, regenerated each run). Nothing binary is committed.
-There are two: `form.pdf`, a two-page PDF with an empty fillable text field, a
-checkbox, and a radio group, and `filled-form.pdf`, a single page whose only
-content is three text fields that already hold values. The latter is
-deliberately otherwise blank, so any ink on the rendered canvas is a form
-widget that should have been left to the annotation layer, which is what makes
-the doubled-text assertion below possible.
+There are three: `form.pdf`, a two-page PDF with an empty fillable text field, a
+checkbox, and a radio group; `filled-form.pdf`, a single page whose only content
+is three text fields that already hold values; and `pages.pdf`, four portrait
+pages each printing the position it started in. The second is deliberately
+otherwise blank, so any ink on the rendered canvas is a form widget that should
+have been left to the annotation layer, which is what makes the doubled-text
+assertion below possible. The third exists because after a reorder every page
+still renders and only the words on them say whether the right one moved.
 
-There are seven specs.
+There are nine specs.
 
 **`e2e/smoke.spec.ts`** covers the core document flows:
 
@@ -209,7 +211,7 @@ clips and everything folded out of the bar (About, theme, fit modes, zoom)
 stays reachable in the **More** menu, and picking a thumbnail navigates and
 closes the drawer.
 
-**`e2e/placement.spec.ts`** — click-to-place and the text-box drag: a text box
+**`e2e/placement.spec.ts`** -- click-to-place and the text-box drag: a text box
 lands top-left at the click (not centered on the page) and takes typing straight
 away, the banner's focused **Place in the middle** button places one without a
 pointer at all (the keyboard path, WCAG 2.1.1), **Escape** or a click off a page
@@ -219,17 +221,17 @@ it,
 and a typed signature lands centered on the click and is offered back, prefilled,
 the next time the dialog opens.
 
-**`e2e/print.spec.ts`** — that print reaches the dialog with a real, fully baked
+**`e2e/print.spec.ts`** -- that print reaches the dialog with a real, fully baked
 raster: one decoded image per page, the `folio-printing` class that reveals them,
 and a filled field measurably darkening the page-1 raster compared with the same
 document printed empty. This spec exists because the unit tests cannot do its
 job: they mock `pdfjs-dist`, so they see nothing about which PDF.js build is
 imported or whether its worker is configured. Print shipped green through them
 while failing on the first document in the real app. Both tests stub
-`window.print` — the assertion is about what reaches the dialog, and a real
+`window.print` -- the assertion is about what reaches the dialog, and a real
 dialog is a modal that would hang the run.
 
-**`e2e/keyboard-manipulation.spec.ts`** — the keyboard path for direct
+**`e2e/keyboard-manipulation.spec.ts`** -- the keyboard path for direct
 manipulation (WCAG 2.1.1), which dragging and the corner handle were previously
 the only route to: a placed text box moves with the arrow keys and ten times as
 far with **Shift** held, `+`/`-` resize it and **Delete** removes it, a placed
@@ -237,6 +239,14 @@ signature does the same with its aspect ratio locked, and two guards that matter
 more than the happy path -- arrows *inside* a text box move the caret rather than
 the box, and a nudge key moves the item **without** also scrolling the document
 out from under it.
+
+**`e2e/pages.spec.ts`** -- page operations end to end: deleting a selected page
+and putting it back with **Ctrl+Z**, reordering by drag and by **Alt+↓** (with
+the live-region announcement), rotating a page (asserted through the layout box
+turning landscape, which is the part that silently did not happen until page
+geometry was re-measured on a document swap), the organizer opening over the
+document, and the selection checkboxes being operable from the keyboard. It also
+pins the refusal to delete every page, since a zero-page PDF is not a PDF.
 
 **`e2e/browser-extension.spec.ts`** -- the contract the Chrome extension depends
 on, exercised through the viewer rather than through the extension (branded

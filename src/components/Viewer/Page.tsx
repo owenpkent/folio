@@ -88,9 +88,13 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
   // Measure only pages the user is actually approaching. Measuring on mount
   // instead meant one worker round-trip per page in the document at open, all
   // in one burst, each one pinning a page object in the engine's cache.
+  // docVersion is in here because a page operation resets the size cache: the
+  // page under this number may now be a different page, or the same one turned
+  // on its side. Without it the reset leaves every page laid out at the shape
+  // it had before, since neither `near` nor `pageNumber` moved.
   useEffect(() => {
     if (near) measurePage(pageNumber);
-  }, [near, pageNumber]);
+  }, [near, pageNumber, docVersion]);
 
   // Render once visible; re-render when the scale changes while visible, or
   // when docVersion bumps (an in-place text edit swapped the engine's loaded

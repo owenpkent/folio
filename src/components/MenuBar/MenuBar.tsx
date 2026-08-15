@@ -4,6 +4,7 @@ import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { Icon, IconButton, type IconName } from '@/components/common';
 import { useImageEditStore } from '@/features/imageedit';
+import { usePageOpsStore } from '@/features/pageops';
 import { useTextEditStore } from '@/features/textedit';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useContributionStore } from '@/plugins';
@@ -153,6 +154,11 @@ export function MenuBar() {
   // checked state the same way the View menu's do.
   const textEditActive = useTextEditStore((s) => s.active);
   const imageEditActive = useImageEditStore((s) => s.active);
+  // Not read directly below: the Pages rows are enabled by their commands'
+  // guards, and those consult a selection this component would otherwise never
+  // hear about, leaving the menu showing a stale disabled state.
+  usePageOpsStore((s) => s.selection.size);
+  usePageOpsStore((s) => s.undoStack.length);
   const isMobile = useMediaQuery(NARROW_VIEWPORT_QUERY);
 
   // A row backed by a command that requires an open document, e.g. Save.
@@ -162,6 +168,19 @@ export function MenuBar() {
     label,
     icon,
     disabled: !hasDoc,
+    shortcut: shortcutFor(commandId),
+    onSelect: () => run(commandId),
+  });
+
+  // A row whose enabled state comes from the command's own guard rather than
+  // just "is a document open", e.g. the page operations, which also need pages
+  // to be picked out.
+  const cmdItem = (commandId: string, label: string, icon: IconName): MenuItemDef => ({
+    kind: 'item',
+    id: commandId,
+    label,
+    icon,
+    disabled: !commandEnabled(commandId),
     shortcut: shortcutFor(commandId),
     onSelect: () => run(commandId),
   });
@@ -255,6 +274,25 @@ export function MenuBar() {
         ...(ocrAvailable() ? [docItem('ocr.recognizeDocument', 'Recognize text (OCR)', 'scan')] : []),
         sep('edit-sep-2'),
         docItem('search.toggle', 'Find', 'search'),
+      ],
+    },
+    {
+      id: 'pages',
+      label: 'Pages',
+      // These rows follow their commands' own guards rather than `hasDoc`:
+      // everything below "Organize pages" needs a selection as well as a
+      // document, and `commandEnabled` is what knows that.
+      entries: [
+        docItem('pageops.organize', 'Organize pages…', 'list'),
+        sep('pages-sep-1'),
+        cmdItem('pageops.moveUp', 'Move pages up', 'chevron-up'),
+        cmdItem('pageops.moveDown', 'Move pages down', 'chevron-down'),
+        sep('pages-sep-2'),
+        cmdItem('pageops.rotateLeft', 'Rotate pages left', 'rotate-left'),
+        cmdItem('pageops.rotateRight', 'Rotate pages right', 'rotate-right'),
+        sep('pages-sep-3'),
+        cmdItem('pageops.delete', 'Delete pages', 'trash'),
+        cmdItem('pageops.undo', 'Undo page change', 'undo'),
       ],
     },
     {

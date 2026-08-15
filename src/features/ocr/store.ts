@@ -35,6 +35,8 @@ interface OcrState {
   finish(): void;
   fail(message: string): void;
   requestCancel(): void;
+  /** Replace the whole collection: page ops rewriting page numbers in bulk, or restoring an undo snapshot. */
+  replaceAll(pages: Record<number, OcrPage>): void;
 }
 
 export const useOcrStore = create<OcrState>((set, get) => {
@@ -102,5 +104,10 @@ export const useOcrStore = create<OcrState>((set, get) => {
     fail: (message) => set({ status: 'error', error: message }),
 
     requestCancel: () => set({ cancelRequested: true }),
+
+    replaceAll: (pages) => {
+      set({ pages });
+      persist();
+    },
   };
 });

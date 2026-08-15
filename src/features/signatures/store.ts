@@ -21,6 +21,8 @@ interface SignatureState {
   add(pageNumber: number, dataUrl: string, rect: NormalizedRect): Signature;
   move(id: string, rect: NormalizedRect): void;
   remove(id: string): void;
+  /** Replace the whole collection: page ops rewriting page numbers in bulk, or restoring an undo snapshot. */
+  replaceAll(signatures: Signature[]): void;
 }
 
 export const useSignatureStore = create<SignatureState>((set, get) => {
@@ -73,6 +75,11 @@ export const useSignatureStore = create<SignatureState>((set, get) => {
 
     remove: (id) => {
       set((s) => ({ signatures: s.signatures.filter((sig) => sig.id !== id) }));
+      persist();
+    },
+
+    replaceAll: (signatures) => {
+      set({ signatures });
       persist();
     },
   };

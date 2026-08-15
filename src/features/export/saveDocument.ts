@@ -8,6 +8,7 @@ import { pushToast } from '@/components/common';
 import { downloadBytes } from '@/core/document/downloadBytes';
 import { isTauri } from '@/core/document/openDocument';
 import { getEngine } from '@/core/pdf';
+import { placeRect } from '@/core/pdf/pageGeometry';
 import { MIN_PDF_BYTES, PDF_HEADER } from '@/core/pdf/pdfHeader';
 import { stampAnnotations, useAnnotationStore } from '@/features/annotations';
 import { stampEdits, useEditStore } from '@/features/editing';
@@ -91,13 +92,12 @@ async function stampSignatures(pdf: PDFDocument, signatures: Signature[]): Promi
     const page = pages[sig.pageNumber - 1];
     if (!page) continue;
     const png = await pdf.embedPng(sig.dataUrl);
-    const { width: pw, height: ph } = page.getSize();
-    const w = sig.rect.width * pw;
-    const h = sig.rect.height * ph;
-    const x = sig.rect.x * pw;
-    // Normalized rects are top-left origin; PDF space is bottom-left.
-    const y = ph - sig.rect.y * ph - h;
-    page.drawImage(png, { x, y, width: w, height: h });
+    // placeRect turns the normalized (top-left, as-displayed) rect into
+    // pdf-lib's bottom-left user space and supplies the rotate that keeps the
+    // signature upright on a page with a non-zero /Rotate (see
+    // core/pdf/pageGeometry.ts).
+    const { x, y, width, height, rotate } = placeRect(page, sig.rect);
+    page.drawImage(png, { x, y, width, height, rotate });
   }
 }
 
