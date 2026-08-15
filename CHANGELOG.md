@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-15
+
 ### Added
 
 - **Combine PDFs from the Pages tab.** The sidebar's Pages tab now carries a
@@ -64,6 +66,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   paste live nowhere else; that includes the form fields drawn over a page.
   Browser-build behavior is unchanged, where the surrounding page really is a
   page in a tab and the browser's menu is the reader's to keep.
+
+### Security
+
+- The note that reopens a document after an update restart is validated by
+  value, not only by shape, before it reaches the file read: an absolute local
+  `.pdf`, never a UNC path. It lives in local storage, which is not a trust
+  boundary, and the Rust side's `read_document` guards only the extension.
+- Accepted for this release: one open **medium** Dependabot alert,
+  RUSTSEC-2024-0429 (unsoundness in `glib::VariantStrIter`), which reaches
+  Folio only through Tauri's Linux GTK stack -- code the Windows bundle never
+  compiles. No high or critical alerts are open, `npm audit` reports zero
+  vulnerabilities, and `cargo audit` reports zero (17 allowed warnings, all
+  unmaintained/unsound advisories on that same transitive GTK stack).
 
 ## [0.6.0] - 2026-08-15
 
@@ -1037,7 +1052,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
   cargo-deny policy.
 
-[Unreleased]: https://github.com/owenpkent/folio/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/owenpkent/folio/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/owenpkent/folio/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/owenpkent/folio/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/owenpkent/folio/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/owenpkent/folio/compare/v0.3.1...v0.4.0

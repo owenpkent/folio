@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Folio PDF Viewer",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Open PDFs in Folio's viewer in the browser, or hand off to the Folio desktop app.",
   "icons": { "128": "icons/icon-128.png" },
   "minimum_chrome_version": "128",
