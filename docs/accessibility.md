@@ -44,6 +44,16 @@ The page rows above only fire once pages are selected, so the chords are free th
 
 `↑`/`↓`, unmodified `Home`/`End` and `Space` are unbound and scroll natively, which works because the viewer takes focus when a document opens and gets it back when the find bar closes. `←`/`→` do **not** scroll: they are bound to page navigation and the dispatcher calls `preventDefault()`, so they never reach the browser's own scrolling. That is a deliberate trade (paging is the more useful binding) but it means horizontal scrolling at high zoom needs the scrollbar, the hand tool, or shift-scroll.
 
+> **Known issue ([#89](https://github.com/owenpkent/folio/issues/89)).** Every
+> unmodified single-key binding in the table above, `←`/`→` included, is
+> unreachable to a screen reader user in the default mode. NVDA owns the arrow
+> keys for its own virtual cursor in browse mode, so the keypress never reaches
+> the dispatcher; it only works after `NVDA+Space` switches to focus mode.
+> Measured on 2026-09-20: zero announcements in browse mode, `Page 2 of 2` in
+> focus mode, in four consecutive runs. The toolbar tooltips advertise the keys
+> regardless (`Previous page ( left arrow )`), so the interface currently
+> promises these users a shortcut they cannot use.
+
 Two rules qualify the "never hijack typing" default in `src/a11y/useKeyboardShortcuts.ts`. `Ctrl/Cmd+P` is the one chord besides `Escape` that still fires while the caret is in a text field: letting it fall through hands the browser's own print the app's chrome instead of the document, which is never what the shortcut means in a PDF viewer. And a held chord is swallowed rather than repeated, apart from the arrow, paging and `Home`/`End` keys that exist to be held: leaning on `Ctrl/Cmd+P` opens one dialog, not thirty.
 
 These commands exist but have **no keyboard binding**; they are reachable from the menu bar or the toolbar (and via the registry) only. The menu bar implements the full ARIA menubar keyboard pattern, so every menu item is operable with arrow keys, `Home`/`End`, `Enter`, and `Escape`:
@@ -89,6 +99,17 @@ Planned, **not yet implemented** (no command is registered for these today): a c
 
 Form fields and signatures: filled AcroForm fields are native HTML inputs, so they are keyboard-operable, and Folio names each one from the field's `/TU` (falling back to `/T`) — see [The text layer and screen readers](#the-text-layer-and-screen-readers) for why PDF.js does not do this on its own. A field with neither entry has no name to give, which is a defect in the source PDF rather than in the viewer. The signature dialog is a focus-trapped modal (dismiss with `Escape`); its Type tab prefills the name last signed with and offers the recent ones as buttons, so the common case is reachable without typing at all. Placing the created signature has a keyboard path (the placement banner's **Place in the middle**, see above), and a placed signature is itself focusable: `Tab` reaches it and the arrow keys move it, `+`/`-` resize it, and `Delete` removes it (see [Nudging a placed overlay](#nudging-a-placed-overlay)). A signature has no selected state of its own, unlike a text box, so focus *is* the selection. Signatures and placed images carry **no alternative text** in the exported file, and there is no UI to supply one — a known gap, tracked in [508-conformance.md](508-conformance.md). See [forms-and-signatures.md](forms-and-signatures.md).
 
+> **Known issues in what those names actually sound like.** Naming a field from
+> `/TU` is necessary but not sufficient, and two problems only surface by ear:
+> every widget is wrapped in a named landmark, so NVDA speaks each field's name
+> twice and contributes one region per field to the landmark list
+> ([#91](https://github.com/owenpkent/folio/issues/91)); and every option in a
+> radio group inherits the same `/TU`, so the options announce identically with
+> no export value and no `1 of 2` position, leaving them indistinguishable
+> ([#90](https://github.com/owenpkent/folio/issues/90)). Both pass axe and
+> `eslint-plugin-jsx-a11y`, because in both cases the markup is valid and every
+> control has a non-empty name.
+
 Editing text in place: the **Edit text** tool toggle (`textedit.toggle`) is a command reachable from its Edit-menu item, like the others above. Once it is on, clicking a run of text opens an inline editor: a focused `role="textbox"` with its own `aria-label`, committing on `Enter` and cancelling on `Escape` like a native control. Choosing *which* run to edit is pointer-only today: the hit target is sized to the page and keyed to click coordinates, with no keyboard-driven way to tab between editable runs. While the tool is on, **Ctrl/Cmd+Z** (`textedit.undo`) undoes the most recent commit, up to 10 edits back. See [editing-and-ocr.md](editing-and-ocr.md#editing-existing-text).
 
 Editing embedded images: the **Edit images** tool toggle (`imageedit.toggle`) is a command reachable from its Edit-menu item, like the others above. The click-catcher is a real button: a pointer click selects whichever image is under it, and activating the same button from the keyboard (Enter/Space) selects the first editable image on the page instead, or announces that there is none. That keyboard path only ever reaches the first editable image, though; choosing a particular one on a page with more than one still needs a pointer. Once an image is selected the selection chrome takes focus, so the nudge keys apply immediately with no second `Tab` to find it; **Replace image…** and delete are ordinary buttons. Moving and resizing from the keyboard commit on a short delay rather than per keystroke, because unlike every other overlay an embedded image lives in the page's content stream and each change means a serialize, mutate, and reload round trip. See [editing-and-ocr.md](editing-and-ocr.md#editing-embedded-images).
@@ -108,6 +129,14 @@ Every overlay Folio lets you drag can be positioned without a pointer. Focus one
 | `+` / `-` | grow / shrink by one screen pixel |
 | Shift + `+` / `-` | grow / shrink by ten |
 | Delete / Backspace | remove the item |
+
+> **Known issue ([#88](https://github.com/owenpkent/folio/issues/88)).** None of
+> the above works after placing a text box *from the keyboard*. The placement
+> banner's **Place in the middle** button leaves focus inside the editable, where
+> the arrow keys move the text caret instead, and `Delete` does not remove the
+> item. Verified under NVDA on 2026-09-20 and reproduced in four consecutive
+> runs. The table describes the hook's behavior when the wrapper has focus,
+> which is the state the keyboard route does not produce.
 
 One implementation, `src/a11y/useNudgeKeys.ts`, serves all five features, so the bindings cannot drift apart between them. Notes on the design:
 
@@ -274,7 +303,24 @@ Accessibility is verified continuously, not audited once.
 
 Planned: **axe-core** violation scanning wired into the end-to-end suite across views (viewer, sidebar open, search open, each dark scheme, light and dark), plus unit tests for the announcer (polite vs assertive) and focus trap/restore. These are not yet implemented.
 
-**Manual (per release):**
+**Manual.** The list below is the pass this project intends to run per release.
+It has not been running per release, and saying so plainly is more useful than
+implying a cadence that does not exist:
+
+- The first recorded NVDA session against Folio is **2026-09-20**. It covered
+  four flows: search, page navigation, the PDF's own form fields, and placing
+  and moving a text box from the keyboard. Five unattended runs, four clean,
+  with identical results in every clean run.
+- It found four defects that none of the automated checks above detect
+  ([#88](https://github.com/owenpkent/folio/issues/88),
+  [#89](https://github.com/owenpkent/folio/issues/89),
+  [#90](https://github.com/owenpkent/folio/issues/90),
+  [#91](https://github.com/owenpkent/folio/issues/91)). Each is about what the
+  screen reader *says*, so valid markup and a passing axe run would not have
+  caught any of them.
+- **VoiceOver on macOS has never been run.**
+
+The intended pass:
 
 - **NVDA** on Windows and **VoiceOver** on macOS passes covering: opening a document, navigating pages, reading page text, using the outline tree, searching, and switching themes and dark schemes.
 - Keyboard-only pass with no mouse: confirm every action in the shortcuts table works, focus is always visible, and no overlay traps focus. Include the placing tools (add text box / image / signature), where the banner's **Place in the middle** is the only keyboard route in.
