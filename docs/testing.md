@@ -611,4 +611,9 @@ pass, since only the packaged app can exercise it:
   stamping, and image editing.
 - Screen-reader verification is still manual (NVDA on Windows, VoiceOver on
   macOS). The e2e suite asserts accessible names and roles, which is not the
-  same as confirming a document reads well.
+  same as confirming a document reads well. Two NVDA sessions have been run and
+  recorded — 2026-09-20 and 2026-09-21, seven flows between them — and between
+  them they found seven defects the e2e assertions pass straight over, because
+  in every case the name and role are correct and the defect is in what is
+  spoken. See the manual section of [accessibility.md](accessibility.md) for
+  what those sessions did and did not cover. Nothing about them runs in CI.
