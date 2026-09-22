@@ -197,7 +197,15 @@ The sidebar rail is a real tablist: it uses a roving tabindex, so `Tab` steps ov
 
 The menu bar is a real APG menubar on the same principle: the whole row is one `Tab` stop (roving tabindex), `←`/`→` move across the menus (wrapping, and sliding an open menu along with focus), `↓`/`Enter`/`Space` open a menu at its first enabled row and `↑` at its last, `↑`/`↓` move within a menu skipping separators and disabled rows, `Home`/`End` jump to either end, and `Esc` closes the open menu and returns focus to its trigger. Activating an item also returns focus to the trigger. Opening a menu never disturbs the page text selection (mousedown is suppressed the same way the toolbar's Comment/Highlight buttons do it), so selection-driven commands work from the Annotate menu.
 
-**Known gap — the outline is not a tree.** `Outline.tsx` renders nested `<ul>`/`<li>` with a button per entry and `aria-expanded` on the expand/collapse toggle, not `role="tree"` / `role="treeitem"`. It is fully keyboard navigable and every control is named, but a screen reader announces it as a list rather than a tree, so it carries no level or set-position information. Making it a real tree means the ARIA roles plus arrow-key navigation over the same roving-tabindex pattern the rail now uses.
+**Known gap — the outline is not a tree.** `Outline.tsx` renders nested `<ul>`/`<li>` with a button per entry and `aria-expanded` on the expand/collapse toggle, not `role="tree"` / `role="treeitem"`. It is fully keyboard navigable and every control is named, but a screen reader announces it as a list rather than a tree, so it carries no level or set-position information. Making it a real tree means the ARIA roles plus arrow-key navigation over the same roving-tabindex pattern the rail now uses. Measured on 2026-09-21: NVDA says `outline, property page, list, with 3 items` and `list, with 2 items` where a tree would give level and position.
+
+> **Known issue ([#93](https://github.com/owenpkent/folio/issues/93)).** "Every
+> control is named" is true and still not enough. The expand/collapse toggle is
+> named only `Collapse` or `Expand`, with no reference to the heading it folds,
+> so an outline with three expandable chapters gives three announcements of
+> `Collapse, button, expanded` that cannot be told apart. Verified under NVDA on
+> 2026-09-21 in two consecutive runs. axe's `button-name` passes: the rule asks
+> whether a name exists, not whether it is unique or meaningful in context.
 
 ## Names and tooltips
 
@@ -223,6 +231,7 @@ Detection of addresses in the text is deliberately conservative. An address need
 Each rendered page is a `<canvas>` (the visual raster) with a **positioned text layer** overlaid on top, built by `PdfEngine.renderTextLayer(pageNumber, container, { scale })` from PDF.js text content (the same text is available to search and the AI layer via `getPageText`). This is the core of Folio's accessibility.
 
 - **Real text, not an image.** The text layer contains the document's actual glyphs positioned over the canvas. Screen readers read this text; users select and copy it; find-in-page highlights it.
+- **It exists only for the pages near the viewport.** A page outside the 600px rasterisation ring gives its canvas back *and* has its text layer emptied (`textLayerRef.current?.replaceChildren()` in `Page.tsx`), which is what keeps memory flat on a long scroll. So the document's text is never all present at once: measured on 2026-09-21, an eight-page document at rest had text for one page and seven empty groupings, unchanged after fifteen seconds. Reading top to bottom in browse mode mostly survives this, because the ring runs a page ahead of the browse cursor — but the first page below the initial window is read as `blank` and its text is never spoken. Tracked as [#95](https://github.com/owenpkent/folio/issues/95).
 - **Selection matches the visual page.** Because text spans are positioned to align with the raster, a selection drag looks correct and yields the correct copied text.
 - **Reading order is content-stream order, not logical order.** Folio does not currently read the PDF's structure tree: `renderAnnotationLayer` passes `structTreeLayer: null`, `page.getStructTree()` is never called, and the text layer is positioned spans with no structure attached. So the order comes from `getTextContent()`, which follows the content stream, **even for a tagged PDF whose tags describe a different logical order**. For most documents the two coincide; for multi-column layouts, sidebars and floated figures they do not. Closing this means wiring PDF.js's `StructTreeLayerBuilder` and accessibility manager, and is the largest open item in this guide. See [508-conformance.md](508-conformance.md).
 - **The canvas is decorative to assistive tech.** The raster carries `aria-hidden="true"` (`src/components/Viewer/Page.tsx`) so screen readers do not announce it as an image; the text layer is the accessible representation.
@@ -238,7 +247,7 @@ There are around four dozen announcements; `grep -rn "announce(" src/` is the au
 |---|---|
 | Page change | `Page 5 of 24` |
 | Zoom change | `Zoom 150 percent` |
-| Theme toggled with `Ctrl/Cmd + Shift + L` | `dark theme` / `light theme` (the resolved theme) |
+| Theme toggled with `Ctrl/Cmd + Shift + L` | `dark theme` / `light theme` (intended: the resolved theme — but see [#94](https://github.com/owenpkent/folio/issues/94), it currently names the theme you just left) |
 | Viewing mode picked from a menu | `Viewing mode Light` / `Viewing mode Dark` / `Viewing mode Match system` (the mode chosen, since `system` resolves asynchronously) |
 | Dark reading color picked | `Dark reading color Night` / `Dark reading color Green` / `Dark reading color Amber` |
 | Document opened via the picker | `Opened report.pdf, 24 pages` |
@@ -255,6 +264,15 @@ There are around four dozen announcements; `grep -rn "announce(" src/` is the au
 | An action refused while another document change is in flight | `Another document change is in progress.` (assertive) |
 
 One inconsistency worth knowing: a document opened from a **deep link or an OS file association** announces `Opened report.pdf` without the page count (`openFromDeepLink.ts`, `openFromLaunch.ts`), where the picker path includes it.
+
+> **Known issue ([#94](https://github.com/owenpkent/folio/issues/94)).** The
+> theme row above describes the intent, not the behavior. `theme.toggle` calls
+> `toggleTheme()` and then reads `resolvedTheme` synchronously, but
+> `resolvedTheme` is written by `ThemeProvider`'s effect, which has not run
+> yet — so the announcement is always one toggle behind. Measured under NVDA on
+> 2026-09-21 in two consecutive runs: the document went light to dark and NVDA
+> said `light theme`, then dark to light and NVDA said `dark theme`. The live
+> region itself is working correctly; it is being handed the wrong string.
 
 The polite region (`role="status"`, `aria-live="polite"`) never interrupts the user mid-sentence. Messages that need attention go to a separate assertive region (`role="alert"`, `aria-live="assertive"`) instead: that is what the `true` second argument to `announce()` selects. Assertive today: failures (`Could not open document: …`, `Could not save the document: …`, `Could not create the certificate`), instructions the user must act on before anything happens (`Select some text first, then add a highlight`, `Create a signature first`, `Enter a name and a passphrase`), and an action refused because another document change is still in flight (`Another document change is in progress.`) — the user has just asked for something that did not happen, so waiting for a polite gap would leave them thinking the command was ignored.
 
@@ -318,6 +336,24 @@ implying a cadence that does not exist:
   [#91](https://github.com/owenpkent/folio/issues/91)). Each is about what the
   screen reader *says*, so valid markup and a passing axe run would not have
   caught any of them.
+- A second session on **2026-09-21** covered three more of the flows listed
+  below: reading page text, using the outline tree, and switching themes. Two
+  clean runs of each, identical both times. It found three more defects
+  ([#93](https://github.com/owenpkent/folio/issues/93),
+  [#94](https://github.com/owenpkent/folio/issues/94),
+  [#95](https://github.com/owenpkent/folio/issues/95)), again all in what is
+  spoken rather than in the markup.
+- **Reading page text is only partly covered.** The linear browse-mode read was
+  measured, and is what found [#95](https://github.com/owenpkent/folio/issues/95).
+  NVDA's **say-all** was not: its output is not captured by the automation's
+  speech relay — it comes back empty even on a plain HTML control page with
+  known-readable text — so nothing is claimed about say-all in either
+  direction. Whoever wires this into CI should treat say-all as unmeasured
+  rather than passing.
+- The `Opened X, N pages` announcement is still **unverified at the moment of
+  opening**. The automation cannot drive the `Ctrl+O` file dialog, so fixtures
+  are loaded another way and that announcement never fires under test. The
+  text is present and correct in the live region when read there directly.
 - **VoiceOver on macOS has never been run.**
 
 The intended pass:
