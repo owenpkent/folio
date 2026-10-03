@@ -336,7 +336,13 @@ organized and what is covered. All tests must pass in CI before a PR can merge.
   are ignored on both sides and done by hand in one PR that moves both
   lockfiles: `npm install` the new `@tauri-apps/*` versions, `cargo update` the
   `tauri` crates in `src-tauri`, and run `node scripts/check-tauri-versions.mjs`
-  before pushing. Patch bumps still arrive through the normal groups.
+  before pushing. Patch bumps still arrive through the normal groups, but a
+  crate patch can drag a paired plugin across a minor (#104:
+  `tauri-plugin-single-instance` 2.5.1 required `tauri-plugin-deep-link` 2.6,
+  while #103 bumped the npm side). If an npm and a cargo PR both fail the Tauri
+  build on a plugin mismatch, land them together as one PR, as #101 did. Note
+  that `check-tauri-versions.mjs` compares only `tauri` with `@tauri-apps/api`;
+  plugin pairs are caught by the Tauri CLI in the debug builds.
 
   A dependency PR that dies at `npm ci` with `ERESOLVE` has **two** causes that
   look identical, and they need opposite responses. Read the peer conflict npm
