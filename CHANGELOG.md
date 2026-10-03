@@ -6,15 +6,29 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Tauri 2.11 to 2.12.1** on both the npm and Rust sides, with the deep-link
+  plugin moving to 2.6 and the updater plugin to 2.13.1.
+- **Tauri updates no longer arrive half-done from Dependabot.** The Tauri CLI and
+  `check-tauri-versions.mjs` require the npm packages and Rust crates to share a
+  major.minor, and Dependabot updates the two separately, so each side's PR failed
+  on its own (#98/#99, then #103/#104). Minor and major Tauri bumps are now
+  ignored on both sides and done by hand as one PR; patch bumps still come
+  through. CONTRIBUTING covers the remaining case, a crate patch that drags a
+  paired plugin across a minor.
+
 ### Security
 
-- **Cleared all six open Dependabot alerts, all in `undici`**, the most serious a
+- **Cleared six Dependabot alerts in `undici`**, the most serious a
   high-severity TLS certificate validation bypass in `BalancedPool`. The affected
   copy (8.9.0) came in only through `jsdom` in the unit-test environment and was
   never part of the shipped app; the lockfile now resolves 8.11.2.
 - **Patched `brace-expansion`** for a quadratic-time denial-of-service advisory
   (two alerts). Every copy is pulled in by eslint, so this was never part of the
-  shipped app either; the lockfile now resolves 1.1.21 and 5.0.12.
+  shipped app either; the lockfile now resolves 1.1.21 and 5.0.12. This also
+  closes #57: the older advisory it tracked was already fixed by the 1.1.18 copy
+  that main resolved before this change.
 - **`node-forge` carries a high-severity advisory with no fix yet**
   (GHSA-86w9-cpqp-85rv): its RSA signature verification can accept a forged
   signature. Folio does not use that code. It reads a PDF signature's signer and

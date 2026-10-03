@@ -19,7 +19,9 @@ issue or defer the release.
 - [ ] `npm run lint` — no ESLint errors
 - [ ] `npm run typecheck` — no type errors
 - [ ] `npm run check:versions` — `tauri` crate and `@tauri-apps/api` share the same major.minor (also enforced in CI)
-- [ ] `npm audit`: no high/critical
+- [ ] `npm audit`: no high/critical beyond the known-accepted findings listed in
+      CONTRIBUTING.md (today `node-forge`, also reported through
+      `@signpdf/signer-p12`)
 - [ ] `cargo audit --manifest-path src-tauri/Cargo.toml`: **zero vulnerabilities**. The
       standing warning count is unmaintained/unsound advisories on transitive crates,
       most of them Tauri's Linux GTK stack, which Windows builds never compile. Treat a
@@ -28,7 +30,11 @@ issue or defer the release.
 - [ ] `npm run test:e2e` — Playwright smoke suite green (needs `npx playwright install chromium`, and again after any `@playwright/test` upgrade, or every spec fails at 0ms on a missing browser)
 - [ ] No outstanding **High** or **Critical** Dependabot alerts on `main`
       (`gh api repos/owenpkent/folio/dependabot/alerts --jq '.[] | select(.state=="open") | select(.security_advisory.severity=="high" or .security_advisory.severity=="critical")'`).
-      Document any accepted Medium/Low alerts in the CHANGELOG.
+      Document any accepted Medium/Low alerts in the CHANGELOG. A High/Critical
+      alert is acceptable only when no fix exists and Folio provably never reaches
+      the vulnerable code: dismiss it on GitHub as "Vulnerable code is not actually
+      used", keep the evidence in CONTRIBUTING's known-accepted list, and name it
+      in the CHANGELOG. `node-forge` (GHSA-86w9-cpqp-85rv) is the current case.
 - [ ] Working tree clean (`git status`), `main` is the branch being released
 
 ---
