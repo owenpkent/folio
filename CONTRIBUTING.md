@@ -328,6 +328,16 @@ organized and what is covered. All tests must pass in CI before a PR can merge.
   saying anything about whether the upgrade worked. Grouping keeps one dedicated
   PR per breaking upgrade while making that PR installable.
 
+  **Tauri** is a cohort that spans ecosystems: the npm `@tauri-apps/*` packages
+  and the `tauri` crates must share a major.minor (plugins pairwise included),
+  which the Tauri CLI and `scripts/check-tauri-versions.mjs` both enforce.
+  Dependabot cannot group npm with cargo here, and letting each side bump alone
+  produced two permanently red PRs (#98/#99). So Tauri **minor and major** bumps
+  are ignored on both sides and done by hand in one PR that moves both
+  lockfiles: `npm install` the new `@tauri-apps/*` versions, `cargo update` the
+  `tauri` crates in `src-tauri`, and run `node scripts/check-tauri-versions.mjs`
+  before pushing. Patch bumps still arrive through the normal groups.
+
   A dependency PR that dies at `npm ci` with `ERESOLVE` has **two** causes that
   look identical, and they need opposite responses. Read the peer conflict npm
   prints, find the package holding the old range, and check the registry
