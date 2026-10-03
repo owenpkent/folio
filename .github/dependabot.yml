@@ -75,6 +75,22 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    # Tauri is a cohort that spans ecosystems: the Tauri CLI and
+    # scripts/check-tauri-versions.mjs both require @tauri-apps/* (here) and the
+    # tauri crates (cargo entry below) to share a major.minor, plugins pairwise
+    # included. Dependabot cannot group across ecosystems without moving
+    # commit-message off both entries, so each side bumped alone: #99 took
+    # @tauri-apps/api to 2.12 while #98 took tauri to 2.12, and both stayed red
+    # until they were merged as one PR (#101). Minor and major Tauri bumps are
+    # therefore ignored on both sides and done by hand in a single PR that moves
+    # both lockfiles. Patch bumps cannot break parity and stay in the groups
+    # above. `ignore` also applies to security updates: a fix that needs a Tauri
+    # minor still raises an alert (the release gate) but gets no automatic PR.
+    ignore:
+      - dependency-name: "@tauri-apps/*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
     labels:
       - dependencies
       - javascript
@@ -91,6 +107,16 @@ updates:
     groups:
       cargo:
         patterns: ["*"]
+    # The other half of the Tauri cohort; see the npm entry above.
+    ignore:
+      - dependency-name: "tauri"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
+      - dependency-name: "tauri-*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
     labels:
       - dependencies
       - rust
