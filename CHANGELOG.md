@@ -6,6 +6,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **Cleared all six open Dependabot alerts, all in `undici`**, the most serious a
+  high-severity TLS certificate validation bypass in `BalancedPool`. The affected
+  copy (8.9.0) came in only through `jsdom` in the unit-test environment and was
+  never part of the shipped app; the lockfile now resolves 8.11.2.
+
 ## [0.7.0] - 2026-08-15
 
 ### Added
