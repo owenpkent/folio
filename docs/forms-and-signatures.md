@@ -222,7 +222,9 @@ app.
 ## Roadmap
 
 - Certificate-chain trust validation and full CMS digest verification, with a
-  trust panel.
+  trust panel. RSA checks must go through WebCrypto, not node-forge's `verify`
+  methods, which accept forged PKCS#1 v1.5 signatures (GHSA-86w9-cpqp-85rv); see
+  the header of `src/features/signing/verify.ts`.
 - Embedded timestamps (RFC 3161) and PAdES profiles.
 - Move signing to a Rust backend with OS-keychain-backed key storage.
 - Optional flattening of form fields on export.

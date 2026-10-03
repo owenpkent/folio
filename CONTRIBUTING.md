@@ -308,11 +308,15 @@ organized and what is covered. All tests must pass in CI before a PR can merge.
   that actually blocks a release is **Dependabot alerts**, not `npm audit`: the
   two disagree, because `npm audit` counts an advisory once per dependency path
   and reports findings that cannot be fixed from here at all. Two are open and
-  documented, with the evidence for why each is unfixable and what would unblock
-  it: [#57](https://github.com/owenpkent/folio/issues/57)
-  (`brace-expansion`, several of the current high findings, all one advisory) and
+  documented, with the evidence for why each is unfixable or does not apply:
   [#58](https://github.com/owenpkent/folio/issues/58) (`glib`, Linux-only, pinned
-  by Tauri). Add to that list rather than silently carrying a finding.
+  by Tauri), and `node-forge` (GHSA-86w9-cpqp-85rv, also reported through
+  `@signpdf/signer-p12`), which has no patched release but sits in RSA signature
+  *verification*, a path Folio never calls; the header of
+  `src/features/signing/verify.ts` records why and what to use instead. Add to
+  that list rather than silently carrying a finding.
+  ([#57](https://github.com/owenpkent/folio/issues/57), `brace-expansion`, was
+  resolved once eslint's `minimatch@3` resolved a patched copy.)
 - **Dependabot** opens monthly update PRs (npm, cargo, GitHub Actions), grouped
   to cut noise. For npm, **minor and patch** bumps are grouped into a single PR
   that should stay green and be easy to merge. **Major** bumps are intentionally
