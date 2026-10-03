@@ -83,8 +83,13 @@ updates:
     # @tauri-apps/api to 2.12 while #98 took tauri to 2.12, and both stayed red
     # until they were merged as one PR (#101). Minor and major Tauri bumps are
     # therefore ignored on both sides and done by hand in a single PR that moves
-    # both lockfiles. Patch bumps cannot break parity and stay in the groups
-    # above. `ignore` also applies to security updates: a fix that needs a Tauri
+    # both lockfiles. Patch bumps stay in the groups above and usually keep
+    # parity, but not always: a crate patch can require a paired plugin's next
+    # minor, which `ignore` cannot see because it is a transitive move
+    # (tauri-plugin-single-instance 2.5.1 pulled tauri-plugin-deep-link to 2.6 in
+    # #104 while #103 bumped the npm side). When an npm and a cargo PR both fail
+    # the Tauri build on a plugin mismatch, land them together as one PR, as #101
+    # did. `ignore` also applies to security updates: a fix that needs a Tauri
     # minor still raises an alert (the release gate) but gets no automatic PR.
     ignore:
       - dependency-name: "@tauri-apps/*"
