@@ -12,6 +12,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   high-severity TLS certificate validation bypass in `BalancedPool`. The affected
   copy (8.9.0) came in only through `jsdom` in the unit-test environment and was
   never part of the shipped app; the lockfile now resolves 8.11.2.
+- **Patched `brace-expansion`** for a quadratic-time denial-of-service advisory
+  (two alerts). Every copy is pulled in by eslint, so this was never part of the
+  shipped app either; the lockfile now resolves 1.1.21 and 5.0.12.
+- **`node-forge` carries a high-severity advisory with no fix yet**
+  (GHSA-86w9-cpqp-85rv): its RSA signature verification can accept a forged
+  signature. Folio does not use that code. It reads a PDF signature's signer and
+  checks that nothing was appended after signing, but does not yet verify the
+  signature cryptographically, and future verification is documented to use
+  WebCrypto instead.
 
 ## [0.7.0] - 2026-08-15
 
