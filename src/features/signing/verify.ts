@@ -16,6 +16,15 @@ import forge from 'node-forge';
  * as covered. Read it as "nothing was added after the signature", not as "the
  * signed content is intact". Full CMS digest verification and certificate-chain
  * trust validation are not yet performed; see docs/forms-and-signatures.md.
+ *
+ * node-forge is only used here to parse the CMS envelope for the signer's name.
+ * When digest or chain verification is built, do not verify RSA signatures with
+ * node-forge (`publicKey.verify`, `certificate.verify`,
+ * `pki.verifyCertificateChain`): through at least 1.4.0 its PKCS#1 v1.5 check
+ * accepts a malformed DigestInfo (GHSA-86w9-cpqp-85rv, no patched release),
+ * which allows forging a signature against a low-exponent key. Use WebCrypto
+ * (`crypto.subtle.verify` with RSASSA-PKCS1-v1_5), which compares the full
+ * encoding strictly.
  */
 export interface DetectedSignature {
   signerName: string | null;
