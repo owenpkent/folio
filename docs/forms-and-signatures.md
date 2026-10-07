@@ -146,7 +146,7 @@ you sign.
 
 "Sign and save" first prepares the document (filling forms and stamping any
 visual signatures), then computes the CMS SignedData over the whole file with
-[@signpdf](https://github.com/vbuch/node-signpdf) and node-forge and writes a
+[@signpdf](https://github.com/vbuch/node-signpdf) (with WebCrypto and pkijs) and writes a
 `(signed)` copy. Because a digital signature covers the entire file, signing is
 the last step: any later edit invalidates it, so Folio always saves to a new file
 rather than modifying the open one.
@@ -191,8 +191,18 @@ engine no longer keeps a second full copy of every open file.
 
 ### Where the crypto runs, and security
 
+Keys and signatures are WebCrypto (RSA 2048, RSASSA-PKCS1-v1_5, SHA-256).
+Certificates are built with @peculiar/x509. `pkcs12.ts` reads and writes the
+.p12 container (asn1js plus WebCrypto; 3DES from des.js, since WebCrypto has
+none) and `cmsSigner.ts` builds the detached CMS SignedData with pkijs for
+@signpdf. .p12 files written by older Folio versions (node-forge, 3DES) import
+and sign unchanged; a fixture under `src/features/signing/__fixtures__/` guards
+that. Reading also accepts PBES2/AES .p12 files (OpenSSL 3 default); legacy
+RC2-40 encrypted .p12 files are not supported.
+
 Signing currently runs in the app's front-end (WebView) using the mature,
-open-source @signpdf and node-forge libraries. This is portable and verifiable,
+open-source @signpdf, @peculiar/x509 and pkijs libraries on top of WebCrypto
+(node-forge was removed). This is portable and verifiable,
 but private-key material passes through the WebView. Moving signing into the Rust
 backend with OS-keychain-backed key storage is planned; the code is isolated
 behind `src/features/signing/` so that change will not affect the rest of the
@@ -222,9 +232,10 @@ app.
 ## Roadmap
 
 - Certificate-chain trust validation and full CMS digest verification, with a
-  trust panel. RSA checks must go through WebCrypto, not node-forge's `verify`
-  methods, which accept forged PKCS#1 v1.5 signatures (GHSA-86w9-cpqp-85rv); see
-  the header of `src/features/signing/verify.ts`.
+  trust panel. RSA checks must go through WebCrypto (`crypto.subtle.verify`), never a
+  JS PKCS#1 v1.5 implementation; node-forge's accepted forged signatures
+  (GHSA-86w9-cpqp-85rv), which is why it is gone. See the header of
+  `src/features/signing/verify.ts`.
 - Embedded timestamps (RFC 3161) and PAdES profiles.
 - Move signing to a Rust backend with OS-keychain-backed key storage.
 - Optional flattening of form fields on export.

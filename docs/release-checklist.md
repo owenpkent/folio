@@ -20,8 +20,7 @@ issue or defer the release.
 - [ ] `npm run typecheck` — no type errors
 - [ ] `npm run check:versions` — `tauri` crate and `@tauri-apps/api` share the same major.minor (also enforced in CI)
 - [ ] `npm audit`: no high/critical beyond the known-accepted findings listed in
-      CONTRIBUTING.md (today `node-forge`, also reported through
-      `@signpdf/signer-p12`)
+      CONTRIBUTING.md (today only the Linux-only `glib` finding)
 - [ ] `cargo audit --manifest-path src-tauri/Cargo.toml`: **zero vulnerabilities**. The
       standing warning count is unmaintained/unsound advisories on transitive crates,
       most of them Tauri's Linux GTK stack, which Windows builds never compile. Treat a
@@ -34,7 +33,7 @@ issue or defer the release.
       alert is acceptable only when no fix exists and Folio provably never reaches
       the vulnerable code: dismiss it on GitHub as "Vulnerable code is not actually
       used", keep the evidence in CONTRIBUTING's known-accepted list, and name it
-      in the CHANGELOG. `node-forge` (GHSA-86w9-cpqp-85rv) is the current case.
+      in the CHANGELOG. `glib` (#58) is the current case.
 - [ ] Working tree clean (`git status`), `main` is the branch being released
 
 ---
