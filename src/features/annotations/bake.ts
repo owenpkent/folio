@@ -1,5 +1,6 @@
 import { PDFHexString, PDFName, PDFNumber, type PDFDocument, type PDFPage } from 'pdf-lib';
 
+import { MissingPageError } from '@/core/pdf/errors';
 import { boxRect, scaleHeight, scaleWidth, type UserBox } from '@/core/pdf/pageGeometry';
 
 import type { Annotation } from './types';
@@ -39,7 +40,7 @@ export function stampAnnotations(pdf: PDFDocument, annotations: Annotation[]): v
 
   for (const annotation of annotations) {
     const page = pages[annotation.pageNumber - 1];
-    if (!page) continue;
+    if (!page) throw new MissingPageError(annotation.pageNumber);
 
     const ref =
       annotation.type === 'highlight'

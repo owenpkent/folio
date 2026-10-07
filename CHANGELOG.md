@@ -26,6 +26,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   through. CONTRIBUTING covers the remaining case, a crate patch that drags a
   paired plugin across a minor.
 
+### Fixed
+
+- **Save never writes a PDF that lost pages or will not reopen.** Some files
+  (a page object whose generation does not match its `/Kids` reference, an object
+  numbered near 2^31) made the export silently drop pages and edits, insert a
+  blank page, or write a file no reader could open. The export now checks that
+  pdf-lib sees every page the viewer shows, saves without the blank-page
+  fallback, reopens the result in a separate PDF.js document, and retries once
+  without object streams before refusing with a message. Edits staged on a page
+  that is missing now stop the save instead of vanishing. A save with nothing
+  staged falls back to the original bytes when PDF.js cannot re-serialize a page,
+  but a failure with form edits staged is reported, never swallowed. Files with
+  junk before the `%PDF-` header (allowed up to 1024 bytes) no longer fail the
+  pass-through save check, and the save toast now says why it refused.
+
 ### Security
 
 - **Cleared six Dependabot alerts in `undici`**, the most serious a

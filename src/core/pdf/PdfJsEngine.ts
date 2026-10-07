@@ -392,8 +392,26 @@ export class PdfJsEngine implements PdfEngine {
     return this.doc ? this.doc.annotationStorage.size : 0;
   }
 
+  getPageCount(): number {
+    return this.doc ? this.doc.numPages : 0;
+  }
+
   async saveDocument(): Promise<Uint8Array> {
-    return this.requireDoc().saveDocument();
+    const doc = this.requireDoc();
+    try {
+      return await doc.saveDocument();
+    } catch (error) {
+      // PDF.js runs page.save() on every page before it checks for changes, so
+      // a page it can read but not re-serialize (a stray `)` in an annotation,
+      // issue22011.pdf) fails a save that has nothing to write. If nothing is
+      // staged the original bytes ARE the saved document. Anything staged means
+      // the user's form edits would be lost, so that must surface as an error.
+      // PDF.js 6.3 AnnotationStorage.size is its entry count (a Map size, the
+      // same value getPendingEditCount reports); every filled widget adds an
+      // entry and an entry is only removed with its value, so 0 means untouched.
+      if (doc.annotationStorage.size === 0) return doc.getData();
+      throw error;
+    }
   }
 
   async getPageText(pageNumber: number): Promise<string> {
