@@ -42,7 +42,7 @@ support documentation and services (Chapter 6).
 |---|---|---|
 | **E205.4 / E207.2** | Content and UI conform to WCAG 2.0 A/AA | **Partially supports**: see [accessibility.md](accessibility.md) and [the gap below](#new-editing-controls-are-not-all-keyboard-operable) |
 | **502.2.2** | Does not disrupt platform accessibility features | Supports |
-| **502.3** | Applications that are also platforms expose accessibility services | **Partially supports** — see [Canvas content](#canvas-content-5023) |
+| **502.3** | Applications that are also platforms expose accessibility services | **Partially supports** — see [Canvas content](#canvas-content-5023) and [the text-layer gap](#the-text-layer-only-exists-near-the-viewport) |
 | **502.4** | Platform accessibility features (ANSI/HFES 200.2) | Not applicable — Folio is an application, not a platform |
 | **503.2** | Honor platform color, contrast, font type, font size, focus cursor | **Supports** — see [Platform settings](#platform-settings-5032) |
 | **503.4** | Caption / audio description controls | Not applicable — no video or audio |
@@ -128,8 +128,9 @@ canvas, which the WebView maps to the platform accessibility API for us: on
 Windows WebView2 maps the DOM to UIA, on macOS WKWebView maps it to AX. The
 canvas itself is `aria-hidden`.
 
-It is a **partial** support because the text layer is positioned spans with no
-structure attached — see the reading-order gap below.
+It is a **partial** support for two reasons: the text layer is positioned spans
+with no structure attached, and it exists only for the pages near the viewport.
+Both are gaps below.
 
 ## The gaps
 
@@ -146,6 +147,37 @@ This is the largest open item. Closing it means wiring PDF.js's
 `StructTreeLayerBuilder` and accessibility manager, which PDF.js already
 supports — it builds a parallel DOM mirroring the structure tree and links it to
 the text layer with `aria-owns`. This is tracked work, not a limitation.
+
+### The text layer only exists near the viewport
+
+A page outside the 600px rasterisation ring gives its canvas back *and* has its
+text layer emptied (`textLayerRef.current?.replaceChildren()` in
+`src/components/Viewer/Page.tsx`). That is what keeps memory flat on a long
+scroll, and it is deliberate — but it means the thing 502.3 is satisfied by is
+never all present at once. Measured under NVDA on 2026-09-21, an eight-page
+document at rest exposed text for one page and seven empty groupings, unchanged
+after fifteen seconds.
+
+A linear read mostly survives it, because the ring runs a page ahead of the
+browse cursor: pages 3 to 8 read correctly. The exception is the first page
+below the initial window, which has no lead time — NVDA reads its line the
+moment the cursor lands, before the render that same movement triggered can
+land, and does not re-read a line that fills in afterwards. That page's text is
+never spoken. Slowing the read from 850ms to 4000ms per keystroke does not
+recover it, so it is not a race a slower reader wins.
+
+Tracked as [#95](https://github.com/owenpkent/folio/issues/95). Closing it means
+either keeping the text layer mounted for pages outside the raster ring (it is
+DOM nodes, not a raster, so it is cheap next to the backing store the
+optimisation is actually protecting), widening the ring that gates the text
+layer independently of the one that gates rasterising, or marking a page
+`aria-busy` while its text is pending so a screen reader is told to wait rather
+than told `blank`.
+
+Note for anyone writing an ACR from this: the assistive technology reaches the
+text through the platform API correctly. The defect is that the content is
+absent from the DOM at the moment it is asked for, which is why a static
+accessibility scan of any single snapshot finds nothing wrong.
 
 ### No alternative text for anything we add
 
