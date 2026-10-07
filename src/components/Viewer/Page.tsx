@@ -25,7 +25,8 @@ interface PageProps {
 
 /**
  * A single page: reserves layout space immediately (so scrolling is stable),
- * then rasterises the canvas and text layer once it scrolls near the viewport.
+ * then rasterises the canvas once it scrolls near the viewport. The text layer
+ * is built earlier, on a wider ring, so a screen reader never meets it empty.
  */
 export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
   const docVersion = useDocumentStore((s) => s.docVersion);
@@ -68,6 +69,13 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
   // `near` is deliberately much wider, and gates the things that should already
   // be in place by the time a page is painted: its true size, and its overlays.
   const near = useNearViewport(wrapperRef, '2400px 0px', '.folio-viewer');
+  // The text layer is what a screen reader reads, so it follows the wide ring,
+  // not the raster one. On the raster ring it ran barely a page ahead of an
+  // NVDA browse cursor, and the first page below the initial window was read
+  // as "blank" before its render landed (#95). A text layer is DOM nodes, not a
+  // backing store, so the memory the raster ring protects is not at stake.
+  // Held back on `dims` for the same reason as `visible`.
+  const textVisible = near && dims !== null;
 
   // A page must not leave the ring while it holds live editing state. Wheel and
   // keyboard scrolling never blur, and no browser fires blur when the focused
@@ -107,12 +115,12 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
     if (!canvas) return;
 
     // Scrolled away: drop the backing store (0x0 frees the raster memory) and
-    // clear the layers so an offscreen page costs almost nothing. It re-renders
-    // when it scrolls back into range.
+    // clear the forms layer so an offscreen page costs almost nothing. It
+    // re-renders when it scrolls back into range. The text layer has its own
+    // effect below, on the wide ring.
     if (!visible) {
       canvas.width = 0;
       canvas.height = 0;
-      textLayerRef.current?.replaceChildren();
       formsLayerRef.current?.replaceChildren();
       return;
     }
@@ -133,10 +141,6 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
           tint,
         });
         if (!active) return;
-        if (textLayerRef.current) {
-          await engine.renderTextLayer(pageNumber, textLayerRef.current, { scale, signal });
-        }
-        if (!active) return;
         if (formsLayerRef.current) {
           // Reads doc.annotationStorage off the engine's *current* document
           // proxy, so re-running this after a docVersion bump rebinds the
@@ -155,6 +159,32 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
       controller.abort();
     };
   }, [visible, pageNumber, scale, docVersion, renderNonce, dark, tint]);
+
+  // The text layer, on the wide ring (see `textVisible`). Not keyed on the
+  // theme or renderNonce: those change pixels, and this layer has none.
+  useEffect(() => {
+    const container = textLayerRef.current;
+    if (!container) return;
+
+    if (!textVisible) {
+      container.replaceChildren();
+      return;
+    }
+
+    const controller = new AbortController();
+    let active = true;
+
+    void getEngine()
+      .renderTextLayer(pageNumber, container, { scale, signal: controller.signal })
+      .catch((error: unknown) => {
+        if (active) console.error(`[folio] failed to render text for page ${pageNumber}`, error);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [textVisible, pageNumber, scale, docVersion]);
 
   return (
     <div

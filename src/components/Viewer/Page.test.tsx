@@ -4,14 +4,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as PdfCore from '@/core/pdf';
 
 // Every ring change drives the engine (rasterise, or measure the page). None of
-// these tests care about pixels, so the engine is a set of resolving no-ops.
+// these tests care about pixels, so the engine is a set of resolving no-ops,
+// except that the text layer writes one span so a test can see it is there.
+const engine = vi.hoisted(() => ({
+  renderPage: vi.fn(async () => {}),
+  renderTextLayer: vi.fn(async (pageNumber: number, container: HTMLElement) => {
+    const span = document.createElement('span');
+    span.textContent = `Text of page ${pageNumber}`;
+    container.replaceChildren(span);
+  }),
+}));
+
 vi.mock('@/core/pdf', async (orig) => {
   const actual = (await orig()) as typeof PdfCore;
   return {
     ...actual,
     getEngine: () => ({
-      renderPage: async () => {},
-      renderTextLayer: async () => {},
+      renderPage: engine.renderPage,
+      renderTextLayer: engine.renderTextLayer,
       renderAnnotationLayer: async () => {},
       getPageDimensions: async () => ({ width: 612, height: 792 }),
       // ImageEditLayer asks for one as soon as it mounts.
@@ -25,7 +35,7 @@ vi.mock('@/core/pdf', async (orig) => {
   };
 });
 
-import { resetPageSizes } from '@/core/pdf/pageSizes';
+import { primePageSizeEstimate, resetPageSizes } from '@/core/pdf/pageSizes';
 import { useEditStore } from '@/features/editing';
 
 import { Page } from './Page';
@@ -91,13 +101,19 @@ function storedText(id: string): string | null {
   return item?.kind === 'text' ? item.text : null;
 }
 
-/** Report the page in (or out of) both rings at once, the way a scroll does. */
-function reportNear(isIntersecting: boolean): void {
+/** Report the page in (or out of) the given rings, both by default, the way a scroll does. */
+function reportNear(isIntersecting: boolean, margins = ['600px 0px', '2400px 0px']): void {
   const target = document.querySelector('.folio-page');
   if (!target) throw new Error('page element not rendered');
-  for (const margin of ['600px 0px', '2400px 0px']) {
+  for (const margin of margins) {
     ring(margin).fire([{ target, isIntersecting }]);
   }
+}
+
+function textLayer(): HTMLElement {
+  const layer = document.querySelector<HTMLElement>('.folio-text-layer');
+  if (!layer) throw new Error('text layer not rendered');
+  return layer;
 }
 
 describe('Page', () => {
@@ -110,6 +126,7 @@ describe('Page', () => {
     vi.unstubAllGlobals();
     useEditStore.getState().reset();
     resetPageSizes();
+    vi.clearAllMocks();
   });
 
   it('roots both rings at the scroller, not the viewport', () => {
@@ -170,5 +187,42 @@ describe('Page', () => {
 
     act(() => reportNear(false));
     expect(screen.queryByRole('textbox', { name: 'Text box' })).not.toBeInTheDocument();
+  });
+
+  // #95: on the raster ring the text layer ran barely a page ahead of an NVDA
+  // browse cursor, and the first page below the initial window read as blank.
+  describe('text layer', () => {
+    beforeEach(() => {
+      // A known size, so the page is not held back as unmeasured.
+      primePageSizeEstimate({ width: 612, height: 792 });
+    });
+
+    it('is built on the wide ring, before the page is rasterised', async () => {
+      renderPage();
+      act(() => reportNear(true, ['2400px 0px']));
+
+      await vi.waitFor(() => expect(textLayer()).toHaveTextContent(`Text of page ${PAGE}`));
+      expect(engine.renderPage).not.toHaveBeenCalled();
+    });
+
+    it('survives the page leaving the raster ring, and is emptied when it leaves the wide one', async () => {
+      renderPage();
+      act(() => reportNear(true));
+      await vi.waitFor(() => expect(textLayer()).toHaveTextContent(`Text of page ${PAGE}`));
+
+      act(() => reportNear(false, ['600px 0px']));
+      expect(textLayer()).toHaveTextContent(`Text of page ${PAGE}`);
+
+      act(() => reportNear(false, ['2400px 0px']));
+      expect(textLayer()).toBeEmptyDOMElement();
+    });
+
+    it('is not built for a page with no size yet', () => {
+      resetPageSizes();
+      renderPage();
+      act(() => reportNear(true, ['2400px 0px']));
+
+      expect(engine.renderTextLayer).not.toHaveBeenCalled();
+    });
   });
 });

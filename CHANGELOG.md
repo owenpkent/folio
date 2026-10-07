@@ -28,6 +28,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A screen reader no longer reads the first page below the window as
+  blank.** The text layer was built only for pages inside the 600px
+  rasterisation ring, so at rest only the first page had text. Reading top to
+  bottom with NVDA in browse mode, the cursor reached the first page below the
+  window before its text had rendered, announced `blank`, and moved on without
+  ever speaking it (#95). The text layer now follows the wider 2400px ring that
+  page overlays already use, while the canvas keeps the tight ring that holds
+  memory down on a long scroll.
 - **Save never writes a PDF that lost pages or will not reopen.** Some files
   (a page object whose generation does not match its `/Kids` reference, an object
   numbered near 2^31) made the export silently drop pages and edits, insert a
