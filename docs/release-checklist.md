@@ -21,7 +21,7 @@ issue or defer the release.
 - [ ] `npm run check:versions` — `tauri` crate and `@tauri-apps/api` share the same major.minor (also enforced in CI)
 - [ ] `npm audit`: no high/critical beyond the known-accepted findings listed in
       CONTRIBUTING.md (today only the Linux-only `glib` finding)
-- [ ] `cargo audit --manifest-path src-tauri/Cargo.toml`: **zero vulnerabilities**. The
+- [ ] `cargo audit --file src-tauri/Cargo.lock`: **zero vulnerabilities**. The
       standing warning count is unmaintained/unsound advisories on transitive crates,
       most of them Tauri's Linux GTK stack, which Windows builds never compile. Treat a
       *new* warning as worth reading and any actual vulnerability as blocking
