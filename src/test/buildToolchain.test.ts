@@ -51,7 +51,7 @@ describe('build toolchain', () => {
 
   it('does not default-import a CJS package that hides its default behind __esModule', () => {
     // Default-importing CommonJS is only unambiguous when the package assigns
-    // `module.exports` outright, the way node-forge does. When it instead marks
+    // `module.exports` outright, the way most plain CJS packages do. When it instead marks
     // `__esModule` and sets `exports.default` (what Babel emits), the two
     // bundlers disagree: esbuild reads the marker and hands back
     // `exports.default`, rolldown hands back the whole namespace object.

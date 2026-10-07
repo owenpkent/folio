@@ -307,14 +307,13 @@ organized and what is covered. All tests must pass in CI before a PR can merge.
   as blocking — but check them against the known-accepted list first. The gate
   that actually blocks a release is **Dependabot alerts**, not `npm audit`: the
   two disagree, because `npm audit` counts an advisory once per dependency path
-  and reports findings that cannot be fixed from here at all. Two are open and
-  documented, with the evidence for why each is unfixable or does not apply:
+  and reports findings that cannot be fixed from here at all. One is open and
+  documented, with the evidence for why it is unfixable or does not apply:
   [#58](https://github.com/owenpkent/folio/issues/58) (`glib`, Linux-only, pinned
-  by Tauri), and `node-forge` (GHSA-86w9-cpqp-85rv, also reported through
-  `@signpdf/signer-p12`), which has no patched release but sits in RSA signature
-  *verification*, a path Folio never calls; the header of
-  `src/features/signing/verify.ts` records why and what to use instead. Add to
-  that list rather than silently carrying a finding.
+  by Tauri). `node-forge` (GHSA-86w9-cpqp-85rv, no patched release) used to be on
+  this list; it was removed from the dependency tree instead, and the header of
+  `src/features/signing/verify.ts` records why RSA verification must use
+  WebCrypto. Add to that list rather than silently carrying a finding.
   ([#57](https://github.com/owenpkent/folio/issues/57), `brace-expansion`, was
   resolved once eslint's `minimatch@3` resolved a patched copy.)
 - **Dependabot** opens monthly update PRs (npm, cargo, GitHub Actions), grouped

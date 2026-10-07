@@ -8,6 +8,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`node-forge` removed** (GHSA-86w9-cpqp-85rv, no patched release). Signing
+  now uses WebCrypto for keys and signatures, `@peculiar/x509` for certificates,
+  `pkijs` and `asn1js` for the CMS signature, and a small in-repo PKCS#12
+  reader/writer (3DES via `des.js`). `@signpdf/signer-p12` is replaced by an
+  in-repo signer. Existing `.p12` identities import and sign unchanged (3DES or
+  AES, any MAC from SHA-1 to SHA-512, including node-forge's AES exports with a
+  non-ASCII passphrase); new ones use the same format as before. RC2-40
+  encrypted `.p12` files, which node-forge could read, are no longer supported.
 - **Tauri 2.11 to 2.12.1** on both the npm and Rust sides, with the deep-link
   plugin moving to 2.6 and the updater plugin to 2.13.1.
 - **Tauri updates no longer arrive half-done from Dependabot.** The Tauri CLI and
@@ -29,12 +37,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   shipped app either; the lockfile now resolves 1.1.21 and 5.0.12. This also
   closes #57: the older advisory it tracked was already fixed by the 1.1.18 copy
   that main resolved before this change.
-- **`node-forge` carries a high-severity advisory with no fix yet**
-  (GHSA-86w9-cpqp-85rv): its RSA signature verification can accept a forged
-  signature. Folio does not use that code. It reads a PDF signature's signer and
-  checks that nothing was appended after signing, but does not yet verify the
-  signature cryptographically, and future verification is documented to use
-  WebCrypto instead.
 
 ## [0.7.0] - 2026-08-15
 

@@ -1,4 +1,8 @@
-import forge from 'node-forge';
+// tsyringe, used inside @peculiar/x509, needs this polyfill loaded before it.
+import 'reflect-metadata';
+import * as x509 from '@peculiar/x509';
+
+import { readPkcs12, writePkcs12 } from './pkcs12';
 
 /** Human-readable summary of a signing certificate. */
 export interface IdentitySummary {
@@ -11,33 +15,27 @@ export interface IdentitySummary {
   selfSigned: boolean;
 }
 
-function uint8ToBinary(bytes: Uint8Array): string {
-  let out = '';
-  for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
-  return out;
+/** Key and signature algorithm for every identity Folio creates. */
+const RSA_SHA256 = {
+  name: 'RSASSA-PKCS1-v1_5',
+  hash: 'SHA-256',
+  modulusLength: 2048,
+  publicExponent: new Uint8Array([1, 0, 1]),
+} as const;
+
+function toArrayBuffer(view: Uint8Array): ArrayBuffer {
+  return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength) as ArrayBuffer;
 }
 
-function binaryToUint8(binary: string): Uint8Array {
-  const out = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i) & 0xff;
-  return out;
-}
-
-function field(attrs: forge.pki.Certificate['subject'], shortName: string): string | undefined {
-  const found = attrs.getField(shortName);
-  return found?.value as string | undefined;
-}
-
-function summarize(cert: forge.pki.Certificate): IdentitySummary {
+function summarize(cert: x509.X509Certificate): IdentitySummary {
   return {
-    commonName: field(cert.subject, 'CN') ?? '(unknown)',
-    organization: field(cert.subject, 'O'),
-    issuer: field(cert.issuer, 'CN') ?? '(unknown)',
-    validFrom: cert.validity.notBefore.toISOString(),
-    validTo: cert.validity.notAfter.toISOString(),
+    commonName: cert.subjectName.getField('CN')[0] ?? '(unknown)',
+    organization: cert.subjectName.getField('O')[0],
+    issuer: cert.issuerName.getField('CN')[0] ?? '(unknown)',
+    validFrom: cert.notBefore.toISOString(),
+    validTo: cert.notAfter.toISOString(),
     serialNumber: cert.serialNumber,
-    selfSigned:
-      JSON.stringify(cert.subject.attributes) === JSON.stringify(cert.issuer.attributes),
+    selfSigned: cert.subject === cert.issuer,
   };
 }
 
@@ -46,56 +44,120 @@ function summarize(cert: forge.pki.Certificate): IdentitySummary {
  * protected PKCS#12 (.p12). Useful for testing and for users who do not have a
  * certificate from a CA yet.
  */
-export function generateSelfSignedP12(opts: {
+export async function generateSelfSignedP12(opts: {
   commonName: string;
   organization?: string;
   email?: string;
   days?: number;
   passphrase: string;
-}): { p12: Uint8Array; summary: IdentitySummary } {
-  const keys = forge.pki.rsa.generateKeyPair(2048);
-  const cert = forge.pki.createCertificate();
-  cert.publicKey = keys.publicKey;
-  cert.serialNumber = '00' + forge.util.bytesToHex(forge.random.getBytesSync(16));
+}): Promise<{ p12: Uint8Array; summary: IdentitySummary }> {
+  const keys = await crypto.subtle.generateKey(RSA_SHA256, true, ['sign', 'verify']);
 
-  const now = new Date();
-  cert.validity.notBefore = now;
-  const end = new Date(now.getTime());
-  end.setDate(end.getDate() + (opts.days ?? 365));
-  cert.validity.notAfter = end;
+  // 16 random bytes, positive and always 16 bytes long: the top bit is cleared
+  // so DER needs no sign padding, and bit 6 is set so the first byte is never
+  // zero. A zero first byte would be dropped from the INTEGER encoding and the
+  // serial would come back from the certificate shorter than it went in.
+  const serial = crypto.getRandomValues(new Uint8Array(16));
+  serial[0] = (serial[0] & 0x7f) | 0x40;
 
-  const attrs: forge.pki.CertificateField[] = [{ name: 'commonName', value: opts.commonName }];
-  if (opts.organization) attrs.push({ name: 'organizationName', value: opts.organization });
-  cert.setSubject(attrs);
-  cert.setIssuer(attrs);
+  // X.509 times have one-second resolution; drop the milliseconds up front so the
+  // summary and the certificate agree.
+  const notBefore = new Date(Math.floor(Date.now() / 1000) * 1000);
+  const notAfter = new Date(notBefore.getTime());
+  notAfter.setDate(notAfter.getDate() + (opts.days ?? 365));
 
-  const extensions: object[] = [
-    { name: 'basicConstraints', cA: false },
-    { name: 'keyUsage', digitalSignature: true, nonRepudiation: true },
-    { name: 'extKeyUsage', clientAuth: true, emailProtection: true },
+  // Built from a JSON name rather than a "CN=..." string so that commas and
+  // other specials in a user-typed name need no escaping, and as UTF8String
+  // because the default PrintableString cannot hold a comma or non-ASCII text.
+  const nameParams: x509.JsonNameParams = [{ CN: [{ utf8String: opts.commonName }] }];
+  if (opts.organization) nameParams.push({ O: [{ utf8String: opts.organization }] });
+  const name = new x509.Name(nameParams);
+
+  const extensions: x509.Extension[] = [
+    new x509.BasicConstraintsExtension(false, undefined, true),
+    new x509.KeyUsagesExtension(
+      x509.KeyUsageFlags.digitalSignature | x509.KeyUsageFlags.nonRepudiation,
+      true,
+    ),
+    new x509.ExtendedKeyUsageExtension([
+      x509.ExtendedKeyUsage.clientAuth,
+      x509.ExtendedKeyUsage.emailProtection,
+    ]),
   ];
   if (opts.email) {
-    extensions.push({ name: 'subjectAltName', altNames: [{ type: 1, value: opts.email }] });
+    extensions.push(
+      new x509.SubjectAlternativeNameExtension([{ type: 'email', value: opts.email }]),
+    );
   }
-  cert.setExtensions(extensions);
-  cert.sign(keys.privateKey, forge.md.sha256.create());
 
-  const p12Asn1 = forge.pkcs12.toPkcs12Asn1(keys.privateKey, [cert], opts.passphrase, {
-    algorithm: '3des',
+  const cert = await x509.X509CertificateGenerator.create({
+    serialNumber: Array.from(serial, (b) => b.toString(16).padStart(2, '0')).join(''),
+    subject: name,
+    issuer: name,
+    notBefore,
+    notAfter,
+    signingAlgorithm: RSA_SHA256,
+    publicKey: keys.publicKey,
+    signingKey: keys.privateKey,
+    extensions,
   });
-  const der = forge.asn1.toDer(p12Asn1).getBytes();
-  return { p12: binaryToUint8(der), summary: summarize(cert) };
+
+  const pkcs8 = new Uint8Array(await crypto.subtle.exportKey('pkcs8', keys.privateKey));
+  const p12 = await writePkcs12(new Uint8Array(cert.rawData), pkcs8, opts.passphrase);
+  return { p12, summary: summarize(cert) };
 }
 
 /**
  * Validate a passphrase against a .p12 and return the certificate summary.
  * Throws if the passphrase is wrong or no certificate is present.
  */
-export function parseP12(p12Bytes: Uint8Array, passphrase: string): IdentitySummary {
-  const asn1 = forge.asn1.fromDer(forge.util.createBuffer(uint8ToBinary(p12Bytes)));
-  const p12 = forge.pkcs12.pkcs12FromAsn1(asn1, false, passphrase);
-  const bags = p12.getBags({ bagType: forge.pki.oids.certBag });
-  const certBag = bags[forge.pki.oids.certBag]?.[0];
-  if (!certBag?.cert) throw new Error('No certificate found in the .p12 file');
-  return summarize(certBag.cert);
+export async function parseP12(p12Bytes: Uint8Array, passphrase: string): Promise<IdentitySummary> {
+  const { certificates } = await readPkcs12(p12Bytes, passphrase);
+  if (certificates.length === 0) throw new Error('No certificate found in the .p12 file');
+  return summarize(new x509.X509Certificate(toArrayBuffer(certificates[0])));
+}
+
+/** A signing identity unpacked from a .p12, ready for use with WebCrypto. */
+export interface SigningIdentity {
+  /** Private key, RSASSA-PKCS1-v1_5 with SHA-256. */
+  privateKey: CryptoKey;
+  /** DER certificates, the one matching the private key first. */
+  certificates: Uint8Array[];
+}
+
+function modulusOf(jwk: JsonWebKey): string {
+  if (!jwk.n) throw new Error('Only RSA keys are supported');
+  return jwk.n;
+}
+
+/** Unpack a .p12 into a signing key and the certificate that belongs to it. */
+export async function loadSigningIdentity(
+  p12Bytes: Uint8Array,
+  passphrase: string,
+): Promise<SigningIdentity> {
+  const { certificates, pkcs8 } = await readPkcs12(p12Bytes, passphrase);
+  if (!pkcs8) throw new Error('No private key found in the .p12 file');
+  if (certificates.length === 0) throw new Error('No certificate found in the .p12 file');
+
+  const algorithm = { name: RSA_SHA256.name, hash: RSA_SHA256.hash };
+  const privateKey = await crypto.subtle.importKey('pkcs8', toArrayBuffer(pkcs8), algorithm, true, [
+    'sign',
+  ]);
+  const modulus = modulusOf(await crypto.subtle.exportKey('jwk', privateKey));
+
+  // The .p12 may carry a chain; the signer certificate is the one whose public
+  // key is the private key's counterpart.
+  let matched = -1;
+  for (let i = 0; i < certificates.length && matched === -1; i++) {
+    const cert = new x509.X509Certificate(toArrayBuffer(certificates[i]));
+    const pub = await cert.publicKey.export(algorithm, ['verify']);
+    if (modulusOf(await crypto.subtle.exportKey('jwk', pub)) === modulus) matched = i;
+  }
+  if (matched === -1) {
+    throw new Error('Failed to find a certificate that matches the private key.');
+  }
+  return {
+    privateKey,
+    certificates: [certificates[matched], ...certificates.filter((_, i) => i !== matched)],
+  };
 }
