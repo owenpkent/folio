@@ -119,6 +119,63 @@ unstructured `fc.uint8Array()` would spend every iteration on the not-found path
 and prove nothing. Build the shape and fuzz the parts an attacker controls: the
 offsets, the lengths, the spacing, what follows the end.
 
+## Corpus robustness harness (opt-in)
+
+`npm run test:corpus` round-trips a folder of real-world PDFs through Folio's
+actual save path (`exportDocument`), to find files that open but do not survive
+a save. It is not part of `npm test` or CI: it uses its own config
+(`vitest.corpus.config.ts`) and downloads files that are never committed.
+
+```bash
+npm run corpus:fetch   # one-off: mozilla/pdf.js test/pdfs at a pinned commit -> .corpus/pdfjs/
+npm run test:corpus    # run it (takes several minutes)
+```
+
+Point it at your own files with `FOLIO_CORPUS_DIR=/path/to/pdfs`. The pinned
+commit is `PDFJS_SHA` in `scripts/corpus/fetch-pdfjs-corpus.mjs`. Corpus files
+are untrusted and of mixed licenses; they are parsed, never executed. The fetch
+copies into a staging directory and writes `.corpus/pdfjs/.complete` (holding
+the pinned commit) only once every file is in place; the harness refuses to run
+against the fetched corpus without that marker, and `corpus:fetch` replaces a
+directory whose marker is missing or names a different commit. A directory you
+point at with `FOLIO_CORPUS_DIR` is not checked.
+
+Each file gets two passes. **Save**: load with the real engine and call
+`exportDocument` with nothing staged; the output must reopen in PDF.js with the
+same page count and the same text on the first few pages. **Bake**: stage one
+text box and one highlight in the real stores and export again, which exercises
+the pdf-lib stamping path. Outcomes are `ok`, `skip-unreadable` (PDF.js cannot
+open the original), `skip-encrypted`, `refused`, `save-threw`, `reopen-failed`,
+`page-count-changed`, `text-changed`, `pdflib-load-failed`, `bake-threw`,
+`bake-reopen-failed`, `bake-page-count-changed` and `timeout`.
+
+Results land in `.corpus/report.json` and `.corpus/summary.md` (gitignored), with
+failures grouped by error message. `refused` means Folio declined to write an
+unsafe file with a typed error and a message (see `core/pdf/errors.ts`), which
+counts as a clean outcome rather than a failure.
+
+The committed baseline, `scripts/corpus/baseline.json`, maps each filename to its
+status and nothing else (sorted keys, no PDF content). Normal runs compare
+against it and fail only on regressions: a file that was `ok` and no longer is,
+or one that was `refused` and now crashes or writes bad output. A status that
+is unchanged, including `refused`, is never a regression. After an intentional
+change, rewrite it with `FOLIO_CORPUS_UPDATE_BASELINE=1 npm run test:corpus` and
+review the diff; a full run replaces the file, while a run narrowed by
+`FOLIO_CORPUS_FILTER` or `FOLIO_CORPUS_LIMIT` updates only the files it tested
+and keeps every other entry. That logic lives in `scripts/corpus/baseline.ts`
+and is unit tested by `npm test`. Other knobs: `FOLIO_CORPUS_TIMEOUT_MS` (per
+file, default 60000), `FOLIO_CORPUS_TEXT_PAGES` (pages text-compared, default
+5), `FOLIO_CORPUS_FILTER` (filename substring), `FOLIO_CORPUS_BASELINE`
+(alternate baseline path), `FOLIO_CORPUS_LIMIT`. The timeout is a race, so it
+cannot interrupt a synchronous hang inside a parser; kill the run if one occurs.
+
+Known data-loss files, tracked in the baseline until the export fix lands:
+`poppler-85140-0.pdf` (the page object's generation does not match its `/Kids`
+ref, so pdf-lib sees no pages and the save inserts a blank one) and
+`bug1980958.pdf` (an object numbered 2^31-1 makes pdf-lib write an xref stream
+PDF.js cannot read). A third, `issue22011.pdf`, fails the save outright because
+PDF.js cannot re-serialize a page.
+
 ## End-to-end tests (Playwright)
 
 The e2e suite (`e2e/`) runs against the **browser build** served by the Vite dev

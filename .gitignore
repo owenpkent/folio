@@ -49,3 +49,6 @@ e2e/fixtures/
 # Python (run.py)
 __pycache__/
 *.pyc
+
+# Robustness corpus cache (scripts/corpus; PDFs of mixed license, never committed)
+/.corpus/
