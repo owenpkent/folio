@@ -9,8 +9,10 @@ Triage agents should treat entries here as "known skipped, do not
 re-flag" rather than as a free pass to ignore the underlying class of
 finding.
 
-## Dependabot alert #25: node-forge GHSA-86w9-cpqp-85rv
+## Dependabot alert #25: node-forge GHSA-86w9-cpqp-85rv (resolved)
 
+- **Resolved:** 2026-10-07. PR #110 removed `node-forge`; the alert closed as
+  fixed the same day. Kept as a record of the reasoning.
 - **Finding:** `node-forge` <= 1.4.0 accepts a malformed DigestInfo when
   verifying a PKCS#1 v1.5 signature (GHSA-86w9-cpqp-85rv). There is no
   patched release.
@@ -25,8 +27,7 @@ finding.
   `publicKey.verify`, `certificate.verify` or `pki.verifyCertificateChain`;
   the only hit is a comment in `verify.ts` warning future code not to use
   them.
-- **Revisit when:** PR #110 merges (then mark this entry resolved), or any
-  code starts verifying RSA signatures, whichever comes first.
+- **Revisit when:** no longer applies; the dependency is gone.
 
 ## How to add an exception
 
