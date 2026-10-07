@@ -8,7 +8,9 @@ import { pushToast } from '@/components/common';
 import { downloadBytes } from '@/core/document/downloadBytes';
 import { isTauri } from '@/core/document/openDocument';
 import { getEngine } from '@/core/pdf';
+import { MissingPageError, PageCountMismatchError } from '@/core/pdf/errors';
 import { placeRect } from '@/core/pdf/pageGeometry';
+import { saveVerified } from '@/core/pdf/saveVerified';
 import { hasPdfHeader, MIN_PDF_BYTES } from '@/core/pdf/pdfHeader';
 import { stampAnnotations, useAnnotationStore } from '@/features/annotations';
 import { stampEdits, useEditStore } from '@/features/editing';
@@ -28,7 +30,8 @@ import { useDocumentStore } from '@/state/documentStore';
  * wraps this result last, in the signing feature.
  */
 export async function exportDocument(): Promise<Uint8Array> {
-  const base = await getEngine().saveDocument();
+  const engine = getEngine();
+  const base = await engine.saveDocument();
   const edits = useEditStore.getState().edits;
   const signatures = useSignatureStore.getState().signatures;
   const ocrPages = Object.values(useOcrStore.getState().pages);
@@ -43,6 +46,13 @@ export async function exportDocument(): Promise<Uint8Array> {
   }
 
   const pdf = await PDFDocument.load(base);
+  // pdf-lib can read fewer pages than the viewer shows (a page whose generation
+  // number does not match its /Kids ref is simply absent). Stamping and saving
+  // that would drop pages and edits, so stop before touching anything.
+  const expectedPages = engine.getPageCount();
+  if (pdf.getPageCount() !== expectedPages) {
+    throw new PageCountMismatchError(expectedPages, pdf.getPageCount());
+  }
   // OCR text goes down first (invisible, underneath), then visible edits, then
   // signatures on top.
   if (ocrPages.length > 0) await stampOcrLayer(pdf, ocrPages);
@@ -61,7 +71,7 @@ export async function exportDocument(): Promise<Uint8Array> {
   // the page, doubling everything. A fresh /ID breaks that inheritance so a
   // reopened export starts with no sidecar of its own.
   assignFreshDocumentId(pdf);
-  return pdf.save();
+  return saveVerified(pdf, expectedPages);
 }
 
 /**
@@ -95,7 +105,7 @@ async function stampSignatures(pdf: PDFDocument, signatures: Signature[]): Promi
 
   for (const sig of signatures) {
     const page = pages[sig.pageNumber - 1];
-    if (!page) continue;
+    if (!page) throw new MissingPageError(sig.pageNumber);
     const png = await pdf.embedPng(sig.dataUrl);
     // placeRect turns the normalized (top-left, as-displayed) rect into
     // pdf-lib's bottom-left user space and supplies the rotate that keeps the
@@ -206,6 +216,9 @@ async function writeDocument(path: string, bytes: Uint8Array): Promise<void> {
   });
 }
 
+/** Where `%PDF-` may start; see {@link isPlausiblePdf}. */
+const PDF_HEADER_SEARCH_LIMIT = 1024;
+
 /**
  * Reject bytes that cannot be a document before they are written anywhere.
  *
@@ -217,13 +230,14 @@ async function writeDocument(path: string, bytes: Uint8Array): Promise<void> {
  * refactor that swallows an error can all hand back zero bytes -- so this is
  * checked here rather than assumed.
  *
- * The header check is deliberately strict about offset 0. Readers tolerate junk
- * before `%PDF-`, but this is validating our own output, not a file someone
- * else wrote, and everything we write puts the header first.
+ * The header may sit up to 1024 bytes in (ISO 32000, 7.5.2 note), which is what
+ * readers accept. A pass-through save returns the source's own bytes untouched,
+ * and a source with a junk prefix (issue6069.pdf) must not be refused as if we
+ * had produced it.
  */
 function isPlausiblePdf(bytes: Uint8Array): boolean {
   if (bytes.length < MIN_PDF_BYTES) return false;
-  return hasPdfHeader(bytes);
+  return hasPdfHeader(bytes, PDF_HEADER_SEARCH_LIMIT);
 }
 
 /** The message shown (and announced) when a save is refused as unsafe. */
@@ -242,7 +256,9 @@ async function exportForSave(): Promise<Uint8Array | null> {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Export failed';
     announce(`Could not prepare the document: ${message}`, true);
-    pushToast('Could not save the document', 'error');
+    // The message, not just the title: the typed errors say why nothing was
+    // written, which is what the user needs to decide what to do next.
+    pushToast(`Could not save the document: ${message}`, 'error');
     return null;
   }
 }

@@ -1,6 +1,16 @@
 // @vitest-environment node
-import { degrees, PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, type PDFNumber } from 'pdf-lib';
+import {
+  degrees,
+  PDFArray,
+  PDFDict,
+  PDFDocument,
+  PDFHexString,
+  PDFName,
+  type PDFNumber,
+} from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
+
+import { MissingPageError } from '@/core/pdf/errors';
 
 import { stampAnnotations } from './bake';
 import type { Annotation } from './types';
@@ -80,11 +90,12 @@ describe('stampAnnotations', () => {
     expect((contents as PDFHexString).decodeText()).toBe(text);
   });
 
-  it('skips out-of-range pages and empty inputs without throwing', async () => {
+  it('accepts empty input, and throws rather than dropping an annotation on a missing page', async () => {
     const pdf = await PDFDocument.load(await onePagePdf());
     stampAnnotations(pdf, []);
-    stampAnnotations(pdf, [{ ...highlight, pageNumber: 99 }]);
-    expect((await pdf.save()).length).toBeGreaterThan(0);
+    expect(() => stampAnnotations(pdf, [{ ...highlight, pageNumber: 99 }])).toThrow(
+      MissingPageError,
+    );
   });
 
   it('places a highlight and a note where the user saw them on a 90°-rotated page', async () => {

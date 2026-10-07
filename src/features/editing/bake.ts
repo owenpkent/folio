@@ -1,5 +1,6 @@
 import { LineCapStyle, rgb, StandardFonts, type PDFDocument, type PDFFont } from 'pdf-lib';
 
+import { MissingPageError } from '@/core/pdf/errors';
 import { offsetInFrame, placeRect } from '@/core/pdf/pageGeometry';
 
 import { MARK_GLYPH_PATHS, MARK_GLYPH_STROKE_WIDTH, type EditItem, type FontFamily } from './types';
@@ -75,7 +76,7 @@ export async function stampEdits(pdf: PDFDocument, edits: EditItem[]): Promise<v
 
   for (const item of edits) {
     const page = pages[item.pageNumber - 1];
-    if (!page) continue;
+    if (!page) throw new MissingPageError(item.pageNumber);
     const placement = placeRect(page, item.rect);
     const { x, y, width: w, height: h, rotate } = placement;
 

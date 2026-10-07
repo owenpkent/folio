@@ -4,6 +4,8 @@ import zlib from 'node:zlib';
 import { degrees, PDFDocument, StandardFonts } from 'pdf-lib';
 import { describe, expect, it, vi } from 'vitest';
 
+import { MissingPageError } from '@/core/pdf/errors';
+
 import { hexToRgb01, standardFontFor, stampEdits, wrapText } from './bake';
 import { MARK_GLYPH_PATHS, MARK_GLYPH_STROKE_WIDTH, type EditItem } from './types';
 
@@ -170,14 +172,20 @@ describe('stampEdits', () => {
     expect((await PDFDocument.load(imageBytes)).getPageCount()).toBe(1);
   });
 
-  it('skips empty text and out-of-range pages without throwing', async () => {
+  it('skips empty text', async () => {
     const pdf = await PDFDocument.load(await onePagePdf());
-    await stampEdits(pdf, [
-      { ...textEdit, id: 'blank', text: '   ' },
-      { ...textEdit, id: 'offpage', pageNumber: 99 },
-      { ...markEdit, id: 'mark-offpage', pageNumber: 99 },
-    ]);
+    await stampEdits(pdf, [{ ...textEdit, id: 'blank', text: '   ' }]);
     expect((await pdf.save()).length).toBeGreaterThan(0);
+  });
+
+  it('throws rather than dropping an edit placed on a missing page', async () => {
+    const pdf = await PDFDocument.load(await onePagePdf());
+    await expect(stampEdits(pdf, [{ ...textEdit, id: 'offpage', pageNumber: 99 }])).rejects.toThrow(
+      MissingPageError,
+    );
+    await expect(
+      stampEdits(pdf, [{ ...markEdit, id: 'mark-offpage', pageNumber: 99 }]),
+    ).rejects.toThrow(MissingPageError);
   });
 
   it("draws a check mark as a stroked SVG path anchored at the box's top edge", async () => {

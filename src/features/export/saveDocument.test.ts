@@ -1,10 +1,11 @@
 import { degrees, PDFDocument, PDFHexString, PDFPage } from 'pdf-lib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { MissingPageError, PageCountMismatchError } from '@/core/pdf/errors';
 import type * as PdfCore from '@/core/pdf';
 import type { PdfDocumentInfo } from '@/core/pdf';
 
-const { invoke, saveDialog, mockSaveDocument, exported } = vi.hoisted(() => {
+const { invoke, saveDialog, mockSaveDocument, mockPageCount, exported } = vi.hoisted(() => {
   // Stand-in export output. It has to look enough like a PDF to clear the
   // "would this destroy the user's document" gate in saveDocument.ts: the
   // header at offset 0 and a length no real document could be under.
@@ -12,6 +13,7 @@ const { invoke, saveDialog, mockSaveDocument, exported } = vi.hoisted(() => {
   exportedBytes.set(new TextEncoder().encode('%PDF-1.7\n'), 0);
   return {
     invoke: vi.fn(),
+    mockPageCount: vi.fn((): number => 1),
     saveDialog: vi.fn(),
     exported: exportedBytes,
     // Explicit return type widens this to plain `Uint8Array` (not the narrower
@@ -30,10 +32,21 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({ save: saveDialog }));
 // this per call with mockSaveDocument.mockResolvedValueOnce(...).
 vi.mock('@/core/pdf', async (orig) => {
   const actual = (await orig()) as typeof PdfCore;
-  return { ...actual, getEngine: () => ({ saveDocument: mockSaveDocument }) };
+  return {
+    ...actual,
+    getEngine: () => ({ saveDocument: mockSaveDocument, getPageCount: mockPageCount }),
+  };
+});
+// The output check reopens bytes in a real PDF.js worker, which jsdom has no
+// room for; count pages with pdf-lib instead. The real path is covered by the
+// corpus harness (scripts/corpus).
+vi.mock('@/core/pdf/reopenPageCount', async () => {
+  const { PDFDocument: Doc } = await import('pdf-lib');
+  return { reopenPageCount: async (bytes: Uint8Array) => (await Doc.load(bytes)).getPageCount() };
 });
 
 import { useConfirmStore, useToastStore } from '@/components/common';
+import { useEditStore } from '@/features/editing';
 import { useOcrStore } from '@/features/ocr';
 import { useSignatureStore } from '@/features/signatures';
 import { useDocumentStore } from '@/state/documentStore';
@@ -359,5 +372,110 @@ describe('exportDocument document identity', () => {
     } finally {
       drawImage.mockRestore();
     }
+  });
+});
+
+describe('exportDocument page safety', () => {
+  const edit = {
+    id: 'e1',
+    kind: 'text' as const,
+    pageNumber: 1,
+    rect: { x: 0.1, y: 0.1, width: 0.3, height: 0.05 },
+    createdAt: 0,
+    text: 'hello',
+    fontFamily: 'Helvetica' as const,
+    bold: false,
+    fontSizePt: 12,
+    colorHex: '#111111',
+  };
+
+  /**
+   * A one-page PDF written by hand whose page object is `3 1 obj` while /Kids
+   * says `3 0 R`: pdf-lib resolves the ref to nothing and sees zero pages, which
+   * is what poppler-85140-0.pdf does in the corpus.
+   */
+  function genMismatchPdf(): Uint8Array {
+    const body =
+      '%PDF-1.4\n' +
+      '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n' +
+      '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n' +
+      '3 1 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>\nendobj\n' +
+      'trailer\n<< /Root 1 0 R /Size 4 >>\n%%EOF\n' +
+      ' '.repeat(200);
+    // Not TextEncoder: under jsdom its Uint8Array is from another realm and
+    // pdf-lib's type check rejects it.
+    return Uint8Array.from(body, (c) => c.charCodeAt(0));
+  }
+
+  async function onePage(): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    doc.addPage([200, 200]);
+    return doc.save();
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPageCount.mockReturnValue(1);
+    useEditStore.getState().reset();
+    useSignatureStore.getState().reset();
+    useToastStore.setState({ toasts: [] });
+    useDocumentStore.getState().reset();
+  });
+  afterEach(() => {
+    useEditStore.getState().reset();
+    useSignatureStore.getState().reset();
+    setTauri(false);
+  });
+
+  it('refuses a file pdf-lib reads fewer pages from than the viewer shows, writing nothing', async () => {
+    const source = genMismatchPdf();
+    expect((await PDFDocument.load(source)).getPageCount()).toBe(0);
+    mockSaveDocument.mockResolvedValueOnce(source);
+    useEditStore.setState({ edits: [edit] });
+
+    await expect(exportDocument()).rejects.toBeInstanceOf(PageCountMismatchError);
+  });
+
+  it('throws when a signature is staged on a page the file does not have', async () => {
+    mockSaveDocument.mockResolvedValueOnce(await onePage());
+    useSignatureStore.setState({
+      signatures: [
+        {
+          id: 'sig-x',
+          pageNumber: 9,
+          dataUrl: 'data:image/png;base64,',
+          rect: { x: 0.1, y: 0.1, width: 0.2, height: 0.1 },
+          createdAt: 0,
+        },
+      ],
+    });
+
+    await expect(exportDocument()).rejects.toBeInstanceOf(MissingPageError);
+  });
+
+  it('shows the typed error message in the toast and writes nothing', async () => {
+    setTauri(true);
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/docs/report.pdf' });
+    mockSaveDocument.mockResolvedValueOnce(genMismatchPdf());
+    useEditStore.setState({ edits: [edit] });
+
+    await saveDocumentInPlace();
+
+    expect(invoke).not.toHaveBeenCalled();
+    const messages = useToastStore.getState().toasts.map((t) => t.message);
+    expect(messages.some((m) => m.includes('reads 0 of its 1 pages'))).toBe(true);
+  });
+
+  it('accepts pass-through bytes with junk before the %PDF- header', async () => {
+    setTauri(true);
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/docs/report.pdf' });
+    const junk = new Uint8Array(400);
+    junk.set(new TextEncoder().encode('%PDF-1.7\n'), 100);
+    mockSaveDocument.mockResolvedValueOnce(junk);
+    invoke.mockResolvedValue(undefined);
+
+    await saveDocumentInPlace();
+
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 });
