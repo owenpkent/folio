@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-07
+
 ### Changed
 
 - **`node-forge` removed** (GHSA-86w9-cpqp-85rv, no patched release). Signing
@@ -51,6 +53,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- **`rustls` 0.23.42 to 0.23.45** (and `rustls-webpki` 0.103.13 to 0.103.15)
+  for GHSA-2mjx-qc3c-rqvc, medium: TLS 1.3 handshake messages were accepted
+  across encryption-level boundaries. This one is in the shipped app: `rustls`
+  is the TLS stack under the updater plugin's HTTPS client.
+- **`node-forge` alert closed by removing the library** (GHSA-86w9-cpqp-85rv;
+  see Changed above).
 - **Cleared six Dependabot alerts in `undici`**, the most serious a
   high-severity TLS certificate validation bypass in `BalancedPool`. The affected
   copy (8.9.0) came in only through `jsdom` in the unit-test environment and was
@@ -60,6 +68,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   shipped app either; the lockfile now resolves 1.1.21 and 5.0.12. This also
   closes #57: the older advisory it tracked was already fixed by the 1.1.18 copy
   that main resolved before this change.
+- **Patched `source-map-js`** to 1.2.2 for an event-loop denial-of-service
+  advisory (GHSA-68fv-2mgg-jv7q, high). It is a build-time dependency only and
+  never part of the shipped app.
+- No Dependabot alerts are open. The Linux-only `glib` unsoundness
+  (RUSTSEC-2024-0429, #58), accepted in 0.7.0, has since been dismissed on
+  GitHub as not reachable: Tauri pins the gtk-rs 0.18 stack, which the Windows
+  bundle never compiles, and the evidence stays in CONTRIBUTING's
+  known-accepted list. `npm audit` reports zero vulnerabilities, and
+  `cargo audit` reports zero (2 allowed warnings).
 
 ## [0.7.0] - 2026-08-15
 
@@ -1107,7 +1124,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
   cargo-deny policy.
 
-[Unreleased]: https://github.com/owenpkent/folio/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/owenpkent/folio/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/owenpkent/folio/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/owenpkent/folio/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/owenpkent/folio/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/owenpkent/folio/compare/v0.4.0...v0.5.0
