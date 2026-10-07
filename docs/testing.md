@@ -133,7 +133,12 @@ npm run test:corpus    # run it (takes several minutes)
 
 Point it at your own files with `FOLIO_CORPUS_DIR=/path/to/pdfs`. The pinned
 commit is `PDFJS_SHA` in `scripts/corpus/fetch-pdfjs-corpus.mjs`. Corpus files
-are untrusted and of mixed licenses; they are parsed, never executed.
+are untrusted and of mixed licenses; they are parsed, never executed. The fetch
+copies into a staging directory and writes `.corpus/pdfjs/.complete` (holding
+the pinned commit) only once every file is in place; the harness refuses to run
+against the fetched corpus without that marker, and `corpus:fetch` replaces a
+directory whose marker is missing or names a different commit. A directory you
+point at with `FOLIO_CORPUS_DIR` is not checked.
 
 Each file gets two passes. **Save**: load with the real engine and call
 `exportDocument` with nothing staged; the output must reopen in PDF.js with the
@@ -152,13 +157,17 @@ counts as a clean outcome rather than a failure.
 The committed baseline, `scripts/corpus/baseline.json`, maps each filename to its
 status and nothing else (sorted keys, no PDF content). Normal runs compare
 against it and fail only on regressions: a file that was `ok` and no longer is,
-or one that was `refused` and now crashes or writes bad output. After an
-intentional change, rewrite it with `FOLIO_CORPUS_UPDATE_BASELINE=1 npm run
-test:corpus` and review the diff. Other knobs: `FOLIO_CORPUS_TIMEOUT_MS` (per file, default
-60000), `FOLIO_CORPUS_TEXT_PAGES` (pages text-compared, default 5),
-`FOLIO_CORPUS_FILTER` (filename substring), `FOLIO_CORPUS_BASELINE` (alternate
-baseline path), `FOLIO_CORPUS_LIMIT`. The timeout is a race, so it cannot interrupt a
-synchronous hang inside a parser; kill the run if one occurs.
+or one that was `refused` and now crashes or writes bad output. A status that
+is unchanged, including `refused`, is never a regression. After an intentional
+change, rewrite it with `FOLIO_CORPUS_UPDATE_BASELINE=1 npm run test:corpus` and
+review the diff; a full run replaces the file, while a run narrowed by
+`FOLIO_CORPUS_FILTER` or `FOLIO_CORPUS_LIMIT` updates only the files it tested
+and keeps every other entry. That logic lives in `scripts/corpus/baseline.ts`
+and is unit tested by `npm test`. Other knobs: `FOLIO_CORPUS_TIMEOUT_MS` (per
+file, default 60000), `FOLIO_CORPUS_TEXT_PAGES` (pages text-compared, default
+5), `FOLIO_CORPUS_FILTER` (filename substring), `FOLIO_CORPUS_BASELINE`
+(alternate baseline path), `FOLIO_CORPUS_LIMIT`. The timeout is a race, so it
+cannot interrupt a synchronous hang inside a parser; kill the run if one occurs.
 
 Known data-loss files, tracked in the baseline until the export fix lands:
 `poppler-85140-0.pdf` (the page object's generation does not match its `/Kids`

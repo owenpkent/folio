@@ -19,6 +19,8 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it, vi } from 'vitest';
 
+import { isRegression, mergeBaseline, type Baseline, type Status } from './baseline';
+
 const require = createRequire(import.meta.url);
 const pdfjsDir = dirname(require.resolve('pdfjs-dist/package.json'));
 const dirUrl = (...p: string[]) => pathToFileURL(join(pdfjsDir, ...p)).href + '/';
@@ -49,21 +51,8 @@ const FILTER = process.env.FOLIO_CORPUS_FILTER;
 const LIMIT = Number(process.env.FOLIO_CORPUS_LIMIT ?? Infinity);
 // The committed baseline: filename to status only, no PDF content.
 const BASELINE = process.env.FOLIO_CORPUS_BASELINE ?? join(import.meta.dirname, 'baseline.json');
-
-type Status =
-  | 'ok'
-  | 'skip-unreadable'
-  | 'skip-encrypted'
-  | 'refused'
-  | 'save-threw'
-  | 'reopen-failed'
-  | 'page-count-changed'
-  | 'text-changed'
-  | 'pdflib-load-failed'
-  | 'bake-threw'
-  | 'bake-reopen-failed'
-  | 'bake-page-count-changed'
-  | 'timeout';
+// Written by corpus:fetch once every file is in place; see that script.
+const FETCH_MARKER = join(CORPUS_DIR, '.complete');
 
 interface FileResult {
   file: string;
@@ -287,17 +276,6 @@ async function runOne(dir: string, file: string): Promise<FileResult> {
 /** Errors Folio raises on purpose to refuse an unsafe save; see core/pdf/errors.ts. */
 const TYPED_ERRORS = new Set(['PageCountMismatchError', 'UnsafeOutputError', 'MissingPageError']);
 
-/**
- * A regression is a file that was `ok` and no longer is, or one that failed with
- * a clean typed error and now crashes or writes bad output. `skip-*` statuses
- * describe the input, not Folio, so they are never compared.
- */
-function isRegression(was: Status | undefined, r: FileResult): boolean {
-  if (was === undefined || r.status === 'ok' || r.status.startsWith('skip')) return false;
-  if (was === 'ok') return true;
-  return was === 'refused';
-}
-
 function summarize(results: FileResult[], regressions: string[]) {
   const counts: Record<string, number> = {};
   for (const r of results) counts[r.status] = (counts[r.status] ?? 0) + 1;
@@ -343,11 +321,19 @@ describe('corpus round trip', () => {
   it.skipIf(!present)(
     'round-trips every PDF through exportDocument',
     async () => {
-      const files = readdirSync(CORPUS_DIR)
+      // The fetched corpus is only trusted once corpus:fetch finished copying
+      // it; a partial directory would pass with most of the baseline untested.
+      // A directory the user pointed at directly is theirs to vouch for.
+      if (!process.env.FOLIO_CORPUS_DIR && !existsSync(FETCH_MARKER)) {
+        throw new Error(
+          `${CORPUS_DIR} is incomplete (no ${FETCH_MARKER}); run \`npm run corpus:fetch\``,
+        );
+      }
+      const all = readdirSync(CORPUS_DIR)
         .filter((f) => f.toLowerCase().endsWith('.pdf'))
-        .filter((f) => !FILTER || f.includes(FILTER))
-        .sort()
-        .slice(0, LIMIT);
+        .sort();
+      const files = all.filter((f) => !FILTER || f.includes(FILTER)).slice(0, LIMIT);
+      const partial = files.length < all.length;
       mkdirSync(CACHE_DIR, { recursive: true });
       for (const [i, file] of files.entries()) {
         const r = await runOne(CORPUS_DIR, file);
@@ -356,10 +342,10 @@ describe('corpus round trip', () => {
       }
 
       let regressions: string[] = [];
+      const base: Baseline = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')) : {};
       if (existsSync(BASELINE)) {
-        const base = JSON.parse(readFileSync(BASELINE, 'utf8')) as Record<string, Status>;
         regressions = results
-          .filter((r) => isRegression(base[r.file], r))
+          .filter((r) => isRegression(base[r.file], r.status))
           .map((r) => `${r.file}: ${base[r.file]} -> ${r.status} (${r.error ?? ''})`);
       }
       const { counts, text } = summarize(results, regressions);
@@ -375,11 +361,15 @@ describe('corpus round trip', () => {
       writeFileSync(join(CACHE_DIR, 'summary.md'), text);
       process.stdout.write('\n' + text);
       if (process.env.FOLIO_CORPUS_UPDATE_BASELINE === '1') {
-        // Sorted keys and nothing but the status, so diffs are reviewable and
-        // no PDF content can leak into the repo.
-        const entries = results.map((r) => [r.file, r.status] as const);
-        entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-        writeFileSync(BASELINE, JSON.stringify(Object.fromEntries(entries), null, 2) + '\n');
+        // Nothing but filename and status, so no PDF content can leak into the
+        // repo. A filtered or limited run only updates the files it tested.
+        const next = mergeBaseline(base, results, { partial });
+        writeFileSync(BASELINE, JSON.stringify(next, null, 2) + '\n');
+        if (partial) {
+          process.stdout.write(
+            `Baseline updated for ${results.length} of ${all.length} files; the rest kept.\n`,
+          );
+        }
       }
 
       expect(regressions, 'files that passed in the baseline now fail').toEqual([]);

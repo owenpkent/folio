@@ -155,7 +155,13 @@ export default defineConfig({
     environment: 'jsdom',
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}', 'extensions/chrome/**/*.{test,spec}.js'],
+    include: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      'extensions/chrome/**/*.{test,spec}.js',
+      // The corpus harness itself is opt-in (vitest.corpus.config.ts); only
+      // its pure baseline logic runs here.
+      'scripts/corpus/baseline.test.ts',
+    ],
     css: false,
     // Comfortably above the 30s `interruptAfterTimeLimit` the fast-check setup
     // uses as its DoS backstop. At vitest's 5s default the test was killed
