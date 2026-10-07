@@ -47,6 +47,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:fuzz": "node scripts/run-fuzz.mjs",
+    "test:corpus": "vitest run -c vitest.corpus.config.ts",
+    "corpus:fetch": "node scripts/corpus/fetch-pdfjs-corpus.mjs",
     "test:e2e": "playwright test",
     "test:e2e:preview": "playwright test -c playwright.preview.config.ts",
     "release:manifest": "node scripts/generate-latest.mjs",
