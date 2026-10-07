@@ -1,4 +1,4 @@
-import forge from 'node-forge';
+import * as asn1js from 'asn1js';
 
 /**
  * Best-effort information about a digital signature found in a PDF.
@@ -17,14 +17,13 @@ import forge from 'node-forge';
  * signed content is intact". Full CMS digest verification and certificate-chain
  * trust validation are not yet performed; see docs/forms-and-signatures.md.
  *
- * node-forge is only used here to parse the CMS envelope for the signer's name.
- * When digest or chain verification is built, do not verify RSA signatures with
- * node-forge (`publicKey.verify`, `certificate.verify`,
- * `pki.verifyCertificateChain`): through at least 1.4.0 its PKCS#1 v1.5 check
- * accepts a malformed DigestInfo (GHSA-86w9-cpqp-85rv, no patched release),
- * which allows forging a signature against a low-exponent key. Use WebCrypto
+ * asn1js is only used here to walk the CMS envelope for the signer's name. When
+ * digest or chain verification is built, verify RSA signatures with WebCrypto
  * (`crypto.subtle.verify` with RSASSA-PKCS1-v1_5), which compares the full
- * encoding strictly.
+ * encoding strictly. Do not use a hand-rolled or JS-library PKCS#1 v1.5 check:
+ * node-forge, which Folio used to ship, accepted a malformed DigestInfo through
+ * at least 1.4.0 (GHSA-86w9-cpqp-85rv, no patched release), which allows forging
+ * a signature against a low-exponent key.
  */
 export interface DetectedSignature {
   signerName: string | null;
@@ -85,16 +84,56 @@ function onlySpaceAfter(bytes: Uint8Array, from: number): boolean {
   return true;
 }
 
+const OID_COMMON_NAME = '2.5.4.3';
+
+type Block = { valueBlock: { value?: unknown }; idBlock: { tagClass: number; tagNumber: number } };
+
+function kids(block: Block | undefined): Block[] {
+  const value = block?.valueBlock.value;
+  if (!Array.isArray(value)) throw new Error('not a constructed ASN.1 block');
+  return value as Block[];
+}
+
+/**
+ * Subject CN of the first certificate in a CMS SignedData blob, or null.
+ *
+ * The blob is the zero-padded signature placeholder from the PDF, so it is
+ * parsed leniently: only the first ASN.1 element is read and the trailing zero
+ * padding is ignored.
+ */
 function signerFromContents(hex: string): string | null {
   try {
-    // node-forge 1.4 accepts an options object here (to tolerate the zero-padded
-    // signature placeholder); the bundled type definitions are outdated.
-    const asn1 = forge.asn1.fromDer(forge.util.createBuffer(forge.util.hexToBytes(hex)), {
-      parseAllBytes: false,
-    } as unknown as boolean);
-    const message = forge.pkcs7.messageFromAsn1(asn1) as forge.pkcs7.PkcsSignedData;
-    const cert = message.certificates?.[0];
-    return (cert?.subject.getField('CN')?.value as string | undefined) ?? null;
+    if (hex.length % 2 !== 0) return null;
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+    const parsed = asn1js.fromBER(bytes.buffer);
+    if (parsed.offset === -1) return null;
+
+    // ContentInfo { contentType, [0] SignedData }.
+    const signedData = kids(kids(parsed.result as Block)[1])[0];
+    // SignedData holds certificates as an implicit [0] (context class, tag 0).
+    const certSet = kids(signedData).find(
+      (c) => c.idBlock.tagClass === 3 && c.idBlock.tagNumber === 0,
+    );
+    const certificate = kids(certSet)[0];
+    const tbs = kids(kids(certificate)[0]);
+    // TBSCertificate: [0] version (optional), serial, signature, issuer, validity, subject.
+    const subjectAt = (tbs[0].idBlock.tagClass === 3 ? 1 : 0) + 4;
+    for (const rdn of kids(tbs[subjectAt])) {
+      for (const attribute of kids(rdn)) {
+        const [type, value] = kids(attribute) as unknown as [
+          { valueBlock: { toString(): string } },
+          { valueBlock: { value?: unknown } },
+        ];
+        if (
+          type.valueBlock.toString() === OID_COMMON_NAME &&
+          typeof value.valueBlock.value === 'string'
+        ) {
+          return value.valueBlock.value;
+        }
+      }
+    }
+    return null;
   } catch {
     return null;
   }

@@ -11,8 +11,6 @@ import {
 } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 
-import { generateSelfSignedP12, parseP12 } from './cert';
-import { signPdf } from './sign';
 import { useSigningStore } from './store';
 
 type AddMode = 'none' | 'generate' | 'import';
@@ -60,13 +58,15 @@ export function SigningModal() {
     setAddMode('none');
   };
 
-  const onGenerate = () => {
+  const onGenerate = async () => {
     if (!genName.trim() || !genPass) {
       announce('Enter a name and a passphrase', true);
       return;
     }
     try {
-      const { p12, summary } = generateSelfSignedP12({
+      const { p12, summary } = await (
+        await import('./cert')
+      ).generateSelfSignedP12({
         commonName: genName.trim(),
         organization: genOrg.trim() || undefined,
         passphrase: genPass,
@@ -89,7 +89,8 @@ export function SigningModal() {
     }
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const summary = parseP12(bytes, importPass);
+      const { parseP12 } = await import('./cert');
+      const summary = await parseP12(bytes, importPass);
       const identity = addIdentity(importLabel.trim() || file.name, bytes, summary);
       setSelectedId(identity.id);
       setPassphrase(importPass);
@@ -135,7 +136,9 @@ export function SigningModal() {
         return;
       }
 
-      const signed = await signPdf(prepared, p12, passphrase, {
+      const signed = await (
+        await import('./sign')
+      ).signPdf(prepared, p12, passphrase, {
         reason: reason.trim() || undefined,
         location: location.trim() || undefined,
         name: identities.find((i) => i.id === selectedId)?.summary.commonName,
