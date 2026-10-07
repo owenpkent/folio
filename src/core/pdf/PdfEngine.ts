@@ -103,6 +103,9 @@ export interface PdfEngine {
   /** Whether the document contains fillable AcroForm fields. */
   hasFormFields(): Promise<boolean>;
 
+  /** Page count of the open document (0 when none is open). */
+  getPageCount(): number;
+
   /** Count of pending in-memory edits (filled fields not yet saved). */
   getPendingEditCount(): number;
 

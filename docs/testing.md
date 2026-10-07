@@ -169,12 +169,14 @@ file, default 60000), `FOLIO_CORPUS_TEXT_PAGES` (pages text-compared, default
 (alternate baseline path), `FOLIO_CORPUS_LIMIT`. The timeout is a race, so it
 cannot interrupt a synchronous hang inside a parser; kill the run if one occurs.
 
-Known data-loss files, tracked in the baseline until the export fix lands:
-`poppler-85140-0.pdf` (the page object's generation does not match its `/Kids`
-ref, so pdf-lib sees no pages and the save inserts a blank one) and
-`bug1980958.pdf` (an object numbered 2^31-1 makes pdf-lib write an xref stream
-PDF.js cannot read). A third, `issue22011.pdf`, fails the save outright because
-PDF.js cannot re-serialize a page.
+Files that once lost data, kept as regression guards: `poppler-85140-0.pdf`
+(the page object's generation does not match its `/Kids` ref, so pdf-lib sees no
+pages; the export now refuses with `PageCountMismatchError`), `bug1980958.pdf`
+(an object numbered 2^31-1 made pdf-lib write an xref stream PDF.js cannot read;
+`saveVerified` now retries without object streams and the file is `ok`) and
+`issue22011.pdf` (PDF.js cannot re-serialize a page; a save with nothing staged
+falls back to the original bytes, and the bake pass is refused because pdf-lib
+and PDF.js disagree on the page count).
 
 ## End-to-end tests (Playwright)
 

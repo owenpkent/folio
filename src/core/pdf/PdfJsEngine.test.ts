@@ -19,6 +19,7 @@ const { state } = vi.hoisted(() => ({
     annotationRenderParams: [] as Record<string, unknown>[],
     textLayerParams: [] as Record<string, unknown>[],
     loadingTasksDestroyed: 0,
+    saveError: null as Error | null,
   },
 }));
 
@@ -71,6 +72,11 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => {
         fingerprints: ['fingerprint'],
         annotationStorage: new AnnotationStorage(),
         getPage: async () => page,
+        saveDocument: async () => {
+          if (state.saveError) throw state.saveError;
+          return new Uint8Array([9, 9, 9]);
+        },
+        getData: async () => new Uint8Array([1, 2, 3]),
       };
       return {
         promise: Promise.resolve(doc),
@@ -210,5 +216,32 @@ describe('PdfJsEngine on the PDF.js 6 API', () => {
       expect(container.style.getPropertyValue('--scale-round-x')).toBe('1px');
       expect(container.style.getPropertyValue('--scale-round-y')).toBe('1px');
     }
+  });
+
+  describe('saveDocument', () => {
+    beforeEach(() => {
+      state.saveError = null;
+    });
+
+    it('returns what PDF.js wrote when it succeeds', async () => {
+      const engine = await loadEngine();
+      expect(Array.from(await engine.saveDocument())).toEqual([9, 9, 9]);
+    });
+
+    it('falls back to the original bytes when PDF.js fails and nothing is staged', async () => {
+      const engine = await loadEngine();
+      state.saveError = new Error('stray )');
+
+      expect(Array.from(await engine.saveDocument())).toEqual([1, 2, 3]);
+    });
+
+    it('rethrows when PDF.js fails with form edits staged, so they are never dropped', async () => {
+      const engine = await loadEngine();
+      await engine.renderAnnotationLayer(1, document.createElement('div'), { scale: 1 });
+      expect(engine.getPendingEditCount()).toBe(1);
+      state.saveError = new Error('stray )');
+
+      await expect(engine.saveDocument()).rejects.toThrow('stray )');
+    });
   });
 });
