@@ -1,3 +1,5 @@
+import { resolve } from 'node:path';
+
 import { expect, test } from '@playwright/test';
 
 /**
@@ -115,5 +117,28 @@ test.describe('forced colors / Windows High Contrast (503.2)', () => {
       return value;
     });
     expect(adjust).toBe('none');
+  });
+});
+
+test.describe('text layer and screen readers', () => {
+  // #95: the text layer only existed on the raster ring, so at rest page 1 had
+  // text and every page below it was an empty group. NVDA's browse cursor
+  // reached page 2 before the render its own movement triggered could land, and
+  // read it as "blank". Same page size as the fixture in that report.
+  test('pages below the first window already have their text at rest', async ({ page }) => {
+    await page.goto('/');
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      page
+        .locator('.folio-empty')
+        .getByRole('button', { name: /open document/i })
+        .click(),
+    ]);
+    await chooser.setFiles(resolve('e2e/fixtures/pages.pdf'));
+
+    const group = (n: number) => page.getByRole('group', { name: `Page ${n}`, exact: true });
+    await expect(group(1).locator('.folio-text-layer')).toContainText('ONE');
+    // No scrolling: this is the state the reader starts the walk from.
+    await expect(group(2).locator('.folio-text-layer')).toContainText('TWO');
   });
 });
