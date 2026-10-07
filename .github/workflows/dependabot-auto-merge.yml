@@ -1,0 +1,60 @@
+name: Dependabot auto-merge
+
+# Queues Dependabot's patch and minor updates to squash-merge once every
+# required check on main has passed. Left for a person: any semver-major bump,
+# and any PR that touches a Tauri package (see the step below). The pattern is
+# GitHub's own:
+# https://docs.github.com/en/code-security/dependabot/working-with-dependabot/automating-dependabot-with-github-actions
+on: pull_request
+
+# Nothing by default; the one job below asks for exactly what it uses.
+permissions: {}
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Three conditions, and each closes a different door. The PR was opened
+    # by Dependabot. The event was caused by Dependabot too, so a person
+    # pushing a commit onto a Dependabot branch takes the PR over rather than
+    # having auto-merge switched on underneath them. And this repository, so
+    # a fork never runs it.
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.actor == 'dependabot[bot]' &&
+      github.repository == 'owenpkent/folio'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # No checkout. This job never runs the pull request's code; it reads
+      # Dependabot's metadata and asks GitHub to merge later.
+      - name: Read what Dependabot is updating
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tauri versions must move in lockstep across npm (@tauri-apps/*) and
+      # cargo (tauri, tauri-build, tauri-plugin-*), and those bumps are
+      # combined by hand into one PR (see .github/dependabot.yml). A PR that
+      # touches any of them is never queued, whatever its semver level.
+      # dependency-names is a comma-separated list, so a grouped PR carrying
+      # one Tauri package among others is left for a person as a whole.
+      #
+      # update-type is the highest semver change in the PR, so a grouped PR
+      # carrying one major bump is also left for a person as a whole.
+      #
+      # main requires no approving review, only the status checks, so no
+      # approve step is needed: --auto waits for those checks and merges.
+      - name: Queue the update to merge when checks pass
+        if: >-
+          !contains(steps.metadata.outputs.dependency-names, '@tauri-apps/') &&
+          !contains(steps.metadata.outputs.dependency-names, 'tauri') &&
+          (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+          steps.metadata.outputs.package-ecosystem == 'github_actions')
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

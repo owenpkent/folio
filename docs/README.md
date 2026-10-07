@@ -45,6 +45,7 @@ New here? Start with **[Getting started](getting-started.md)**, then
 | --- | --- |
 | [Section 508 conformance](508-conformance.md) | How Folio maps to the Revised 508 Standards, the provisions WCAG does not cover, the open gaps stated plainly, and how to produce an ACR. |
 | [Security policy](../SECURITY.md) | Reporting a vulnerability and the support window. |
+| [Security exceptions](SECURITY-EXCEPTIONS.md) | Audit findings reviewed and knowingly skipped, with the reason and the trigger to revisit. |
 
 ## The short version
 
