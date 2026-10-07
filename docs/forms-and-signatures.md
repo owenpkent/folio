@@ -197,8 +197,10 @@ Certificates are built with @peculiar/x509. `pkcs12.ts` reads and writes the
 none) and `cmsSigner.ts` builds the detached CMS SignedData with pkijs for
 @signpdf. .p12 files written by older Folio versions (node-forge, 3DES) import
 and sign unchanged; a fixture under `src/features/signing/__fixtures__/` guards
-that. Reading also accepts PBES2/AES .p12 files (OpenSSL 3 default); legacy
-RC2-40 encrypted .p12 files are not supported.
+that. Reading also accepts PBES2/AES .p12 files (OpenSSL 3 default) with a
+SHA-1, SHA-256, SHA-384 or SHA-512 MAC, BER chunked content, and the one byte
+per character password encoding node-forge used for AES; legacy RC2-40
+encrypted .p12 files are not supported.
 
 Signing currently runs in the app's front-end (WebView) using the mature,
 open-source @signpdf, @peculiar/x509 and pkijs libraries on top of WebCrypto

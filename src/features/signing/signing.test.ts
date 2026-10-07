@@ -4,16 +4,19 @@ import { readFileSync } from 'node:fs';
 import * as asn1js from 'asn1js';
 import { PDFDocument } from 'pdf-lib';
 import * as pkijs from 'pkijs';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { generateSelfSignedP12, parseP12 } from './cert';
+import { readPkcs12, writePkcs12 } from './pkcs12';
 import { signPdf } from './sign';
 import { detectSignatures } from './verify';
 
+function fixture(name: string): Uint8Array {
+  return new Uint8Array(readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url)));
+}
+
 /** Created by the node-forge based implementation, before it was removed. */
-const LEGACY_P12 = new Uint8Array(
-  readFileSync(new URL('./__fixtures__/legacy-node-forge.p12', import.meta.url)),
-);
+const LEGACY_P12 = fixture('legacy-node-forge.p12');
 const LEGACY_PASSPHRASE = 'legacy-pass';
 
 async function tinyPdf(): Promise<Uint8Array> {
@@ -88,6 +91,10 @@ async function verifyPdfSignature(signed: Uint8Array) {
 }
 
 describe('cryptographic signing', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('generates a self-signed identity and validates its passphrase', async () => {
     const { p12, summary } = await generateSelfSignedP12({
       commonName: 'Ada Lovelace',
@@ -98,13 +105,29 @@ describe('cryptographic signing', () => {
     expect(summary.commonName).toBe('Ada Lovelace');
     expect(summary.organization).toBe('Analytical, Inc.');
     expect(summary.selfSigned).toBe(true);
-    expect(summary.serialNumber).toMatch(/^[0-9a-f]{32}$/);
+    expect(summary.serialNumber).toMatch(/^[4-7][0-9a-f]{31}$/);
     const days = (Date.parse(summary.validTo) - Date.parse(summary.validFrom)) / 86_400_000;
     expect(Math.round(days)).toBe(365);
 
     // Correct passphrase parses; wrong one throws.
     expect((await parseP12(p12, 'pw')).commonName).toBe('Ada Lovelace');
     await expect(parseP12(p12, 'wrong')).rejects.toThrow();
+  }, 20000);
+
+  it('keeps the serial 16 bytes long even when the random bytes start with zeros', async () => {
+    // The serial is read back from the certificate, which drops leading zero
+    // octets from the INTEGER. Force the worst case rather than wait for the
+    // 1-in-128 run that hits it by chance.
+    const real = crypto.getRandomValues.bind(crypto);
+    vi.spyOn(crypto, 'getRandomValues').mockImplementation((array) => {
+      if (array instanceof Uint8Array) {
+        real(array);
+        if (array.length === 16) array.fill(0, 0, 2);
+      }
+      return array;
+    });
+    const { summary } = await generateSelfSignedP12({ commonName: 'Zero', passphrase: 'pw' });
+    expect(summary.serialNumber).toMatch(/^40[0-9a-f]{30}$/);
   }, 20000);
 
   it('round trips: generate, export, import, sign, detect and verify', async () => {
@@ -157,5 +180,138 @@ describe('cryptographic signing', () => {
       expect(found[0].coversWholeDocument).toBe(true);
       expect((await verifyPdfSignature(signed)).ok).toBe(true);
     }, 30000);
+
+    // node-forge fed PBKDF2 one byte per character (the low byte of each code
+    // unit), not UTF-8, so a non-ASCII password derives a different AES key
+    // under the two encodings. Written by node-forge 1.4.0 with
+    // toPkcs12Asn1(key, [cert], 'päss', { algorithm: 'aes256' }).
+    it('still imports and signs with an AES key and a non-ASCII password', async () => {
+      const p12 = fixture('legacy-node-forge-aes-latin1.p12');
+      const summary = await parseP12(p12, 'päss');
+      expect(summary.commonName).toBe('Legacy Forge Signer');
+      await expect(parseP12(p12, 'pass')).rejects.toThrow();
+
+      const signed = await signPdf(await tinyPdf(), p12, 'päss');
+      expect(detectSignatures(signed)[0].signerName).toBe('Legacy Forge Signer');
+      expect((await verifyPdfSignature(signed)).ok).toBe(true);
+    }, 30000);
+  });
+
+  // Exported by OpenSSL 3.5.7 from the legacy fixture's key and certificate:
+  //   -macalg sha384 -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES
+  //   -macalg sha512 (defaults: PBES2, PBKDF2 hmacWithSHA256, AES-256-CBC)
+  describe.each([
+    ['SHA-384', 'openssl-mac-sha384.p12'],
+    ['SHA-512', 'openssl-mac-sha512.p12'],
+  ])('.p12 with a %s MAC', (_hash, name) => {
+    it('imports, and rejects the wrong passphrase', async () => {
+      const summary = await parseP12(fixture(name), LEGACY_PASSPHRASE);
+      expect(summary.commonName).toBe('Legacy Forge Signer');
+      await expect(parseP12(fixture(name), 'wrong')).rejects.toThrow(/MAC/);
+    });
+
+    it('signs, and the signature verifies', async () => {
+      const signed = await signPdf(await tinyPdf(), fixture(name), LEGACY_PASSPHRASE);
+      expect(detectSignatures(signed)[0].signerName).toBe('Legacy Forge Signer');
+      expect((await verifyPdfSignature(signed)).ok).toBe(true);
+    }, 30000);
+  });
+
+  describe('BER encoded .p12', () => {
+    /**
+     * Rewrite a .p12 from writePkcs12() so the encrypted certificate safe's
+     * content is a constructed [0] IMPLICIT OCTET STRING split in two, as BER
+     * allows. The MAC covers the rewritten bytes, so it is dropped; the reader
+     * treats a missing MAC as "nothing to check".
+     */
+    function chunkEncryptedContent(p12: Uint8Array): Uint8Array {
+      const pfx = asn1js.fromBER(ab(p12)).result as asn1js.Sequence;
+      const authSafeOctets = (
+        (pfx.valueBlock.value[1] as asn1js.Sequence).valueBlock.value[1] as asn1js.Constructed
+      ).valueBlock.value[0] as asn1js.OctetString;
+      const authSafe = asn1js.fromBER(authSafeOctets.valueBlock.valueHexView.slice().buffer)
+        .result as asn1js.Sequence;
+      const certSafe = authSafe.valueBlock.value[0] as asn1js.Sequence;
+      const encryptedData = (certSafe.valueBlock.value[1] as asn1js.Constructed).valueBlock
+        .value[0] as asn1js.Sequence;
+      const encryptedContentInfo = encryptedData.valueBlock.value[1] as asn1js.Sequence;
+      const encrypted = encryptedContentInfo.valueBlock.value[2] as asn1js.Primitive;
+      const bytes = encrypted.valueBlock.valueHexView;
+      expect(encrypted.idBlock.tagClass).toBe(3);
+      expect(encrypted.idBlock.isConstructed).toBe(false);
+      const half = Math.floor(bytes.length / 2);
+      encryptedContentInfo.valueBlock.value[2] = new asn1js.Constructed({
+        idBlock: { tagClass: 3, tagNumber: 0 },
+        value: [
+          new asn1js.OctetString({ valueHex: bytes.slice(0, half).buffer }),
+          new asn1js.OctetString({ valueHex: bytes.slice(half).buffer }),
+        ],
+      });
+      const rewritten = new asn1js.Sequence({
+        value: [
+          pfx.valueBlock.value[0],
+          new asn1js.Sequence({
+            value: [
+              new asn1js.ObjectIdentifier({ value: '1.2.840.113549.1.7.1' }),
+              new asn1js.Constructed({
+                idBlock: { tagClass: 3, tagNumber: 0 },
+                value: [new asn1js.OctetString({ valueHex: authSafe.toBER() })],
+              }),
+            ],
+          }),
+        ],
+      });
+      return new Uint8Array(rewritten.toBER());
+    }
+
+    it('reads a certificate safe whose encrypted content is a constructed [0]', async () => {
+      const { p12 } = await generateSelfSignedP12({ commonName: 'Chunked', passphrase: 'pw' });
+      const der = await readPkcs12(p12, 'pw');
+      const ber = await readPkcs12(chunkEncryptedContent(p12), 'pw');
+      expect(ber.certificates).toHaveLength(1);
+      expect(Buffer.from(ber.certificates[0])).toEqual(Buffer.from(der.certificates[0]));
+      expect(Buffer.from(ber.pkcs8!)).toEqual(Buffer.from(der.pkcs8!));
+    }, 20000);
+
+    it('reads a chunked universal OCTET STRING too', async () => {
+      const { p12 } = await generateSelfSignedP12({ commonName: 'Chunked', passphrase: 'pw' });
+      // Same idea, applied to the key bag's plain `data` content.
+      const pfx = asn1js.fromBER(ab(p12)).result as asn1js.Sequence;
+      const authSafeOctets = (
+        (pfx.valueBlock.value[1] as asn1js.Sequence).valueBlock.value[1] as asn1js.Constructed
+      ).valueBlock.value[0] as asn1js.OctetString;
+      const bytes = authSafeOctets.valueBlock.valueHexView;
+      const half = Math.floor(bytes.length / 2);
+      const chunked = new asn1js.OctetString({
+        idBlock: { isConstructed: true },
+        value: [
+          new asn1js.OctetString({ valueHex: bytes.slice(0, half).buffer }),
+          new asn1js.OctetString({ valueHex: bytes.slice(half).buffer }),
+        ],
+      });
+      const rewritten = new asn1js.Sequence({
+        value: [
+          pfx.valueBlock.value[0],
+          new asn1js.Sequence({
+            value: [
+              new asn1js.ObjectIdentifier({ value: '1.2.840.113549.1.7.1' }),
+              new asn1js.Constructed({ idBlock: { tagClass: 3, tagNumber: 0 }, value: [chunked] }),
+            ],
+          }),
+        ],
+      });
+      const ber = await readPkcs12(new Uint8Array(rewritten.toBER()), 'pw');
+      expect(ber.certificates).toHaveLength(1);
+      expect(ber.pkcs8).not.toBeNull();
+    }, 20000);
+
+    it('round trips through writePkcs12 and readPkcs12', async () => {
+      const { p12 } = await generateSelfSignedP12({ commonName: 'Round', passphrase: 'pw' });
+      const { certificates, pkcs8 } = await readPkcs12(p12, 'pw');
+      const again = await writePkcs12(certificates[0], pkcs8!, 'pw2');
+      const back = await readPkcs12(again, 'pw2');
+      expect(Buffer.from(back.certificates[0])).toEqual(Buffer.from(certificates[0]));
+      expect(Buffer.from(back.pkcs8!)).toEqual(Buffer.from(pkcs8!));
+    }, 20000);
   });
 });

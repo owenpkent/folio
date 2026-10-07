@@ -12,9 +12,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   now uses WebCrypto for keys and signatures, `@peculiar/x509` for certificates,
   `pkijs` and `asn1js` for the CMS signature, and a small in-repo PKCS#12
   reader/writer (3DES via `des.js`). `@signpdf/signer-p12` is replaced by an
-  in-repo signer. Existing `.p12` identities import and sign unchanged; new ones
-  use the same format as before. RC2-40 encrypted `.p12` files, which node-forge
-  could read, are no longer supported.
+  in-repo signer. Existing `.p12` identities import and sign unchanged (3DES or
+  AES, any MAC from SHA-1 to SHA-512, including node-forge's AES exports with a
+  non-ASCII passphrase); new ones use the same format as before. RC2-40
+  encrypted `.p12` files, which node-forge could read, are no longer supported.
 - **Tauri 2.11 to 2.12.1** on both the npm and Rust sides, with the deep-link
   plugin moving to 2.6 and the updater plugin to 2.13.1.
 - **Tauri updates no longer arrive half-done from Dependabot.** The Tauri CLI and

@@ -53,11 +53,12 @@ export async function generateSelfSignedP12(opts: {
 }): Promise<{ p12: Uint8Array; summary: IdentitySummary }> {
   const keys = await crypto.subtle.generateKey(RSA_SHA256, true, ['sign', 'verify']);
 
-  // 16 random bytes with the top bit cleared and the low bit set: a positive,
-  // non-zero 128-bit serial.
+  // 16 random bytes, positive and always 16 bytes long: the top bit is cleared
+  // so DER needs no sign padding, and bit 6 is set so the first byte is never
+  // zero. A zero first byte would be dropped from the INTEGER encoding and the
+  // serial would come back from the certificate shorter than it went in.
   const serial = crypto.getRandomValues(new Uint8Array(16));
-  serial[0] &= 0x7f;
-  serial[15] |= 0x01;
+  serial[0] = (serial[0] & 0x7f) | 0x40;
 
   // X.509 times have one-second resolution; drop the milliseconds up front so the
   // summary and the certificate agree.
