@@ -106,10 +106,11 @@ jobs:
 
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         continue-on-error: true
         with:
           name: security-reports
+          retention-days: 7   # Actions artifact quota is small and shared
           path: |
             gitleaks.sarif
             semgrep.sarif
@@ -136,10 +137,11 @@ jobs:
           publish_results: false
       - name: Upload Scorecard SARIF
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         continue-on-error: true
         with:
           name: scorecard-sarif
+          retention-days: 7   # Actions artifact quota is small and shared
           path: scorecard.sarif
 
   open-issues:
