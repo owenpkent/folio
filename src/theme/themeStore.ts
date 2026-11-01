@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 export type UiTheme = 'light' | 'dark' | 'system';
-export type ResolvedTheme = 'light' | 'dark';
+type ResolvedTheme = 'light' | 'dark';
 /** Which color scheme the page renders in when the UI is dark. */
 export type DarkScheme = 'night' | 'green' | 'amber';
 

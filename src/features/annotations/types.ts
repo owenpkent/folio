@@ -1,4 +1,4 @@
-export type AnnotationType = 'highlight' | 'note';
+type AnnotationType = 'highlight' | 'note';
 
 /** A rectangle expressed as fractions (0..1) of the page, so it survives zoom. */
 export interface NormalizedRect {
@@ -33,12 +33,12 @@ export interface Annotation {
   createdAt: number;
 }
 
-export interface HighlightColor {
+interface HighlightColor {
   name: string;
   value: string;
 }
 
-export const HIGHLIGHT_COLORS: HighlightColor[] = [
+const HIGHLIGHT_COLORS: HighlightColor[] = [
   { name: 'Yellow', value: 'rgba(255, 214, 10, 0.45)' },
   { name: 'Green', value: 'rgba(52, 199, 89, 0.40)' },
   { name: 'Blue', value: 'rgba(0, 122, 255, 0.35)' },

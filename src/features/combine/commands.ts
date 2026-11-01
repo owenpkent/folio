@@ -65,7 +65,7 @@ export async function addFilesViaPicker(): Promise<number> {
 }
 
 /** Open the combine modal and immediately prompt for the first batch of files. */
-export async function openCombineModal(): Promise<void> {
+async function openCombineModal(): Promise<void> {
   useCombineStore.getState().open();
   await addFilesViaPicker();
 }

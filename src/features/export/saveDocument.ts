@@ -145,7 +145,7 @@ export async function saveDocumentInPlace(): Promise<void> {
 }
 
 /** Export the filled/signed document and save it as a copy (dialog or download). */
-export async function saveDocumentToFile(): Promise<void> {
+async function saveDocumentToFile(): Promise<void> {
   const { info, status } = useDocumentStore.getState();
   if (status !== 'ready' || !info) return;
 

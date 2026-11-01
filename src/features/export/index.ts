@@ -1,7 +1,1 @@
-export {
-  exportDocument,
-  saveDocumentInPlace,
-  saveDocumentToFile,
-  saveBytes,
-  registerExportCommands,
-} from './saveDocument';
+export { exportDocument, saveBytes, registerExportCommands } from './saveDocument';

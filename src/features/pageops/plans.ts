@@ -13,7 +13,7 @@ import type { PagePlan } from './types';
 /** Quarter turn clockwise, in degrees. Negative turns anticlockwise. */
 export const QUARTER_TURN = 90;
 
-export function identityOrder(numPages: number): number[] {
+function identityOrder(numPages: number): number[] {
   return Array.from({ length: numPages }, (_, index) => index);
 }
 

@@ -1,2 +1,2 @@
 export { checkForUpdates } from './checkForUpdates';
-export { forgetOpenDocument, rememberOpenDocument, takeResumeDocument } from './resumeAfterUpdate';
+export { takeResumeDocument } from './resumeAfterUpdate';

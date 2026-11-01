@@ -5,7 +5,7 @@
  */
 
 /** A rectangle as fractions (0..1) of the page, top-left origin. */
-export interface NormalizedRect {
+interface NormalizedRect {
   x: number;
   y: number;
   width: number;

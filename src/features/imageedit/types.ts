@@ -29,7 +29,7 @@ export interface ImageEditRect {
 }
 
 /** An image embedded via `pdf.embedPng` / `pdf.embedJpg`, matching features/editing's ImageEdit. */
-export type ImageMime = 'image/png' | 'image/jpeg';
+type ImageMime = 'image/png' | 'image/jpeg';
 
 /**
  * An image XObject painted by a `/Name Do` operator, located in a page's
@@ -105,7 +105,7 @@ export interface SelectedImage extends ImageEditTarget {
 }
 
 /** What to do to the image `target` resolves to (see CommitImageEditParams). */
-export type ImageEditAction =
+type ImageEditAction =
   | { kind: 'move'; rect: ImageEditRect }
   | { kind: 'replace'; dataUrl: string; mime: ImageMime }
   | { kind: 'delete' };

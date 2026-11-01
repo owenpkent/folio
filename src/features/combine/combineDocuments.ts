@@ -44,7 +44,7 @@ export interface CombineInput {
  */
 export const MAX_COMBINE_INPUTS = 50;
 export const MAX_COMBINE_INPUT_BYTES = 256 * 1024 * 1024;
-export const MAX_COMBINE_PAGES = 10_000;
+const MAX_COMBINE_PAGES = 10_000;
 
 /** Progress and cancellation hooks for {@link combinePdfs}. */
 export interface CombineOptions {

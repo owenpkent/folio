@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { isTauri } from '@/core/document/openDocument';
 import type { OutlineNode, PdfDocumentInfo, PdfMetadata } from '@/core/pdf';
 
-export type DocumentStatus = 'empty' | 'loading' | 'ready' | 'error';
+type DocumentStatus = 'empty' | 'loading' | 'ready' | 'error';
 
 interface DocumentState {
   status: DocumentStatus;

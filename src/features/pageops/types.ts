@@ -1,5 +1,5 @@
 /** A page's zero-based position in the document a plan was built against. */
-export type SourcePageIndex = number;
+type SourcePageIndex = number;
 
 export type PageOpsErrorCode =
   'empty-plan' | 'page-out-of-range' | 'duplicate-page' | 'bad-rotation' | 'unreadable-result';

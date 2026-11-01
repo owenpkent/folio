@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import type { AddressHit, AddressRegion } from './copyTarget';
 
 /** Where to draw the hint, in CSS pixels relative to the page container. */
-export interface HintBox {
+interface HintBox {
   left: number;
   top: number;
   width: number;
