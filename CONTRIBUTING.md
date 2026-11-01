@@ -320,24 +320,31 @@ organized and what is covered. All tests must pass in CI before a PR can merge.
      blocking package on it, and let it go green on its own when upstream
      releases.
 
-  Case 2 has exactly one exception: a peer range that is **stale metadata**
-  rather than a real incompatibility. It has to be earned with evidence, never
-  assumed. That is [#47](https://github.com/owenpkent/folio/pull/47).
-  `eslint-plugin-jsx-a11y@6.10.2` is still the latest release and caps eslint at
-  `^9`, but it touches only `context.report`, `context.options`, and
-  `context.settings`. None of the context APIs eslint 10 removed (`getScope`,
-  `getAncestors`, `getSourceCode`, `getDeclaredVariables`,
-  `markVariableAsUsed`, `getFilename`, `getCwd`, `parserServices`) appear in its
-  `lib/` at all, it never reads `sourceCode`, and all 39 of its rules declare
-  `meta.schema`. So `package.json` carries a single-package override relaxing
-  that one peer and nothing else:
+  Case 2 has one exception: a declared range that is **stale metadata** rather
+  than a real incompatibility. It has to be earned with evidence, never assumed.
+  [#47](https://github.com/owenpkent/folio/pull/47) was the first: it relaxed
+  `eslint-plugin-jsx-a11y`'s `^9` eslint peer after showing the plugin used none
+  of the context APIs eslint 10 removed. That override is gone, because the
+  project moved to the maintained fork `eslint-plugin-jsx-a11y-x`, which
+  supports eslint 10 and drops the old plugin's `es-abstract` tree.
+
+  The one override `package.json` carries today forces `minimatch` 10 to 11:
 
   ```json
-  "overrides": { "eslint-plugin-jsx-a11y": { "eslint": "$eslint" } }
+  "overrides": { "minimatch@>=10 <11": "11.0.3" }
   ```
 
-  Before adding a second one, re-run that search against the package's `lib/`
-  yourself. If the evidence is not that concrete, leave the PR blocked.
+  Every minimatch below 11.0.1 is covered by
+  [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249), but
+  eslint, `@eslint/config-array`, `@typescript-eslint/typescript-estree` and
+  `eslint-plugin-jsx-a11y-x` all still declare `^10`. The evidence: they only
+  call `minimatch()` and `Minimatch#match`, none of them touches anything 11
+  removed (`makeRe`, `Minimatch#regexp`, `AST`, `matchOne`, the `debug`
+  option), and `eslint .` lints the same 306 files with the same result on
+  either version. Drop the override once those packages declare `^11`.
+
+  Before adding another, gather the same kind of evidence against the package's
+  code yourself. If it is not that concrete, leave the PR blocked.
 
   Do not reach for `--legacy-peer-deps` in either case. CI runs `npm ci` and
   would still fail, and it would only convert an honest install error into a lint
