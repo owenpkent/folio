@@ -63,7 +63,7 @@ Each layer maps to a real directory in the repository.
 | Shared hooks | `src/hooks/` | `useNearViewport` (one shared `IntersectionObserver` per root/margin), `watchDevicePixelRatio`, `useMediaQuery` |
 | Command registry | `src/commands/` | Every user action as a `Command`; single dispatch point |
 | PDF core | `src/core/` | `pdf/` (`PdfEngine` interface + `PdfJsEngine`, plus `pageSizes` for lazily measured page geometry and `pageGeometry` for the mapping between the page as displayed and the unrotated user space pdf-lib draws into), `document/` (file picking and byte reading), `lru.ts` (capacity-bounded cache with a release hook) |
-| State | `src/state/` | `documentStore` and `viewerStore`; other Zustand stores are colocated with their feature (theme, ai, annotations, plugins) |
+| State | `src/state/` | `documentStore` and `viewerStore`; other Zustand stores are colocated with their feature (theme, annotations, plugins) |
 | Theming | `src/theme/` | `ThemeProvider`, design tokens (`tokens.css`), `themeStore` (UI theme + dark scheme) |
 | Accessibility | `src/a11y/` | Announcer (live region), focus trap, keyboard shortcut dispatch, skip link |
 | Annotations | `src/features/annotations/` | Annotation model, `store` (localStorage sidecar), `bake` (embeds highlights/notes as real `/Highlight` and `/Text` annotations on save), and tools |
@@ -120,7 +120,7 @@ Key points:
 1. **The WebView never touches the file system directly.** In the desktop app it asks the Rust `read_document` command for the bytes (the file picker itself is the dialog plugin). This keeps the security boundary explicit and lets Folio work with sandboxed WebView permissions. In a plain browser (`npm run dev` without Tauri) a hidden file input provides the bytes instead.
 2. **`loadDocument(source)` accepts a `DocumentSource`, not a path.** The source carries either raw bytes (`{ kind: 'bytes', data, name }`) or a URL, so the engine is deliberately unaware of where the bytes came from, which keeps it portable and testable.
 3. **Rendering is lazy and viewport-driven.** Only pages near the scroll position are rasterized. `viewerStore` tracks the current page and pending scroll target; the `Viewer` renders visible pages and recycles canvases as the user scrolls.
-4. **The text layer is not optional.** Every rendered page gets a positioned text layer from `renderTextLayer` (backed by PDF.js text content; `getPageText` extracts the same text for search and AI), which is what makes selection, find-in-page highlighting, and screen-reader reading work against the real glyphs rather than a rasterized image.
+4. **The text layer is not optional.** Every rendered page gets a positioned text layer from `renderTextLayer` (backed by PDF.js text content; `getPageText` extracts the same text for search), which is what makes selection, find-in-page highlighting, and screen-reader reading work against the real glyphs rather than a rasterized image.
 
 ## The PDF engine abstraction
 
@@ -336,7 +336,7 @@ Folio is designed to be extended without forking. The stable surfaces are:
    }
    ```
 
-   Keyboard shortcuts, the future command palette, plugins, and AI actions all dispatch through the same registry. `when` gates availability (for example, "a document is open"); `keybinding` wires a shortcut; `category` groups entries in the palette.
+   Keyboard shortcuts, the future command palette, plugins, and planned AI actions all dispatch through the same registry. `when` gates availability (for example, "a document is open"); `keybinding` wires a shortcut; `category` groups entries in the palette.
 
 2. **Plugins (`src/plugins`).** A plugin is a module that receives the SDK and registers contributions: commands, sidebar panels, toolbar items, and annotation-tool additions. Built-ins in `plugins/builtins/` are written against the same SDK a third party would use, which keeps the SDK honest.
 

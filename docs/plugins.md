@@ -112,7 +112,7 @@ interface PluginContext {
 
 ### Commands
 
-Commands are the single dispatch mechanism in Folio. Keyboard shortcuts, toolbar clicks, plugin actions, and AI actions all resolve to a command id and run through the global registry.
+Commands are the single dispatch mechanism in Folio. Keyboard shortcuts, toolbar clicks, plugin actions, and planned AI actions all resolve to a command id and run through the global registry.
 
 ```ts
 interface Command {
@@ -311,8 +311,8 @@ export const wordCountPlugin: FolioPlugin = {
   version: '0.1.0',
 
   activate(ctx: PluginContext) {
-    // 1) Command: enabled only when a document is ready; invocable by keybinding,
-    //    AI actions, or other plugins through the command registry.
+    // 1) Command: enabled only when a document is ready; invocable by keybinding
+    //    or other plugins through the command registry.
     ctx.registerCommand({
       id: 'plugin.wordCount.show',
       title: 'Word Count: count this document',

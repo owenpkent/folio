@@ -237,7 +237,7 @@ export async function reloadEditedBytes(bytes: Uint8Array): Promise<void> {
   // Page operations are the only feature that can change the page count, but
   // nothing else here refreshes it: without this, info.numPages keeps the
   // open-time count and anything that loops over "every page" (the Word Count
-  // plugin, ai/documentText.ts) runs past the end of a document that just
+  // plugin, for one) runs past the end of a document that just
   // lost pages. The fingerprint is deliberately left alone -- see the doc
   // comment above.
   useDocumentStore.getState().setNumPages(info.numPages);

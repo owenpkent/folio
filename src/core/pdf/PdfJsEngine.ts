@@ -93,7 +93,7 @@ const PAGE_CACHE_LIMIT = 24;
  *  and the text-edit layer consumes them one page at a time. */
 const TEXT_ITEMS_CACHE_LIMIT = 24;
 /** Plain per-page strings, a few KB each, but whole-document consumers (search,
- *  word count, the AI context builder) walk every page, so keep this generous. */
+ *  word count) walk every page, so keep this generous. */
 const TEXT_CACHE_LIMIT = 512;
 /** One viewport per page per scale is tiny, and every zoom level in a session
  *  adds a fresh set, so this is generous enough that normal use never evicts a

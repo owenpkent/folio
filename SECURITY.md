@@ -99,8 +99,9 @@ action against researchers who follow this policy.
   first-party plugin API that lets a plugin exceed its granted permissions,
   escape its sandbox, or access document data or the filesystem/network without
   consent, are in scope.
-- **AI / MCP data-handling.** Folio's optional AI and
-  [Model Context Protocol](https://modelcontextprotocol.io) integrations must
+- **AI / MCP data-handling.** Folio's planned AI and
+  [Model Context Protocol](https://modelcontextprotocol.io) integrations (none ship
+  today) must
   only send document content or user data to external services with explicit
   user consent. Issues where AI/MCP features leak document data, transmit data
   without consent, mishandle credentials or API keys, or are vulnerable to

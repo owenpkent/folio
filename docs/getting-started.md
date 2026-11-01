@@ -149,7 +149,6 @@ folio/
 ├─ public/                  # static assets served by Vite
 ├─ scripts/                 # build, release, and version/manifest parity checks
 ├─ src/                     # React + TypeScript frontend
-│  ├─ ai/                   # AI layer: providers/ (Claude, experimental), mcp/ (stubs)
 │  ├─ a11y/                 # accessibility utils (announcer, focus mgmt, shortcuts help)
 │  ├─ assets/               # bundled assets (folio-logo.svg, the app-icon source)
 │  ├─ commands/             # command registry: every user action is a Command

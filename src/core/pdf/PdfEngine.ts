@@ -112,7 +112,7 @@ export interface PdfEngine {
   /** Export the current document, with filled form values, as PDF bytes. */
   saveDocument(): Promise<Uint8Array>;
 
-  /** Extracted plain text for a page (used by search and the AI layer). */
+  /** Extracted plain text for a page (used by search and the Word Count plugin). */
   getPageText(pageNumber: number): Promise<string>;
 
   /**
