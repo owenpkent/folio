@@ -314,4 +314,28 @@ describe('cryptographic signing', () => {
       expect(Buffer.from(back.pkcs8!)).toEqual(Buffer.from(pkcs8!));
     }, 20000);
   });
+
+  describe('certificate with trailing bytes after the DER (untrusted .p12)', () => {
+    // @peculiar/x509 3 rejects trailing data. A user-supplied .p12 can carry it,
+    // so the import path must reject it as an ordinary Error the UI catches
+    // ("Could not import: wrong passphrase or invalid file"), never hang.
+    async function p12WithTrailingCert(): Promise<Uint8Array> {
+      const { p12 } = await generateSelfSignedP12({ commonName: 'Trailing', passphrase: 'pw' });
+      const { certificates, pkcs8 } = await readPkcs12(p12, 'pw');
+      const padded = new Uint8Array(certificates[0].length + 4);
+      padded.set(certificates[0]);
+      padded.set([0xde, 0xad, 0xbe, 0xef], certificates[0].length);
+      return writePkcs12(padded, pkcs8!, 'pw');
+    }
+
+    it('parseP12 rejects with a plain Error the UI can catch', async () => {
+      const p12 = await p12WithTrailingCert();
+      await expect(parseP12(p12, 'pw')).rejects.toThrow(/trailing bytes/);
+    }, 20000);
+
+    it('signPdf rejects with a plain Error rather than hanging', async () => {
+      const p12 = await p12WithTrailingCert();
+      await expect(signPdf(await tinyPdf(), p12, 'pw')).rejects.toThrow(/trailing bytes/);
+    }, 20000);
+  });
 });
