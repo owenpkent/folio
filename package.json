@@ -56,8 +56,9 @@
   },
   "dependencies": {
     "@peculiar/x509": "2.1.0",
-    "@signpdf/placeholder-pdf-lib": "^3.3.0",
-    "@signpdf/signpdf": "^3.3.0",
+    "@signpdf/placeholder-pdf-lib": "^4.0.0",
+    "@signpdf/signpdf": "^4.0.0",
+    "@signpdf/utils": "^4.0.0",
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-deep-link": "^2.6.3",
     "@tauri-apps/plugin-dialog": "^2.8.4",
