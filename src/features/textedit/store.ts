@@ -4,14 +4,14 @@ import { clearLocatedRunsCache } from './locateCache';
 import type { RunColor, ShowOp } from './types';
 
 /** Baseline origin + operator kind used to re-locate the edited run on commit. */
-export interface EditingSessionTarget {
+interface EditingSessionTarget {
   x: number;
   y: number;
   op: ShowOp;
 }
 
 /** The editor overlay's position and size within its page element, in CSS pixels. */
-export interface EditingSessionRect {
+interface EditingSessionRect {
   x: number;
   y: number;
   width: number;

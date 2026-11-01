@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type PrintStatus = 'idle' | 'preparing' | 'error';
+type PrintStatus = 'idle' | 'preparing' | 'error';
 
 interface PrintProgress {
   /** 1-based page currently being rasterized (0 = not started). */

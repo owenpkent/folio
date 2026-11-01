@@ -63,7 +63,7 @@ function warnIfSigned(): void {
  * Snapshot, mutate, reload, and move every page-keyed thing to where it now
  * belongs. Returns false when it declined or failed, having said why.
  */
-export async function commitPagePlan(plan: PagePlan, announcement: string): Promise<boolean> {
+async function commitPagePlan(plan: PagePlan, announcement: string): Promise<boolean> {
   // Each commit serialises the whole document and reloads it, so a second one
   // starting mid-flight would be reading bytes the first has already
   // replaced. ops.busy guards a second page op (and drives this feature's own

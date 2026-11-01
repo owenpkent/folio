@@ -11,7 +11,7 @@ import { DEFAULT_HIGHLIGHT_COLOR, type NormalizedRect } from './types';
  * the note refers to) and its line rects (to underline it). Returns false if
  * there is no usable selection, so the caller can fall back to point placement.
  */
-export function addNoteFromSelection(color: string = NOTE_COLOR): boolean {
+function addNoteFromSelection(color: string = NOTE_COLOR): boolean {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
 
@@ -53,7 +53,7 @@ export function addNoteFromSelection(color: string = NOTE_COLOR): boolean {
  * selection Range are converted to page-relative fractions so the highlight is
  * zoom-independent.
  */
-export function addHighlightFromSelection(color: string = DEFAULT_HIGHLIGHT_COLOR): void {
+function addHighlightFromSelection(color: string = DEFAULT_HIGHLIGHT_COLOR): void {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
     announce('Select some text first, then add a highlight', true);

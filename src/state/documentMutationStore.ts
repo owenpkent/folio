@@ -63,7 +63,7 @@ interface HeldMutation extends MutationRequest {
  * acquisition has superseded it, so double-releasing cannot unlock somebody
  * else's operation.
  */
-export type ReleaseMutation = () => void;
+type ReleaseMutation = () => void;
 
 /**
  * Whether an operation writing `a` may overlap one writing `b`.
@@ -143,7 +143,7 @@ export const useDocumentMutationStore = create<DocumentMutationState>((set, get)
  * deliberately not counted: a feature already knows about its own work (that is
  * what its local busy flag is for) and must not report it as somebody else's.
  */
-export function isDocumentMutationBlocked(
+function isDocumentMutationBlocked(
   active: readonly HeldMutation[],
   owner: MutationOwner,
   scope: MutationScope,

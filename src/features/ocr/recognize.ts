@@ -79,11 +79,3 @@ export async function recognizeImage(
     progressCb = null;
   }
 }
-
-/** Tear down the worker (frees the wasm heap). Safe to call when idle. */
-export async function terminateOcr(): Promise<void> {
-  if (!workerPromise) return;
-  const worker = await workerPromise;
-  workerPromise = null;
-  await worker.terminate();
-}

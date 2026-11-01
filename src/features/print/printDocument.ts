@@ -108,7 +108,7 @@ function bitmapBytes(width: number, height: number, scale: number): number {
  * Cost grows with the square of the scale, so the affordable scale is
  * sqrt(budget / (pages x bytes-per-page-at-1x)).
  */
-export function chooseScale(width: number, height: number, pageCount: number): number | null {
+function chooseScale(width: number, height: number, pageCount: number): number | null {
   const perPage = bitmapBytes(width, height, 1);
   if (perPage <= 0 || pageCount <= 0) return PRINT_SCALE;
   const affordable = Math.sqrt(PRINT_BITMAP_BUDGET_BYTES / (perPage * pageCount));
@@ -117,7 +117,7 @@ export function chooseScale(width: number, height: number, pageCount: number): n
 }
 
 /** `scale` reduced until this page fits both canvas ceilings. */
-export function capScale(width: number, height: number, scale: number): number {
+function capScale(width: number, height: number, scale: number): number {
   if (width <= 0 || height <= 0) return scale;
   const byDimension = Math.min(MAX_CANVAS_DIM / width, MAX_CANVAS_DIM / height);
   const byArea = Math.sqrt(MAX_CANVAS_AREA / (width * height));

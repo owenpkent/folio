@@ -10,7 +10,7 @@ const FOCUSABLE = [
 ].join(',');
 
 /** All tabbable elements inside `container`, in DOM order. */
-export function getFocusableElements(container: HTMLElement): HTMLElement[] {
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
     (el) => el.offsetParent !== null || el === document.activeElement,
   );

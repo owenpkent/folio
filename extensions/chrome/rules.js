@@ -40,7 +40,7 @@ export const RULE_IDS = Object.freeze({ PDF_URL: 1, PDF_CONTENT_TYPE: 2 });
  * `report.pdf#page=3`), and without this a real .pdf URL with a page anchor
  * failed the toolbar button's and the context menu's own PDF-shape check.
  */
-export const PDF_URL_REGEX = '^https?://[^?#]*\\.pdf(\\?[^#]*)?(#.*)?$';
+const PDF_URL_REGEX = '^https?://[^?#]*\\.pdf(\\?[^#]*)?(#.*)?$';
 
 /** Any http(s) navigation. Rule 2 leans on its response-header condition to narrow. */
 const ANY_HTTP_REGEX = '^https?://.*';

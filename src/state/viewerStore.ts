@@ -2,8 +2,8 @@ import { create } from 'zustand';
 
 import { isNarrowViewport } from '@/theme/breakpoints';
 
-export type FitMode = 'custom' | 'width' | 'page';
-export type SidebarTab = 'thumbnails' | 'outline' | 'annotations' | (string & {});
+type FitMode = 'custom' | 'width' | 'page';
+type SidebarTab = 'thumbnails' | 'outline' | 'annotations' | (string & {});
 
 interface ViewerState {
   /** Current render scale (1 = 100%). */
@@ -67,7 +67,7 @@ const ZOOM_LEVELS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8];
 // slower speeds get most of the slider.
 export const AUTO_SCROLL_MIN = 4;
 export const AUTO_SCROLL_MAX = 160;
-export const AUTO_SCROLL_DEFAULT = 12;
+const AUTO_SCROLL_DEFAULT = 12;
 
 const clampScale = (s: number): number => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
 const clampSpeed = (s: number): number =>

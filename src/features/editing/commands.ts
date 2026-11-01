@@ -60,17 +60,13 @@ async function placeImageAt(
 }
 
 /** Arm click-to-place for a new text box. */
-export function beginTextPlacement(): void {
+function beginTextPlacement(): void {
   if (!ready()) return;
   usePlacementStore.getState().begin({ label: 'text box', place: placeTextAt });
 }
 
 /** Arm click-to-place for an already-loaded image. */
-export function beginImagePlacement(
-  dataUrl: string,
-  mime: ImageEdit['mime'],
-  aspect: number,
-): void {
+function beginImagePlacement(dataUrl: string, mime: ImageEdit['mime'], aspect: number): void {
   if (!ready()) return;
   usePlacementStore.getState().begin({
     label: 'image',

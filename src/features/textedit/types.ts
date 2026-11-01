@@ -73,7 +73,7 @@ export type TexteditErrorCode =
   | 'unencodable-text'
   | 'page-out-of-range';
 
-export interface CommitStyle {
+interface CommitStyle {
   /** CSS-ish family hint from PDF.js styles + fontName, used to pick a standard font. */
   fontFamilyHint: string;
   /** Replacement font size in PDF user units. */

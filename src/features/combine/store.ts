@@ -37,7 +37,7 @@ interface CombineProgress {
 const IDLE_PROGRESS: CombineProgress = { current: 0, total: 0 };
 
 /** A file handed to {@link CombineState.open} or {@link CombineState.addFiles}. */
-export interface CombineFileSeed {
+interface CombineFileSeed {
   name: string;
   bytes: Uint8Array;
 }

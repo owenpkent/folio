@@ -82,7 +82,7 @@ async function runRecognition(total: number, pass: () => Promise<void>): Promise
 }
 
 /** OCR the whole document, page by page, with progress and cancellation. */
-export async function recognizeDocument(): Promise<void> {
+async function recognizeDocument(): Promise<void> {
   const total = useViewerStore.getState().numPages;
   await runRecognition(total, async () => {
     for (let page = 1; page <= total; page++) {
@@ -97,7 +97,7 @@ export async function recognizeDocument(): Promise<void> {
 }
 
 /** OCR just the page the user is viewing. */
-export async function recognizeCurrentPage(): Promise<void> {
+async function recognizeCurrentPage(): Promise<void> {
   const page = useViewerStore.getState().currentPage;
   await runRecognition(1, async () => {
     await recognizeOnePage(page);
