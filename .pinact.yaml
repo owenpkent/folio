@@ -1,0 +1,9 @@
+# pinact v5 config. dtolnay/rust-toolchain is versioned by branch (stable,
+# nightly, 1.x), not by release tag, so its "# stable" comment cannot be
+# verified against a tag. pinact skips it; the SHA stays pinned by hand.
+version: 3
+rules:
+  - ignore: true
+    conditions:
+      - expr: |
+          ActionName == "dtolnay/rust-toolchain"
