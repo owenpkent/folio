@@ -64,7 +64,7 @@
     "@tauri-apps/plugin-dialog": "^2.8.4",
     "@tauri-apps/plugin-fs": "^2.7.1",
     "@tauri-apps/plugin-process": "^2.4.0",
-    "@tauri-apps/plugin-updater": "^2.13.3",
+    "@tauri-apps/plugin-updater": "^2.14.1",
     "asn1js": "4.0.0",
     "buffer": "^6.0.3",
     "des.js": "1.1.0",
