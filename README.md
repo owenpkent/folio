@@ -20,8 +20,8 @@ around three things Acrobat treats as afterthoughts: **accessibility**,
 
 > Status: in development (v0.5). The core viewer, printing, forms, annotations
 > that embed into a saved copy, editing, OCR, visual and cryptographic signing,
-> theming, accessibility (Section 508), the plugin system, and the AI/MCP
-> scaffolding are in place. See the [roadmap](ROADMAP.md).
+> theming, accessibility (Section 508), and the plugin system are in
+> place. See the [roadmap](ROADMAP.md).
 
 ## Screenshots
 
@@ -134,7 +134,7 @@ Folio rendering a two-page form PDF, in light and dark:
 **AI-ready**
 - A provider-agnostic AI layer with an experimental, opt-in Claude provider (bring-your-own-key)
 - Summarize, ask-about-the-document, and structured extraction (experimental)
-- Model Context Protocol (MCP) client/server support planned; the tool surface is stubbed out
+- Model Context Protocol (MCP) client/server support planned
 
 See [`docs/`](docs/README.md) for the full documentation set, indexed by what you
 are trying to do.
@@ -222,7 +222,6 @@ folio/
 │  ├─ components/        Viewer, MenuBar, Toolbar, Sidebar, Search, common
 │  ├─ features/          annotations, editing, placement, textedit, imageedit, ocr, signatures, combine, pageops, links, updates, save/export
 │  ├─ plugins/           plugin host, SDK types, built-in Word Count plugin
-│  ├─ ai/                provider-agnostic AI layer (Claude, experimental) + MCP stubs
 │  ├─ theme/             tokens, ThemeProvider, dark schemes, breakpoints
 │  ├─ hooks/             shared React hooks (media queries, DPI-change watch)
 │  ├─ a11y/              announcer, focus, keyboard shortcuts
@@ -251,7 +250,6 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Forms and signatures](docs/forms-and-signatures.md)
 - [Theming](docs/theming.md)
 - [Writing plugins](docs/plugins.md)
-- [AI and MCP](docs/ai.md)
 - [Testing](docs/testing.md)
 - [Releasing](docs/releasing.md) (signed installer + auto-updater) and the [release checklist](docs/release-checklist.md)
 - [VS Code extension](extensions/vscode/README.md) (preview: view PDFs in an editor tab)

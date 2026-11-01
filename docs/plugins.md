@@ -538,5 +538,4 @@ Because the public API is already the only supported surface, this migration is 
 
 ## Related documentation
 
-- [AI & MCP integration](./ai.md): how AI actions dispatch through the same command registry your plugins use.
 - [Roadmap](../ROADMAP.md): where the plugin host, annotation tools, third-party loading, and sandboxing sit in the release plan.

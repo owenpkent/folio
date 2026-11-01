@@ -10,7 +10,7 @@ This document describes the layer stack, the data flow for opening and rendering
 - **Accessibility-first (WCAG 2.2 AA).** Every rendered page carries a real text layer for selection and screen-reader access. Every user action is a `Command` with a keybinding.
 - **Dark-mode native.** Theme tokens and a raster-time page inversion are first-class, not bolted on.
 - **Extensible.** A plugin host exposes stable SDK surfaces (commands, viewer regions, theme tokens) so third parties extend Folio without forking.
-- **AI-ready.** A provider-agnostic AI layer sits behind an interface, with Claude/Anthropic as the default provider and MCP planned as an experimental transport.
+- **AI-ready.** A provider-agnostic AI layer (with MCP as a transport) is planned but not in the codebase yet; see [ROADMAP.md](../ROADMAP.md).
 
 ## Layer stack
 
@@ -27,11 +27,11 @@ This document describes the layer stack, the data flow for opening and rendering
 │  │  ThemeProvider  data-theme  announcer/focus │    └──────────────────┘    │
 │  │                     ▼                       │            ▲               │
 │  │              commands/  Command registry    │            │ invoke()      │
-│  │        (keyboard · palette · plugins · AI)  │            │               │
-│  │           │                     │           │            │               │
-│  │  plugins/ host + SDK      ai/ providers     │            │               │
-│  │           │                     │           │            │               │
-│  │           ▼                     ▼           │            │               │
+│  │        (keyboard · palette · plugins)       │            │               │
+│  │           │                                 │            │               │
+│  │  plugins/ host + SDK                        │            │               │
+│  │           │                                 │            │               │
+│  │           ▼                                 │            │               │
 │  │  state/  Zustand stores (single source)     │            │               │
 │  │           │                                 │            │               │
 │  │           ▼                                 │            │               │
@@ -47,7 +47,7 @@ This document describes the layer stack, the data flow for opening and rendering
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-Read the stack top-down as: **native shell → React UI → command registry → plugin host / AI layer → Zustand state → core PDF engine → PDF.js worker**, with the Rust backend attached over Tauri IPC for anything the WebView cannot do safely (file system, OS menus, persisted window state).
+Read the stack top-down as: **native shell → React UI → command registry → plugin host → Zustand state → core PDF engine → PDF.js worker**, with the Rust backend attached over Tauri IPC for anything the WebView cannot do safely (file system, OS menus, persisted window state).
 
 > Implementation status: the diagram is the intended shape. Today the Rust backend implements file IO (`read_document`, `write_document`), the browser hand-off (`fetch_pdf`), `app_version`, the default-viewer launch handling (`take_launch_file`, `open_default_apps_settings`), and the updater/deep-link plugins; native menus, recent files, and persisted window state are planned (see "Tauri command boundary"). Likewise the command palette shown under `commands/` is planned, not yet built. Reading the diagram, treat those cells as the roadmap, not current behavior.
 
@@ -81,7 +81,6 @@ Each layer maps to a real directory in the repository.
 | Save / export | `src/features/export/` | Writes the filled PDF (PDF.js `saveDocument`), then loads pdf-lib once to bake the OCR layer, edits, signatures, and review annotations |
 | Print | `src/features/print/` | Bakes via `exportDocument`, rasterizes the result in a throwaway PDF.js document at up to 144dpi (less on a long document, since every page bitmap has to be resident at once and the run is held to one memory budget; a document too long to fit even at the floor is refused), and hands `#folio-print-root` to `window.print()`. Each page image is capped on **both** axes so it fits inside one page box: sizing on width alone puts a page taller than the paper onto a second, near-blank sheet, which is one wasted sheet per page |
 | Plugins | `src/plugins/` | Plugin host, SDK types, `contributionStore`, `builtins/` |
-| AI layer | `src/ai/` | `aiStore`, `providers/` (`AIProvider` impls, Claude default), `mcp/` (experimental MCP transport) |
 
 ## Data flow: opening and rendering a PDF
 
@@ -266,14 +265,13 @@ Know what it does **not** catch, because the gap is where the hard bugs live:
 
 ## State management (Zustand)
 
-State is the single source of truth between the UI, commands, plugins, and the AI layer. Stores are small, focused Zustand slices rather than one monolith. Two live in `src/state/`; the rest are colocated with the feature they serve, so a store sits next to the code that owns it.
+State is the single source of truth between the UI, commands, and plugins. Stores are small, focused Zustand slices rather than one monolith. Two live in `src/state/`; the rest are colocated with the feature they serve, so a store sits next to the code that owns it.
 
 | Store | File | Holds | Written by |
 |---|---|---|---|
 | `documentStore` | `src/state/documentStore.ts` | Load status, document `info`, metadata, outline, error, a `docVersion` counter bumped on each in-place text or image edit | `loadSource`/`closeDocument` actions, `reloadEditedBytes` |
 | `viewerStore` | `src/state/viewerStore.ts` | Scale, fit mode (custom/width/page), current page, page count, sidebar open + active tab, search open, pending scroll target | Zoom/nav/sidebar commands, scroll handler |
 | `themeStore` | `src/theme/themeStore.ts` | UI theme (light/dark/system), resolved theme, dark page scheme (night/green/amber) | Theme commands, system preference listener |
-| `aiStore` | `src/ai/aiStore.ts` | AI enabled flag, selected provider id (disabled by default) | AI settings UI |
 | annotation store (`useAnnotationStore`) | `src/features/annotations/store.ts` | Current document fingerprint and its annotations | `features/annotations/` tools |
 | contribution store (`useContributionStore`) | `src/plugins/contributionStore.ts` | Plugin-contributed toolbar items, sidebar panels, annotation tools | Plugin host on activate/deactivate |
 | `toastStore` | `src/components/common/toastStore.ts` | Transient toast notifications | `pushToast` (commands, plugins) |
@@ -344,11 +342,9 @@ Folio is designed to be extended without forking. The stable surfaces are:
 
 3. **Viewer regions.** The `Toolbar`, `Sidebar`, and overlay layers expose named slots that plugins can contribute React nodes into, so extensions surface UI without patching core components.
 
-4. **AI providers (`src/ai/providers`).** New providers implement the `AIProvider` interface. Claude/Anthropic is the default. The UI and commands talk to the interface, never to a specific vendor SDK, so swapping or adding a provider is a registration, not a rewrite. `src/ai/mcp/` holds an experimental Model Context Protocol client and server (`McpClient`, `McpServer`); AI is disabled by default, so nothing is sent anywhere until the user turns it on.
+4. **Theme tokens (`src/theme`).** Plugins consume CSS custom properties (for example `--folio-surface`, `--folio-text`, `--folio-accent`) rather than hard-coded colors, so their UI follows the active theme automatically. See `theming.md`.
 
-5. **Theme tokens (`src/theme`).** Plugins consume CSS custom properties (for example `--folio-surface`, `--folio-text`, `--folio-accent`) rather than hard-coded colors, so their UI follows the active theme automatically. See `theming.md`.
-
-6. **PDF engine (`src/core/pdf`).** Not a public plugin surface, but the same seam: implementing `PdfEngine` swaps the rendering backend.
+5. **PDF engine (`src/core/pdf`).** Not a public plugin surface, but the same seam: implementing `PdfEngine` swaps the rendering backend.
 
 ## Tauri command boundary
 

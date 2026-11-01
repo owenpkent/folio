@@ -15,7 +15,7 @@ These hold across every phase and are how proposals are judged:
 - **Accessibility is a release gate, not a phase.** Every feature ships keyboard-operable and screen-reader-labeled, meeting WCAG 2.2 AA. A feature that is not accessible is not done.
 - **Rendering stays fast.** Large documents open quickly and scroll smoothly. Performance regressions block release.
 - **The plugin API is the extension surface.** New capabilities are exposed through the public plugin and command APIs so third parties reach the same surface built-ins do.
-- **AI and cloud features are opt-in and local-first.** Nothing leaves the machine unless the user turns it on. See [docs/ai.md](./docs/ai.md).
+- **AI and cloud features are opt-in and local-first.** Nothing leaves the machine unless the user turns it on.
 - **Dark mode and theming are native**, driven by CSS variables, not bolted on.
 
 ## v0.1 Foundation
@@ -95,9 +95,9 @@ Change document content, reorganize pages, make scans searchable, and redact.
 
 ## v0.5 AI & MCP
 
-General availability of the AI features and MCP integration. See [docs/ai.md](./docs/ai.md) for the design.
+General availability of the AI features and MCP integration.
 
-An experimental, opt-in Claude provider and a stubbed MCP tool surface already exist as v0.1 scaffolding (off by default, no bundled keys); this phase brings them to general availability.
+An early, unwired scaffold (Claude provider, MCP stubs) was removed in 0.8.x and can be recovered from git history at commit 303d363.
 
 | Area | Deliverable | Status |
 | --- | --- | --- |
