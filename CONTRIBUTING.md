@@ -19,7 +19,6 @@ expect from a pull request. If anything is unclear, open a
 - [Project layout](#project-layout)
 - [Branching and pull request workflow](#branching-and-pull-request-workflow)
 - [Commit messages (Conventional Commits)](#commit-messages-conventional-commits)
-- [Developer Certificate of Origin (DCO sign-off)](#developer-certificate-of-origin-dco-sign-off)
 - [Code style](#code-style)
 - [Testing expectations](#testing-expectations)
 - [Dependencies](#dependencies)
@@ -194,7 +193,7 @@ Examples:
 ```
 feat(viewer): add continuous scroll mode
 fix(annotations): correct highlight offset on rotated pages
-docs(contributing): document the DCO sign-off flow
+docs(readme): add install steps for Linux
 perf(render): cache rasterized pages across zoom changes
 refactor(store): split viewer state into focused Zustand slices
 ```
@@ -207,45 +206,6 @@ feat(plugins)!: change the plugin manifest schema
 
 BREAKING CHANGE: `permissions` is now an array of scoped strings.
 ```
-
----
-
-## Developer Certificate of Origin (DCO sign-off)
-
-Folio requires every commit to be signed off under the
-[Developer Certificate of Origin](https://developercertificate.org/). The
-sign-off is a simple line at the end of each commit message that certifies you
-wrote the patch or otherwise have the right to submit it under the project's
-license:
-
-```
-Signed-off-by: Jane Developer <jane@example.com>
-```
-
-The name and email must match your Git identity. Git adds this line for you
-when you pass `-s`:
-
-```bash
-git commit -s -m "feat(viewer): add continuous scroll mode"
-```
-
-To sign off work you already committed:
-
-```bash
-git commit --amend -s          # for the most recent commit
-git rebase --signoff origin/main   # to sign off a range of commits
-```
-
-Set your identity once so the sign-off is correct:
-
-```bash
-git config user.name "Jane Developer"
-git config user.email "jane@example.com"
-```
-
-Sign-off is checked during review (there is no automated DCO status check
-today). PRs with unsigned commits will be asked to add the sign-off before
-they are merged.
 
 ---
 
@@ -440,8 +400,7 @@ Tips for a smooth first contribution:
 - CI must be green: lint, typecheck, unit tests (Node 22 and 24), the end-to-end
   (Playwright) run, and the Tauri build matrix (ubuntu/windows/macos) are
   required status checks enforced by branch protection on `main` — a PR cannot
-  be merged until they pass. Sign-off (see the DCO section) is checked in
-  review.
+  be merged until they pass.
 - Maintainer review is expected before merge. Maintainers squash-merge with a
   commit that preserves a Conventional Commit summary.
 

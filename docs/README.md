@@ -33,7 +33,7 @@ New here? Start with **[Getting started](getting-started.md)**, then
 
 | Document | What it covers |
 | --- | --- |
-| [Contributing guide](../CONTRIBUTING.md) | Branching, Conventional Commits, the DCO sign-off, and review expectations. |
+| [Contributing guide](../CONTRIBUTING.md) | Branching, Conventional Commits, and review expectations. |
 | [Testing](testing.md) | What is covered, how to run it, and which behaviours are pinned on purpose. |
 | [Releasing](releasing.md) | Signed installers and the auto-updater. |
 | [Release checklist](release-checklist.md) | The step-by-step for cutting a release. |
