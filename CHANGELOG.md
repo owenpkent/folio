@@ -6,6 +6,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+
+- Unused `src/ai/` scaffold (Claude provider, MCP stubs) and `docs/ai.md`; the AI
+  features remain planned for v0.5.
+
 ## [0.8.0] - 2026-10-07
 
 ### Changed

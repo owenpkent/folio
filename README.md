@@ -20,8 +20,8 @@ around three things Acrobat treats as afterthoughts: **accessibility**,
 
 > Status: in development (v0.5). The core viewer, printing, forms, annotations
 > that embed into a saved copy, editing, OCR, visual and cryptographic signing,
-> theming, accessibility (Section 508), the plugin system, and the AI/MCP
-> scaffolding are in place. See the [roadmap](ROADMAP.md).
+> theming, accessibility (Section 508), and the plugin system are in
+> place. See the [roadmap](ROADMAP.md).
 
 ## Screenshots
 
@@ -76,8 +76,8 @@ Folio rendering a two-page form PDF, in light and dark:
 
 **AI-locatable review**
 - Each sticky note captures its page, position, and the text it sits next to, so
-  when the document is handed to the AI layer it knows exactly where every note
-  applies, for grounded comments and feedback
+  a future AI layer (see the [roadmap](ROADMAP.md)) can tell exactly where every
+  note applies, for grounded comments and feedback
 
 **Editing and OCR**
 - Add **text boxes** (typewriter tool with font, size, bold, and color) and place
@@ -131,10 +131,10 @@ Folio rendering a two-page form PDF, in light and dark:
 - **Replace Chrome's PDF reader**: a Chrome extension opens PDFs in Folio's viewer instead, catching them by content-type as well as by `.pdf` URL, so documents served from behind an app (`/download?id=…`) are caught too. Choose per-site, or turn it off; or hand the document to the desktop app via a `folio://` deep link
 - **About dialog** with app version, commit hash, and build date, plus a manual "Check for updates" action (desktop)
 
-**AI-ready**
-- A provider-agnostic AI layer with an experimental, opt-in Claude provider (bring-your-own-key)
-- Summarize, ask-about-the-document, and structured extraction (experimental)
-- Model Context Protocol (MCP) client/server support planned; the tool surface is stubbed out
+**AI (planned)**
+- A provider-agnostic, opt-in, bring-your-own-key AI layer is planned for v0.5 (see the [roadmap](ROADMAP.md))
+- Summarize, ask-about-the-document, and structured extraction planned
+- Model Context Protocol (MCP) client/server support planned
 
 See [`docs/`](docs/README.md) for the full documentation set, indexed by what you
 are trying to do.
@@ -222,7 +222,6 @@ folio/
 │  ├─ components/        Viewer, MenuBar, Toolbar, Sidebar, Search, common
 │  ├─ features/          annotations, editing, placement, textedit, imageedit, ocr, signatures, combine, pageops, links, updates, save/export
 │  ├─ plugins/           plugin host, SDK types, built-in Word Count plugin
-│  ├─ ai/                provider-agnostic AI layer (Claude, experimental) + MCP stubs
 │  ├─ theme/             tokens, ThemeProvider, dark schemes, breakpoints
 │  ├─ hooks/             shared React hooks (media queries, DPI-change watch)
 │  ├─ a11y/              announcer, focus, keyboard shortcuts
@@ -235,7 +234,7 @@ folio/
 ├─ extensions/vscode/    VS Code extension: view PDFs in an editor tab (preview)
 ├─ e2e/                  Playwright end-to-end suite
 ├─ scripts/              build, release, and version/manifest parity checks
-└─ docs/                 architecture, accessibility, theming, plugins, AI
+└─ docs/                 architecture, accessibility, theming, plugins
 ```
 
 Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
@@ -251,7 +250,6 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Forms and signatures](docs/forms-and-signatures.md)
 - [Theming](docs/theming.md)
 - [Writing plugins](docs/plugins.md)
-- [AI and MCP](docs/ai.md)
 - [Testing](docs/testing.md)
 - [Releasing](docs/releasing.md) (signed installer + auto-updater) and the [release checklist](docs/release-checklist.md)
 - [VS Code extension](extensions/vscode/README.md) (preview: view PDFs in an editor tab)

@@ -83,10 +83,10 @@ about your browsing.
 ## Artificial intelligence
 
 The browser extension ships no AI features and sends nothing to any AI provider.
-The desktop application contains opt-in, bring-your-own-key AI scaffolding that
-is off by default; if AI features ever reach the extension, they would send
-document text to a provider you chose, and this policy will be updated before
-that ships.
+The desktop application does not include AI features either. AI is planned as
+opt-in, bring-your-own-key, and off by default; if AI features ever reach the
+extension, they would send document text to a provider you chose, and this
+policy will be updated before that ships.
 
 ## Children
 
