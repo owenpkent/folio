@@ -6,19 +6,40 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-01
+
+### Fixed
+
+- **Form fields in dark mode**: fillable fields were near-invisible, with the
+  PDF's own black ink on the inverted page, or light text on an un-inverted white
+  box. They now take the page's ink (white for Night, the tint for Green and
+  Amber) over the dark page. List boxes keep their selection highlight.
+- **Checkboxes and radio buttons now show their state.** Ticking one changed its
+  value, and what got saved, but never the picture, in either theme: the glyphs
+  were painted into the page once, as loaded. They now update on click, and
+  follow the dark reading color.
+
 ### Removed
 
+- The unused `tauri-plugin-fs` registration: nothing called it and no capability
+  granted it, and removing it shrinks the IPC surface. File IO goes through
+  Folio's own commands, as before.
 - Unused `src/ai/` scaffold (Claude provider, MCP stubs) and `docs/ai.md`; the AI
   features remain planned for v0.5.
 
 ### Security
 
+- Updater: `tauri-plugin-updater` 2.14.1, which moves its Windows `zip`
+  dependency from 4.x to 9.x, clearing GHSA-m665-v7pm-7grj (critical),
+  GHSA-q7v9-x93c-xqv3 (high) and GHSA-8hxf-qr8p-62x4 (medium).
 - Lint toolchain: replace `eslint-plugin-jsx-a11y` with its maintained fork
   `eslint-plugin-jsx-a11y-x` and force `minimatch` 11.0.3, clearing
   GHSA-g3hv-75wg-m249. Also bump the transitive `zod` (via
   `eslint-plugin-react-hooks`) to 4.6.7 for GHSA-mrhx-c7xc-m3w5. Both are dev-only.
 
 ## [0.8.0] - 2026-10-07
+
+Prepared but never published; everything below first shipped in 0.8.1.
 
 ### Changed
 
@@ -1136,8 +1157,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
   cargo-deny policy.
 
-[Unreleased]: https://github.com/owenpkent/folio/compare/v0.8.0...HEAD
-[0.8.0]: https://github.com/owenpkent/folio/compare/v0.7.0...v0.8.0
+[Unreleased]: https://github.com/owenpkent/folio/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/owenpkent/folio/compare/v0.7.0...v0.8.1
+[0.8.0]: https://github.com/owenpkent/folio/compare/v0.7.0...303d363
 [0.7.0]: https://github.com/owenpkent/folio/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/owenpkent/folio/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/owenpkent/folio/compare/v0.4.0...v0.5.0
