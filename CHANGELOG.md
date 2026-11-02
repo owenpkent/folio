@@ -11,6 +11,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Unused `src/ai/` scaffold (Claude provider, MCP stubs) and `docs/ai.md`; the AI
   features remain planned for v0.5.
 
+### Security
+
+- Lint toolchain: replace `eslint-plugin-jsx-a11y` with its maintained fork
+  `eslint-plugin-jsx-a11y-x` and force `minimatch` 11.0.3, clearing
+  GHSA-g3hv-75wg-m249. Also bump the transitive `zod` (via
+  `eslint-plugin-react-hooks`) to 4.6.7 for GHSA-mrhx-c7xc-m3w5. Both are dev-only.
+
 ## [0.8.0] - 2026-10-07
 
 ### Changed

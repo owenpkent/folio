@@ -3,7 +3,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
-import jsxA11y from 'eslint-plugin-jsx-a11y';
+import jsxA11y from 'eslint-plugin-jsx-a11y-x';
 
 export default tseslint.config(
   {
@@ -43,7 +43,7 @@ export default tseslint.config(
     plugins: {
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
-      'jsx-a11y': jsxA11y,
+      'jsx-a11y-x': jsxA11y,
     },
     rules: {
       // Name the two react-hooks rules instead of spreading the plugin's
@@ -55,7 +55,7 @@ export default tseslint.config(
       // not arrive because an upstream preset grew.
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
-      ...jsxA11y.flatConfigs.recommended.rules,
+      ...jsxA11y.configs.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       // A placed overlay (text box, image, check mark, signature) is a focusable
       // composite: `role="group"` with a name, an accessible description of its
@@ -65,8 +65,8 @@ export default tseslint.config(
       // any non-widget role is inert, which is the false positive they are known
       // for. Allowlisting `group` specifically keeps them enforcing everywhere
       // else, rather than scattering per-line disables across four layers.
-      'jsx-a11y/no-noninteractive-tabindex': ['error', { tags: [], roles: ['group'] }],
-      'jsx-a11y/no-noninteractive-element-interactions': [
+      'jsx-a11y-x/no-noninteractive-tabindex': ['error', { tags: [], roles: ['group'] }],
+      'jsx-a11y-x/no-noninteractive-element-interactions': [
         'error',
         { handlers: ['onClick', 'onMouseDown', 'onMouseUp', 'onKeyPress', 'onKeyUp'] },
       ],

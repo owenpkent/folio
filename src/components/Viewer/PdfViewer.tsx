@@ -446,7 +446,7 @@ export function PdfViewer() {
       onContextMenu={onContextMenu}
       // A scrollable region must be keyboard focusable so it can be scrolled
       // with the arrow keys (WCAG 2.1.1).
-      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+      // eslint-disable-next-line jsx-a11y-x/no-noninteractive-tabindex
       tabIndex={0}
     >
       {status === 'loading' && <div className="folio-viewer-message">Opening document…</div>}

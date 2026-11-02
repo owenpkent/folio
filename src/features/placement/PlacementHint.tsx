@@ -57,7 +57,7 @@ export function PlacementHint() {
       {/* The live region is the message alone: a status region holding the
           buttons would re-announce them on every change. */}
       <span role="status">Click on the page to place the {pending.label}.</span>
-      {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the banner is a
+      {/* eslint-disable-next-line jsx-a11y-x/no-autofocus -- the banner is a
           transient mode surface, like the search bar; focusing it is what makes
           the mode operable without a pointer. */}
       <Button variant="primary" autoFocus onClick={placeInMiddle}>

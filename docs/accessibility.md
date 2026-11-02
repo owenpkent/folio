@@ -107,7 +107,7 @@ Form fields and signatures: filled AcroForm fields are native HTML inputs, so th
 > radio group inherits the same `/TU`, so the options announce identically with
 > no export value and no `1 of 2` position, leaving them indistinguishable
 > ([#90](https://github.com/owenpkent/folio/issues/90)). Both pass axe and
-> `eslint-plugin-jsx-a11y`, because in both cases the markup is valid and every
+> `eslint-plugin-jsx-a11y-x`, because in both cases the markup is valid and every
 > control has a non-empty name.
 
 Editing text in place: the **Edit text** tool toggle (`textedit.toggle`) is a command reachable from its Edit-menu item, like the others above. Once it is on, clicking a run of text opens an inline editor: a focused `role="textbox"` with its own `aria-label`, committing on `Enter` and cancelling on `Escape` like a native control. Choosing *which* run to edit is pointer-only today: the hit target is sized to the page and keyed to click coordinates, with no keyboard-driven way to tab between editable runs. While the tool is on, **Ctrl/Cmd+Z** (`textedit.undo`) undoes the most recent commit, up to 10 edits back. See [editing-and-ocr.md](editing-and-ocr.md#editing-existing-text).
@@ -315,7 +315,7 @@ Accessibility is verified continuously, not audited once.
 
 **Automated (in CI):**
 
-- **eslint-plugin-jsx-a11y** flags missing labels, unsupported ARIA, and other markup issues on every push and pull request (see the `quality` CI job).
+- **eslint-plugin-jsx-a11y-x** (the maintained fork of eslint-plugin-jsx-a11y) flags missing labels, unsupported ARIA, and other markup issues on every push and pull request (see the `quality` CI job).
 - **Vitest** unit tests cover keyboard-shortcut dispatch (chords, the typing-in-input guard, and `when()` gating) and the stores behind accessible state.
 - **Playwright** end-to-end tests drive real keyboard and pointer flows in a browser (open, render, fill a form, sign), including `Page Up`/`Page Down` scrolling both with focus in the document and after it has moved to the toolbar. See [testing.md](testing.md).
 
