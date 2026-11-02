@@ -67,7 +67,17 @@ Omit `--bundles nsis` to also build the MSI (`Folio_<ver>_x64_en-US.msi` +
 `.msi.sig`). `createUpdaterArtifacts` is on, so the build **fails loudly** if
 `TAURI_SIGNING_PRIVATE_KEY` is unset — that guards against shipping an installer
 the updater can't verify. During bundling, `signtool` triggers the SafeNet token
-PIN prompt on your desktop; enter it there.
+PIN prompt on your desktop; enter it there. `signtool` does not need to be on
+`PATH`: `scripts/sign-windows.ps1` falls back to the newest x64 copy in the
+Windows 10 SDK.
+
+> [!WARNING]
+> The sign script **skips signing quietly when the EV certificate is absent**
+> (so CI and dev builds still pass), and the build still succeeds. A release
+> built without the token plugged in is unsigned with no error. Always check the
+> result before publishing:
+> `Get-AuthenticodeSignature <exe> | Format-List Status, SignerCertificate`
+> must show `Status: Valid` and `CN=OK Studio Inc.`
 
 > If `CARGO_TARGET_DIR` is set (a redirected Rust output dir), the bundles land
 > under `$CARGO_TARGET_DIR/release/bundle/nsis/`, not `src-tauri/target/…`.
@@ -122,6 +132,8 @@ The Rust side needs `cargo-cyclonedx` (`cargo install cargo-cyclonedx` once); th
 side runs `@cyclonedx/cyclonedx-npm` via `npx` with no install.
 
 Attach both to the GitHub release in step 4 so the SBOM travels with the binary.
+`release/sbom/` keeps every earlier version's SBOMs too, so attach this
+version's two files by name, not the whole directory.
 
 ### 4. Publish the GitHub Release
 
@@ -134,13 +146,24 @@ Create it as a **draft** first, verify, then publish:
 
 ```bash
 git tag v<ver> && git push origin v<ver>
-gh release create v<ver> --draft \
+gh release create v<ver> --draft --verify-tag \
   --title "Folio <ver>" \
-  --notes "See CHANGELOG" \
+  --notes-file <notes.md> \
   "src-tauri/target/release/bundle/nsis/Folio_<ver>_x64-setup.exe" \
   release/latest.json \
-  release/sbom/*
+  release/sbom/Folio_<ver>_sbom.npm.cyclonedx.json \
+  release/sbom/Folio_<ver>_sbom.cargo.cyclonedx.json
 ```
+
+Write the notes from the CHANGELOG section for `<ver>`. If an earlier version
+was cut in the CHANGELOG but never published (0.8.0 was; 0.8.1 shipped it),
+users are coming from the last *published* release, so include that section
+too. Any change that breaks something for an existing user (a file format no
+longer read, a setting removed) gets an upgrade note at the top.
+
+Before publishing, download the draft's installer and `latest.json` back
+(`gh release download v<ver> -D <dir>`) and compare them with the local files
+(SHA-256 for the installer, byte-for-byte for the manifest).
 
 `latest.json` **must** be attached so
 `.../releases/latest/download/latest.json` resolves. Then walk

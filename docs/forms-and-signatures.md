@@ -17,10 +17,19 @@ PDFs with an AcroForm (text fields, checkboxes, radio buttons, dropdowns, list
 boxes) render as real, interactive fields directly over the page.
 
 - Rendering is handled by PDF.js. For each page the engine calls
-  `renderAnnotationLayer(pageNumber, container, { scale, signal })`, which builds
-  the PDF.js annotation layer with `renderForms: true`. The fields are native
-  HTML inputs, so they are focusable, keyboard-operable, and exposed to screen
-  readers.
+  `renderAnnotationLayer(pageNumber, container, { scale, signal, annotationCanvases })`,
+  which builds the PDF.js annotation layer with `renderForms: true`. The fields
+  are native HTML inputs, so they are focusable, keyboard-operable, and exposed
+  to screen readers.
+- Checkbox and radio glyphs are not part of the input: PDF.js paints each
+  state (checked, unchecked) onto a small canvas of its own, and its CSS shows
+  whichever matches the input. Those canvases are produced by the *page* render
+  and placed by the *layer* render, so `Page.tsx` creates one
+  `AnnotationCanvasMap` per render pass and passes the same map to
+  `renderPage` and `renderAnnotationLayer`. Without it PDF.js bakes the glyphs
+  into the page as loaded, and ticking a box changes its value but never its
+  picture. The map is single-use: the layer empties it as it places the
+  canvases.
 - Because those inputs already display each field's value, the page raster must
   leave the widgets out, which is what `renderPage({ overlayForms: true })` does.
   Otherwise PDF.js paints the value into the canvas as well and the two copies
@@ -31,6 +40,9 @@ boxes) render as real, interactive fields directly over the page.
 - The field layer sits above the text layer (`z-index: 3`) so fields are
   clickable, while the layer itself is `pointer-events: none` between fields, so
   text selection elsewhere on the page still works.
+- In dark mode the fields are re-inked to match the inverted page, and the
+  glyph canvases are inverted with it; see
+  [theming.md](theming.md#form-fields-in-dark-mode).
 
 To detect whether a document has fillable fields, the engine exposes
 `hasFormFields()`, and `getPendingEditCount()` reports how many fields have

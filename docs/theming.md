@@ -102,6 +102,13 @@ Pages re-render whenever the theme or the dark scheme (below) changes, since the
 
 The text layer is unaffected either way: it is a transparent, positioned overlay used for selection and screen readers (see `docs/accessibility.md`), not a visible raster, so there is nothing on it to invert or tint.
 
+### Form fields in dark mode
+
+Fillable form fields are the exception: they sit over the inverted page as live HTML, which the raster pass never touches, and PDF.js styles them inline with the PDF's own ink and field background (usually black on white). Two things make them match the page:
+
+- **Field text** is re-inked in CSS (`.folio-forms-layer` in `src/styles/global.css`). Under `[data-theme='dark']`, inputs, text areas and selects take `--folio-field-ink`, with `!important` to beat the inline color, and a transparent background so the inverted page shows through. `Page.tsx` sets `--folio-field-ink` on each page to the dark scheme's tint (below); Night falls back to white. Dropdown options, which paint in a popup rather than on the page, use the app's dark surface; list boxes (`<select size>`) are left alone so the browser keeps its selected-item highlight.
+- **Checkbox and radio glyphs** are canvases PDF.js paints per widget, one per on/off state (see [forms-and-signatures.md](forms-and-signatures.md)). `renderPage` inverts and tints them along with the page, but per pixel (`invertKeepingAlpha` in `PdfJsEngine.ts`) rather than with difference-with-white, because they are transparent around the glyph and that composite would turn the transparency opaque white.
+
 Under forced colors (Windows High Contrast) the canvas still sets `forced-color-adjust: none`, so the document keeps its authored colors, and dark mode's own inversion still applies on top as the user's explicit choice — see [508-conformance.md](508-conformance.md).
 
 ## Dark reading schemes
