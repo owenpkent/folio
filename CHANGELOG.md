@@ -38,9 +38,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   WebAssembly targets build; Windows verifies against the system store.
 - `tokio` 1.54.1, clearing RUSTSEC-2026-0386 (unsound `AsyncFd` constructors).
   `AsyncFd` is Unix-only, so Windows builds were never exposed.
-- Remaining `cargo audit` warnings are Linux-only and wait on upstream: `glib`
-  and `proc-macro-error` (Tauri's GTK 3 stack, #58), and `zbus_names`,
-  `zvariant` and `zvariant_derive` (the single-instance plugin's `zbus` 5).
 - Lint toolchain: replace `eslint-plugin-jsx-a11y` with its maintained fork
   `eslint-plugin-jsx-a11y-x` and force `minimatch` 11.0.3, clearing
   GHSA-g3hv-75wg-m249. Also bump the transitive `zod` (via
