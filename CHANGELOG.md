@@ -32,9 +32,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Updater: `tauri-plugin-updater` 2.14.1, which moves its Windows `zip`
   dependency from 4.x to 9.x, clearing GHSA-m665-v7pm-7grj (critical),
   GHSA-q7v9-x93c-xqv3 (high) and GHSA-8hxf-qr8p-62x4 (medium).
-- Updater TLS: `rustls-webpki` 0.103.16 and `webpki-root-certs` 1.0.11, so the
-  update download no longer trusts distrusted certificate intermediates
-  (RUSTSEC-2026-0382, RUSTSEC-2026-0383).
+- Updater TLS: `rustls-webpki` 0.103.16, so the update download no longer
+  accepts distrusted certificate intermediates (RUSTSEC-2026-0382). The lockfile
+  also moves `webpki-root-certs` to 1.0.11 (RUSTSEC-2026-0383), which only
+  WebAssembly targets build; Windows verifies against the system store.
 - Lint toolchain: replace `eslint-plugin-jsx-a11y` with its maintained fork
   `eslint-plugin-jsx-a11y-x` and force `minimatch` 11.0.3, clearing
   GHSA-g3hv-75wg-m249. Also bump the transitive `zod` (via
