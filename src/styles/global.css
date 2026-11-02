@@ -1061,6 +1061,25 @@ kbd {
 .folio-forms-layer {
   z-index: 3;
 }
+/* The page canvas inverts in dark mode, but the fields above it are live HTML
+   that PDF.js styles with the PDF's own (usually black) ink, inline. Re-ink
+   them to match the inverted page; --folio-field-ink carries the Green/Amber
+   tint (set per page in Page.tsx), defaulting to Night's white. */
+:root[data-theme='dark'] .folio-forms-layer {
+  --input-hover-border-color: var(--folio-field-ink, #fff);
+  color-scheme: dark;
+}
+:root[data-theme='dark'] .folio-forms-layer :is(input, textarea, select) {
+  color: var(--folio-field-ink, #fff) !important;
+  /* The field's own background (usually white, also inline) would sit
+     un-inverted under the light ink; let the inverted page show through. */
+  background-color: transparent !important;
+  caret-color: var(--folio-field-ink, #fff);
+}
+:root[data-theme='dark'] .folio-forms-layer select option {
+  background: var(--folio-surface);
+  color: var(--folio-text);
+}
 .folio-annotation--highlight {
   position: absolute;
   border-radius: 2px;

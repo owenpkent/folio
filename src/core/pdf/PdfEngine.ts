@@ -9,6 +9,7 @@ import type {
   PageLink,
   PdfDocumentInfo,
   PdfMetadata,
+  RenderAnnotationLayerOptions,
   RenderLayerOptions,
   RenderPageOptions,
   SearchMatch,
@@ -97,7 +98,7 @@ export interface PdfEngine {
   renderAnnotationLayer(
     pageNumber: number,
     container: HTMLElement,
-    options: RenderLayerOptions,
+    options: RenderAnnotationLayerOptions,
   ): Promise<void>;
 
   /** Whether the document contains fillable AcroForm fields. */

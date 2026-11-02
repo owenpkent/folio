@@ -187,9 +187,18 @@ test('a real checkbox widget renders, is keyboard reachable, and toggles', async
   await page.keyboard.press('Space');
   await expect(checkbox).toBeChecked();
 
+  // And shows it: the glyph is a per-widget canvas PDF.js swaps on the input's
+  // state. Without the page render's annotationCanvasMap it is baked into the
+  // page as loaded instead, and a ticked box looks exactly like an empty one.
+  const glyph = (name: string) =>
+    page.locator(`.folio-forms-layer .checkBox [data-canvas-name="${name}"]`);
+  await expect(glyph('checked')).toBeVisible();
+  await expect(glyph('unchecked')).toBeHidden();
+
   // And toggles back off on a real pointer click.
   await checkbox.click();
   await expect(checkbox).not.toBeChecked();
+  await expect(glyph('checked')).toBeHidden();
 });
 
 test('a checkbox still toggles while the Edit text tool is on', async ({ page }) => {
