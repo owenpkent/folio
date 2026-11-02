@@ -272,7 +272,10 @@ organized and what is covered. All tests must pass in CI before a PR can merge.
   and reports findings that cannot be fixed from here at all. One is open and
   documented, with the evidence for why it is unfixable or does not apply:
   [#58](https://github.com/owenpkent/folio/issues/58) (`glib`, Linux-only, pinned
-  by Tauri). `node-forge` (GHSA-86w9-cpqp-85rv, no patched release) used to be on
+  by Tauri). The `cargo audit` warnings on `zvariant`, `zbus_names` and
+  `zvariant_derive` (Linux-only, via `tauri-plugin-single-instance`) are
+  tracked in [docs/SECURITY-EXCEPTIONS.md](docs/SECURITY-EXCEPTIONS.md).
+  `node-forge` (GHSA-86w9-cpqp-85rv, no patched release) used to be on
   this list; it was removed from the dependency tree instead, and the header of
   `src/features/signing/verify.ts` records why RSA verification must use
   WebCrypto. Add to that list rather than silently carrying a finding.
