@@ -66,7 +66,9 @@ The short version:
 ### Prerequisites
 
 - **Node.js >= 22.22.2** (CI runs on 22 and 24) and **npm**.
-- **Rust (stable)** via [rustup](https://rustup.rs/).
+- **Rust 1.90 or newer** (stable) via [rustup](https://rustup.rs/). The floor is
+  `rust-version` in `src-tauri/Cargo.toml`, set by the dependencies (Tauri 2.12
+  needs 1.90); raise it when a dependency update does.
 - Tauri's OS prerequisites. On Debian/Ubuntu Linux:
 
   ```bash

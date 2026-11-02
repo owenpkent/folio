@@ -24,7 +24,13 @@ issue or defer the release.
 - [ ] `cargo audit --file src-tauri/Cargo.lock`: **zero vulnerabilities**. The
       standing warning count is unmaintained/unsound advisories on transitive crates,
       most of them Tauri's Linux GTK stack, which Windows builds never compile. Treat a
-      *new* warning as worth reading and any actual vulnerability as blocking
+      *new* warning as worth reading and any actual vulnerability as blocking.
+      As of 0.8.1 the expected set is five, all Linux-only and blocked upstream:
+      `glib` and `proc-macro-error` (Tauri's GTK 3 stack, #58), and `zbus_names`,
+      `zvariant`, `zvariant_derive` (`tauri-plugin-single-instance`'s `zbus` 5;
+      they clear once tauri-apps/plugins-workspace#3722 ships `zbus` 6). Check
+      first whether `cargo update -p <crate>` already clears a warning (0.8.1's
+      `tokio` one did)
 - [ ] `npm run build` — clean production build, no warnings worth investigating
 - [ ] `npm run test:e2e` — Playwright smoke suite green (needs `npx playwright install chromium`, and again after any `@playwright/test` upgrade, or every spec fails at 0ms on a missing browser)
 - [ ] No outstanding **High** or **Critical** Dependabot alerts on `main`
@@ -66,9 +72,9 @@ plugged in (see [releasing.md → Why one invocation](releasing.md#why-one-invoc
 On the EV-cert Windows host:
 
 - [ ] `bundle.windows.signCommand` invokes `scripts/sign-windows.ps1` (filters vendor DLLs, retries on Defender file locks)
-- [ ] `signtool.exe` is on `PATH` for the build shell — typically `C:\Program Files (x86)\Windows Kits\10\bin\<latest>\x64`. Verify with `Get-Command signtool.exe`.
+- [ ] `signtool.exe` is available: on `PATH`, or installed with the Windows 10 SDK under `C:\Program Files (x86)\Windows Kits\10\bin\<ver>\x64`, where the sign script finds the newest copy itself.
 - [ ] `npx tauri build` produces `Folio_<ver>_x64-setup.exe` and a matching `Folio_<ver>_x64-setup.exe.sig` in `src-tauri/target/release/bundle/nsis/`. Sidecars only appear when `TAURI_SIGNING_PRIVATE_KEY[_PASSWORD]` are set; if missing, the build **fails** because `bundle.createUpdaterArtifacts` is `true`.
-- [ ] EV signature is valid: `Get-AuthenticodeSignature <exe> | Format-List Status, SignerCertificate` shows `Status: Valid`, signer `CN=OK Studio Inc.` (or `signtool verify /pa /v <exe>`)
+- [ ] EV signature is valid: `Get-AuthenticodeSignature <exe> | Format-List Status, SignerCertificate` shows `Status: Valid`, signer `CN=OK Studio Inc.` (or `signtool verify /pa /v <exe>`). Never skip this: the sign script skips quietly when the token is not plugged in, and the build still succeeds.
 - [ ] `release/latest.json` `signature` for `windows-x86_64` matches the contents of `Folio_<ver>_x64-setup.exe.sig`, and `pub_date` is the current UTC time
 - [ ] File association survived the build. Tauri regenerates the NSIS script on
   every build, and nothing fails if the hook stops being applied, so check
@@ -142,7 +148,8 @@ no release workflow.
 
 - [ ] `git tag v<ver> && git push origin v<ver>`
 - [ ] Regenerate the manifest: `node scripts/generate-latest.mjs --version <ver> --notes "…"`
-- [ ] `gh release create v<ver> --draft --title "Folio <ver>" src-tauri/target/release/bundle/nsis/Folio_<ver>_x64-setup.exe release/latest.json release/sbom/*`
+- [ ] `gh release create v<ver> --draft --verify-tag --title "Folio <ver>" --notes-file <notes.md> src-tauri/target/release/bundle/nsis/Folio_<ver>_x64-setup.exe release/latest.json release/sbom/Folio_<ver>_sbom.npm.cyclonedx.json release/sbom/Folio_<ver>_sbom.cargo.cyclonedx.json` (this version's SBOMs only; `release/sbom/` keeps every earlier version's too)
+- [ ] Draft assets match the local build: download the installer and `latest.json` back from the draft and compare (SHA-256 / byte-for-byte)
 - [ ] Publish the draft release
 - [ ] `curl -I https://github.com/owenpkent/folio/releases/latest/download/latest.json` returns `200` (the URL Tauri's updater hits)
 - [ ] One existing-install machine (your own) auto-updates on relaunch and lands on the new version
