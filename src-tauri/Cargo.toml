@@ -6,7 +6,7 @@ authors = ["the Folio contributors"]
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/owenpkent/folio"
-rust-version = "1.77"
+rust-version = "1.90"
 
 # The library is what Tauri's mobile targets link against; `main.rs` is a thin
 # shim that calls into it. Keep application logic in `lib.rs`.
