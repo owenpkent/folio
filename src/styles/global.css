@@ -1076,7 +1076,11 @@ kbd {
   background-color: transparent !important;
   caret-color: var(--folio-field-ink, #fff);
 }
-:root[data-theme='dark'] .folio-forms-layer select option {
+/* Dropdowns only: their options paint in a popup, which needs the app's dark
+   surface. PDF.js gives list boxes a `size`, and their options sit on the page,
+   where a background here would cover the browser's highlight on the selected
+   item once the box loses focus. */
+:root[data-theme='dark'] .folio-forms-layer select:not([size]) option {
   background: var(--folio-surface);
   color: var(--folio-text);
 }
