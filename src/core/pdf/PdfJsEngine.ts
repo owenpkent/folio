@@ -21,6 +21,7 @@ import type {
   PageLink,
   PdfDocumentInfo,
   PdfMetadata,
+  RenderAnnotationLayerOptions,
   RenderLayerOptions,
   RenderPageOptions,
   SearchMatch,
@@ -198,7 +199,15 @@ export class PdfJsEngine implements PdfEngine {
   }
 
   async renderPage(pageNumber: number, options: RenderPageOptions): Promise<void> {
-    const { scale, canvas, signal, overlayForms = false, invert = false, tint } = options;
+    const {
+      scale,
+      canvas,
+      signal,
+      overlayForms = false,
+      invert = false,
+      tint,
+      annotationCanvases,
+    } = options;
     const page = await this.getPage(pageNumber);
     // Bail before sizing the canvas below, the way the layer renders do after
     // their own awaits. A page scrolled away mid-fetch has already had its
@@ -249,6 +258,9 @@ export class PdfJsEngine implements PdfEngine {
       annotationMode: overlayForms
         ? pdfjsLib.AnnotationMode.ENABLE_FORMS
         : pdfjsLib.AnnotationMode.ENABLE,
+      // Cast: the published type predates the per-state arrays (checked and
+      // unchecked glyphs) that render() now stores for one annotation id.
+      annotationCanvasMap: annotationCanvases as Map<string, HTMLCanvasElement> | undefined,
     });
     // Registered after the awaits above, so a signal that aborted while we were
     // fetching the page would never reach the task.
@@ -285,6 +297,9 @@ export class PdfJsEngine implements PdfEngine {
         context.fillRect(0, 0, canvas.width, canvas.height);
       }
       context.restore();
+      for (const entry of annotationCanvases?.values() ?? []) {
+        for (const own of Array.isArray(entry) ? entry : [entry]) invertKeepingAlpha(own, tint);
+      }
     }
   }
 
@@ -330,9 +345,9 @@ export class PdfJsEngine implements PdfEngine {
   async renderAnnotationLayer(
     pageNumber: number,
     container: HTMLElement,
-    options: RenderLayerOptions,
+    options: RenderAnnotationLayerOptions,
   ): Promise<void> {
-    const { scale, signal } = options;
+    const { scale, signal, annotationCanvases } = options;
     await serializePerContainer(container, async () => {
       const doc = this.requireDoc();
       const page = await this.getPage(pageNumber);
@@ -350,7 +365,10 @@ export class PdfJsEngine implements PdfEngine {
       const layer = new pdfjsLib.AnnotationLayer({
         div: container as HTMLDivElement,
         accessibilityManager: null,
-        annotationCanvasMap: null,
+        // The checkbox/radio glyphs renderPage drew for this page. The layer
+        // moves them into their widgets, where PDF.js's CSS shows the on or off
+        // one to match the input.
+        annotationCanvasMap: annotationCanvases ?? null,
         annotationEditorUIManager: null,
         page,
         viewport: flipped,
@@ -565,6 +583,30 @@ export class PdfJsEngine implements PdfEngine {
  * The total is scale x the page's /UserUnit, matching what PageViewport itself
  * multiplied the page box by, so the CSS box lines up with the canvas.
  */
+/**
+ * Dark mode for a widget's own canvas (see `annotationCanvases`): invert each
+ * pixel, then multiply by the tint, as the page pass does. Per pixel rather
+ * than difference-with-white because these canvases are transparent around
+ * the glyph, and that composite would turn the transparency opaque white.
+ * Exported for tests.
+ */
+export function invertKeepingAlpha(
+  canvas: HTMLCanvasElement,
+  tint?: [number, number, number],
+): void {
+  const context = canvas.getContext('2d');
+  if (!context || canvas.width === 0 || canvas.height === 0) return;
+  const image = context.getImageData(0, 0, canvas.width, canvas.height);
+  const px = image.data;
+  const [r, g, b] = tint ?? [255, 255, 255];
+  for (let i = 0; i < px.length; i += 4) {
+    px[i] = ((255 - px[i]) * r) / 255;
+    px[i + 1] = ((255 - px[i + 1]) * g) / 255;
+    px[i + 2] = ((255 - px[i + 2]) * b) / 255;
+  }
+  context.putImageData(image, 0, 0);
+}
+
 function setLayerScale(container: HTMLElement, viewport: PageViewport): void {
   const { style } = container;
   style.setProperty('--scale-factor', String(viewport.scale));

@@ -1,9 +1,9 @@
-import { memo, useEffect, useRef, useSyncExternalStore } from 'react';
+import { memo, useEffect, useRef, useSyncExternalStore, type CSSProperties } from 'react';
 
 // PDF.js text-layer positioning styles. Imported once; harmless if repeated.
 import 'pdfjs-dist/web/pdf_viewer.css';
 
-import { getEngine } from '@/core/pdf';
+import { getEngine, type AnnotationCanvasMap } from '@/core/pdf';
 import { getIntrinsicSize, measurePage, subscribePageSizes } from '@/core/pdf/pageSizes';
 import { useNearViewport } from '@/hooks/useNearViewport';
 import { AnnotationLayer, NotesLayer } from '@/features/annotations';
@@ -128,6 +128,9 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
     const controller = new AbortController();
     let active = true;
     const engine = getEngine();
+    // Checkbox and radio glyphs: drawn by the page render, placed in their
+    // widgets by the forms layer. Fresh per pass, since the layer empties it.
+    const annotationCanvases: AnnotationCanvasMap = new Map();
 
     void (async () => {
       const { signal } = controller;
@@ -139,13 +142,18 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
           overlayForms: true,
           invert: dark,
           tint,
+          annotationCanvases,
         });
         if (!active) return;
         if (formsLayerRef.current) {
           // Reads doc.annotationStorage off the engine's *current* document
           // proxy, so re-running this after a docVersion bump rebinds the
           // rendered widgets to the new document instead of the stale one.
-          await engine.renderAnnotationLayer(pageNumber, formsLayerRef.current, { scale, signal });
+          await engine.renderAnnotationLayer(pageNumber, formsLayerRef.current, {
+            scale,
+            signal,
+            annotationCanvases,
+          });
         }
         if (!active) return;
         pluginHost.emitPageRender({ pageNumber, scale });
@@ -193,7 +201,14 @@ export const Page = memo(function Page({ pageNumber, scale }: PageProps) {
       data-page-number={pageNumber}
       role="group"
       aria-label={`Page ${pageNumber}`}
-      style={dims ? { width: dims.width, height: dims.height } : undefined}
+      style={
+        {
+          ...(dims && { width: dims.width, height: dims.height }),
+          // Ink for fillable fields in dark mode, matching the page's tinted
+          // ink (see .folio-forms-layer in global.css).
+          ...(tint && { '--folio-field-ink': `rgb(${tint[0]}, ${tint[1]}, ${tint[2]})` }),
+        } as CSSProperties
+      }
     >
       {/* The raster is the visual copy only; the text layer over it is the
           accessible one, so keep the canvas out of the accessibility tree. */}

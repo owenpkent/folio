@@ -85,7 +85,19 @@ export interface RenderPageOptions {
    * the ink, preserving anti-aliasing. Only meaningful together with `invert`.
    */
   tint?: [number, number, number];
+  /**
+   * Collects the widgets PDF.js paints on canvases of their own instead of the
+   * page (checkbox and radio glyphs, one canvas per on/off state). Pass the
+   * same map to {@link PdfEngine.renderAnnotationLayer}, which places them in
+   * their widgets. Without it the glyphs are baked into the page in their
+   * load-time state and never change when a box is ticked. Only meaningful
+   * together with `overlayForms`. Inverted and tinted along with the page.
+   */
+  annotationCanvases?: AnnotationCanvasMap;
 }
+
+/** Per-annotation canvases, keyed by annotation id; see `annotationCanvases`. */
+export type AnnotationCanvasMap = Map<string, HTMLCanvasElement | HTMLCanvasElement[]>;
 
 /** Options for the DOM overlay renders (text layer, annotation layer). */
 export interface RenderLayerOptions {
@@ -95,6 +107,11 @@ export interface RenderLayerOptions {
    * its appends with a newer one and leave duplicated elements behind.
    */
   signal?: AbortSignal;
+}
+
+export interface RenderAnnotationLayerOptions extends RenderLayerOptions {
+  /** The map the page's {@link PdfEngine.renderPage} filled. */
+  annotationCanvases?: AnnotationCanvasMap;
 }
 
 /** A rasterised page image (e.g. for OCR): a PNG data URL plus its pixel size. */

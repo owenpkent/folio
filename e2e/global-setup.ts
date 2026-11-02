@@ -12,6 +12,42 @@ export default async function globalSetup(): Promise<void> {
   await writeFixture('e2e/fixtures/filled-form.pdf', await buildFilledForm());
   await writeFixture('e2e/fixtures/addresses.pdf', await buildAddresses());
   await writeFixture('e2e/fixtures/pages.pdf', await buildNumberedPages());
+  await writeFixture('e2e/fixtures/choices.pdf', await buildChoices());
+}
+
+/**
+ * Choice fields: a dropdown, a single-select list box, and a multi-select one,
+ * plus a text field to move focus to. PDF.js renders the list boxes as
+ * `<select size>`, which dark-mode styling has to leave its selection
+ * highlight on (see dark-forms.spec.ts).
+ */
+async function buildChoices(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const form = doc.getForm();
+  const page = doc.addPage([420, 560]);
+  const options = ['First', 'Second', 'Third'];
+
+  page.drawText('Dropdown:', { x: 40, y: 500, size: 12, font });
+  const dropdown = form.createDropdown('dropdown');
+  dropdown.addOptions(options);
+  dropdown.addToPage(page, { x: 140, y: 494, width: 160, height: 22 });
+
+  page.drawText('List:', { x: 40, y: 450, size: 12, font });
+  const list = form.createOptionList('list');
+  list.addOptions(options);
+  list.addToPage(page, { x: 140, y: 400, width: 160, height: 66 });
+
+  page.drawText('Multi:', { x: 40, y: 360, size: 12, font });
+  const multi = form.createOptionList('multi');
+  multi.addOptions(options);
+  multi.enableMultiselect();
+  multi.addToPage(page, { x: 140, y: 310, width: 160, height: 66 });
+
+  page.drawText('Notes:', { x: 40, y: 270, size: 12, font });
+  form.createTextField('notes').addToPage(page, { x: 140, y: 264, width: 160, height: 22 });
+
+  return doc.save();
 }
 
 /** The page size every address in {@link buildAddresses} is positioned against. */

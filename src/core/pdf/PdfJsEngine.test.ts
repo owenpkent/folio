@@ -111,7 +111,7 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => {
   };
 });
 
-import { PdfJsEngine } from './PdfJsEngine';
+import { invertKeepingAlpha, PdfJsEngine } from './PdfJsEngine';
 
 /** jsdom has no canvas backend; the engine only needs these two to answer. */
 function stubCanvas(): void {
@@ -200,6 +200,21 @@ describe('PdfJsEngine on the PDF.js 6 API', () => {
     expect(engine.getPendingEditCount()).toBe(1);
   });
 
+  it('hands the page render and the forms layer the same widget-canvas map', async () => {
+    const engine = await loadEngine();
+    const annotationCanvases = new Map();
+    const canvas = document.createElement('canvas');
+    const container = document.createElement('div');
+
+    await engine.renderPage(1, { scale: 1, canvas, overlayForms: true, annotationCanvases });
+    await engine.renderAnnotationLayer(1, container, { scale: 1, annotationCanvases });
+
+    // A null map on either side bakes checkbox glyphs into the page in their
+    // load-time state, so ticking a box never shows a check.
+    expect(state.renderParams[0].annotationCanvasMap).toBe(annotationCanvases);
+    expect(state.annotationLayerParams[0].annotationCanvasMap).toBe(annotationCanvases);
+  });
+
   it('declares the scale the v6 layer CSS reads on both layers', async () => {
     const engine = await loadEngine();
     const textContainer = document.createElement('div');
@@ -243,5 +258,35 @@ describe('PdfJsEngine on the PDF.js 6 API', () => {
 
       await expect(engine.saveDocument()).rejects.toThrow('stray )');
     });
+  });
+});
+
+describe('invertKeepingAlpha', () => {
+  /** A one-pixel-wide canvas whose 2D context reads and writes `pixels`. */
+  function canvasOf(pixels: number[]): HTMLCanvasElement {
+    const data = new Uint8ClampedArray(pixels);
+    const canvas = document.createElement('canvas');
+    canvas.width = pixels.length / 4;
+    canvas.height = 1;
+    canvas.getContext = (() => ({
+      getImageData: () => ({ data }),
+      putImageData: () => {},
+    })) as unknown as typeof canvas.getContext;
+    return canvas;
+  }
+
+  it('inverts colour and leaves transparency transparent', () => {
+    // A black glyph pixel, then a clear one around it.
+    const canvas = canvasOf([0, 0, 0, 255, 0, 0, 0, 0]);
+    invertKeepingAlpha(canvas);
+    const ctx = canvas.getContext('2d') as unknown as { getImageData: () => ImageData };
+    expect([...ctx.getImageData().data]).toEqual([255, 255, 255, 255, 255, 255, 255, 0]);
+  });
+
+  it('colours the inverted ink with the reading tint', () => {
+    const canvas = canvasOf([0, 0, 0, 255]);
+    invertKeepingAlpha(canvas, [240, 185, 80]);
+    const ctx = canvas.getContext('2d') as unknown as { getImageData: () => ImageData };
+    expect([...ctx.getImageData().data]).toEqual([240, 185, 80, 255]);
   });
 });
