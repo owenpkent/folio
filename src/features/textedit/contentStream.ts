@@ -9,7 +9,7 @@
  * spliceRun can make a surgical, otherwise byte-identical edit.
  */
 
-import type { LocatedRun, PageTextItemRef, RunColor, ShowOp } from './types';
+import type { LocatedGs, LocatedRun, PageTextItemRef, RunColor, ShowOp } from './types';
 
 // ---------------------------------------------------------------------------
 // Byte classification (ISO 32000-1 7.2.2/7.2.3)
@@ -317,6 +317,8 @@ interface GraphicsState {
   fillColor: RunColor;
   fontResource: string;
   tfSize: number;
+  tfOperator: string;
+  gsOperators: LocatedGs[];
   tl: number;
 }
 
@@ -331,6 +333,8 @@ interface InterpreterState {
   tl: number;
   fontResource: string;
   tfSize: number;
+  tfOperator: string;
+  gsOperators: LocatedGs[];
 }
 
 function initialState(): InterpreterState {
@@ -343,6 +347,8 @@ function initialState(): InterpreterState {
     tl: 0,
     fontResource: '',
     tfSize: 0,
+    tfOperator: '',
+    gsOperators: [],
   };
 }
 
@@ -392,6 +398,10 @@ function buildRun(
     y,
     fontSize: state.tfSize * scaleY,
     fontResource: state.fontResource,
+    tfSize: state.tfSize,
+    textScale: scaleY,
+    tfOperator: state.tfOperator,
+    gsOperators: [...state.gsOperators],
     color: { ...state.fillColor },
     editable: !rotatedOrSkewed,
   };
@@ -517,6 +527,8 @@ export function parseContentStreams(
             fillColor: state.fillColor,
             fontResource: state.fontResource,
             tfSize: state.tfSize,
+            tfOperator: state.tfOperator,
+            gsOperators: state.gsOperators,
             tl: state.tl,
           });
           break;
@@ -527,6 +539,8 @@ export function parseContentStreams(
             state.fillColor = restored.fillColor;
             state.fontResource = restored.fontResource;
             state.tfSize = restored.tfSize;
+            state.tfOperator = restored.tfOperator;
+            state.gsOperators = restored.gsOperators;
             state.tl = restored.tl;
           }
           break;
@@ -579,6 +593,22 @@ export function parseContentStreams(
           const sizeTok = operands.find((t) => t.kind === 'number');
           if (nameTok) state.fontResource = nameTok.text ?? '';
           if (sizeTok) state.tfSize = sizeTok.num ?? 0;
+          state.tfOperator = decodeLatin1(bytes, start, operatorEnd);
+          state.gsOperators = [];
+          break;
+        }
+        case 'gs': {
+          const nameTok = operands.find((t) => t.kind === 'name');
+          if (nameTok) {
+            state.gsOperators = [
+              ...state.gsOperators,
+              {
+                raw: decodeLatin1(bytes, start, operatorEnd),
+                name: nameTok.text ?? '',
+                streamIndex,
+              },
+            ];
+          }
           break;
         }
         case 'TL': {
@@ -707,6 +737,8 @@ export function parseContentStreams(
           const savedFillColor = state.fillColor;
           const savedFontResource = state.fontResource;
           const savedTfSize = state.tfSize;
+          const savedTfOperator = state.tfOperator;
+          const savedGsOperators = state.gsOperators;
           const savedTl = state.tl;
           const savedTm = state.tm;
           const savedTlm = state.tlm;
@@ -724,6 +756,8 @@ export function parseContentStreams(
           state.fillColor = savedFillColor;
           state.fontResource = savedFontResource;
           state.tfSize = savedTfSize;
+          state.tfOperator = savedTfOperator;
+          state.gsOperators = savedGsOperators;
           state.tl = savedTl;
           state.tm = savedTm;
           state.tlm = savedTlm;
@@ -846,25 +880,37 @@ export function spliceOperatorBytes(
   const before = start > 0 ? stream[start - 1] : 0x20;
   const after = end < stream.length ? stream[end] : 0x20;
   const needsLeading = !isBoundaryByte(before) && !isBoundaryByte(replacement[0]);
-  const needsTrailing = !isBoundaryByte(after) && !isBoundaryByte(replacement[replacement.length - 1]);
+  const needsTrailing =
+    !isBoundaryByte(after) && !isBoundaryByte(replacement[replacement.length - 1]);
   if (!needsLeading && !needsTrailing) return spliceBytes(stream, start, end, replacement);
 
-  const padded = new Uint8Array(replacement.length + (needsLeading ? 1 : 0) + (needsTrailing ? 1 : 0));
+  const padded = new Uint8Array(
+    replacement.length + (needsLeading ? 1 : 0) + (needsTrailing ? 1 : 0),
+  );
   if (needsLeading) padded[0] = 0x20;
   padded.set(replacement, needsLeading ? 1 : 0);
   if (needsTrailing) padded[padded.length - 1] = 0x20;
   return spliceBytes(stream, start, end, padded);
 }
 
-export function spliceRun(stream: Uint8Array, run: LocatedRun): Uint8Array {
+/**
+ * Remove the run's show-text operator and put `insertion` (already-formed
+ * content-stream operators) where it was, so the replacement keeps the
+ * original's place in painting order. The side effects of ' and " are kept
+ * ahead of the insertion, as before.
+ */
+export function spliceRun(stream: Uint8Array, run: LocatedRun, insertion = ''): Uint8Array {
+  const extra = insertion.length > 0 ? ` ${insertion}` : '';
   if (run.op === 'Tj' || run.op === 'TJ') {
+    if (extra)
+      return spliceOperatorBytes(stream, run.start, run.end, textEncoder.encode(insertion));
     return removeOperatorBytes(stream, run.start, run.end);
   }
 
   if (run.op === "'") {
     // ' is defined as T* followed by showing the string; keep the T* so
     // whatever follows still gets the line advance it was written expecting.
-    return spliceBytes(stream, run.start, run.end, textEncoder.encode('T*'));
+    return spliceBytes(stream, run.start, run.end, textEncoder.encode(`T*${extra}`));
   }
 
   // '"': `aw ac string "` is defined as `aw Tw ac Tc string '`, i.e. it also
@@ -877,6 +923,6 @@ export function spliceRun(stream: Uint8Array, run: LocatedRun): Uint8Array {
   const ac = readNumber(stream, acStart);
   const awText = decodeLatin1(stream, aw.start, aw.end);
   const acText = decodeLatin1(stream, ac.start, ac.end);
-  const replacement = textEncoder.encode(`${awText} Tw ${acText} Tc T*`);
+  const replacement = textEncoder.encode(`${awText} Tw ${acText} Tc T*${extra}`);
   return spliceBytes(stream, run.start, run.end, replacement);
 }
