@@ -8,6 +8,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Finishing an update on Windows now really puts your document back.** The
+  note that reopens the open document after the restart was written after the
+  installer ran, and on Windows the updater exits Folio to run the installer,
+  so it was never written and the restart came up empty. It is now written
+  right before the installer runs, from whatever is open at that moment, and
+  the update prompt says that Folio restarts to finish, with the unsaved-edits
+  warning when it applies, including for an edit made while the download ran.
 - **Edited text keeps its place in the drawing order.** Replacement text was
   appended after everything else on the page, so a run that sat under an image
   or a filled box came out on top of it. It is now spliced in where the
