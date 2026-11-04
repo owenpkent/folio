@@ -11,7 +11,7 @@ import type { Annotation, NormalizedRect } from './types';
  * — see `stampAnnotations` in ./bake.ts.
  */
 
-const storageKey = (fingerprint: string) => `folio.annotations.${fingerprint}`;
+export const storageKey = (fingerprint: string) => `folio.annotations.${fingerprint}`;
 
 interface AnnotationState {
   fingerprint: string | null;

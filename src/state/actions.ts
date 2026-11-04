@@ -1,3 +1,4 @@
+import { contentKey } from '@/core/document/contentKey';
 import { pickAndReadDocument, type BytesDocumentSource } from '@/core/document/openDocument';
 import { getEngine, type DocumentSource } from '@/core/pdf';
 import { resetPageSizes } from '@/core/pdf/pageSizes';
@@ -21,6 +22,8 @@ import { useOcrStore } from '@/features/ocr';
 // in UI modules this low-level orchestration module has no business importing.
 import { usePageOpsStore } from '@/features/pageops/store';
 import { usePlacementStore } from '@/features/placement/store';
+// Store only, not the feature barrel: that also exports the banner component.
+import { useLegacySidecarStore } from '@/features/sidecar/legacyStore';
 import { useSignatureStore } from '@/features/signatures';
 import { detectSignatures, useSigningStore, type DetectedSignature } from '@/features/signing';
 // Import the store directly rather than the feature barrel: the barrel also
@@ -129,7 +132,14 @@ export async function loadSourceHoldingLock(source: DocumentSource): Promise<voi
     // this, which meant a second copy of the whole file resident for the whole
     // session to serve one caller that wanted three fields out of it.
     const detected = detectSignaturesSafely(source);
-    const info = await engine.loadDocument(source);
+    const hash = await contentKey(source);
+    const loaded = await engine.loadDocument(source);
+    // The engine's fingerprint is a property of the template the file was
+    // made from, not of the file (see contentKey.ts), so nothing downstream
+    // sees it as the document's identity. It stays in `legacyKey` only to find
+    // sidecar state saved under it before 0.9.
+    const info = { ...loaded, fingerprint: hash ?? loaded.fingerprint };
+    const legacyKey = loaded.fingerprint;
     const [metadata, outline] = await Promise.all([engine.getMetadata(), engine.getOutline()]);
 
     doc.setLoaded(info, metadata, outline);
@@ -143,6 +153,8 @@ export async function loadSourceHoldingLock(source: DocumentSource): Promise<voi
     useSignatureStore.getState().loadForDocument(info.fingerprint);
     useEditStore.getState().loadForDocument(info.fingerprint);
     useOcrStore.getState().loadForDocument(info.fingerprint);
+    // After the four loads above: it asks whether any of them found nothing.
+    useLegacySidecarStore.getState().detect(info.fingerprint, legacyKey);
     // Not persisted (nothing to load per fingerprint), but a fresh document is
     // never mid-edit, so any leftover session/undo history from a prior one goes.
     useTextEditStore.getState().reset();
@@ -192,6 +204,7 @@ export async function closeDocument(): Promise<void> {
       useSignatureStore.getState().reset();
       useEditStore.getState().reset();
       useOcrStore.getState().reset();
+      useLegacySidecarStore.getState().reset();
       useTextEditStore.getState().reset();
       usePageOpsStore.getState().reset();
       usePlacementStore.getState().cancel();

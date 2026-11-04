@@ -63,13 +63,14 @@ export async function exportDocument(): Promise<Uint8Array> {
   if (annotations.length > 0) stampAnnotations(pdf, annotations);
   // Everything staged above is now flattened into the page bytes, so this is a
   // new document, not just an edited copy of the source. Left alone, pdf-lib
-  // carries the source trailer's /ID through save() unchanged, which means the
-  // export would keep the exact fingerprint PDF.js used to key the SOURCE
-  // document's sidecar (signatures, edits, OCR text, annotations, all kept in
-  // localStorage by fingerprint). Reopening the export would then load that
-  // pre-bake sidecar again and paint it on top of content that is already in
-  // the page, doubling everything. A fresh /ID breaks that inheritance so a
-  // reopened export starts with no sidecar of its own.
+  // carries the source trailer's /ID through save() unchanged, and any reader
+  // keying on the /ID (PDF.js's fingerprint, for one) would take the export for
+  // another revision of the source. Folio's own sidecar no longer does: it is
+  // keyed by a hash of the bytes (core/document/contentKey.ts), which a baked
+  // export cannot share with its source, so a reopened export starts with no
+  // sidecar of its own regardless. The fresh /ID stays for everyone else, and
+  // because minting it is what made the earlier /ID-keyed sidecars safe to
+  // reopen without painting the baked content twice.
   assignFreshDocumentId(pdf);
   return saveVerified(pdf, expectedPages);
 }

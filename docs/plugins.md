@@ -230,7 +230,7 @@ ctx.onPageRender((event) => {
 interface DocumentInfo {
   name: string;        // display name of the document
   numPages: number;    // total page count
-  fingerprint: string; // PDF.js content fingerprint, stable per file
+  fingerprint: string; // SHA-256 of the file as opened, stable per file
 }
 ```
 
@@ -243,7 +243,7 @@ const engine = getEngine();
 const text = await engine.getPageText(1); // text of page 1
 ```
 
-Use `fingerprint` as a stable per-file storage key when you want results to persist across sessions for the same file: it is derived from the file content, not from the session.
+Use `fingerprint` as a stable per-file storage key when you want results to persist across sessions for the same file: it is a SHA-256 of the whole file as opened, so two different files never share one. (Before 0.9 it was the PDF.js fingerprint, which every file filled from the same form template shares; a plugin that stored anything under it will find those entries under the old key only.) It does not change while the document is open: in-place edits and page operations swap the bytes but keep the key, so per-page results you store survive them. A file re-saved by another program gets a new one.
 
 ### Plugin storage
 

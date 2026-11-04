@@ -1655,6 +1655,32 @@ kbd {
   box-shadow: var(--folio-shadow);
 }
 
+/* ---- Legacy sidecar banner (state saved under a pre-0.9 key) ---- */
+.folio-legacy-sidecar {
+  /* Inside .folio-main (position: relative), so it sits just under the
+     toolbar whatever the menu bar and toolbar add up to on this layout, and
+     out of the way of the placement hint at the bottom. */
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(640px, calc(100% - 32px));
+  padding: 10px 12px;
+  background: var(--folio-surface);
+  border: 1px solid var(--folio-border);
+  border-left: 3px solid var(--folio-accent);
+  border-radius: var(--folio-radius-sm);
+  box-shadow: var(--folio-shadow);
+}
+.folio-legacy-sidecar [role='status'] {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ---- OCR (selectable text overlay + progress) ---- */
 .folio-ocr-layer {
   position: absolute;

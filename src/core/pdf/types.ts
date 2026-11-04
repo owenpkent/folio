@@ -15,6 +15,13 @@ export type DocumentSource =
 /** Summary returned right after a document loads. */
 export interface PdfDocumentInfo {
   numPages: number;
+  /**
+   * A per-file identity. The engine returns its own (PDF.js: the trailer /ID,
+   * or the first 1 KB hashed), which files made from one template share;
+   * loadSource replaces it with a SHA-256 of the bytes as opened before
+   * anything else sees the info, so the store, the plugin API and every
+   * sidecar key hold the content hash. See core/document/contentKey.ts.
+   */
   fingerprint: string;
   name: string;
 }
