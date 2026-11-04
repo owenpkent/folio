@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as PdfCore from '@/core/pdf';
 import { useAnnotationStore } from '@/features/annotations/store';
 import { useLegacySidecarStore } from '@/features/sidecar/legacyStore';
+import { getLocatedImages } from '@/features/imageedit/locateCache';
+import { locatePageImages } from '@/features/imageedit/mutate';
+import { useImageEditStore } from '@/features/imageedit/store';
+import type { SelectedImage } from '@/features/imageedit/types';
 import { useSignatureStore } from '@/features/signatures/store';
 
 // A stand-in engine that behaves like PDF.js in the two ways that matter here:
@@ -23,10 +27,12 @@ vi.mock('@/core/pdf', async (orig) => {
       getMetadata: async () => ({ pageCount: 1 }),
       getOutline: async () => [],
       closeDocument: async () => {},
+      saveDocument: async () => new Uint8Array([1]),
     }),
   };
 });
 vi.mock('@/a11y/announcer', () => ({ announce: vi.fn() }));
+vi.mock('@/features/imageedit/mutate', () => ({ locatePageImages: vi.fn(async () => []) }));
 
 import { useDocumentStore } from './documentStore';
 import { closeDocument, loadSource } from './actions';
@@ -88,5 +94,34 @@ describe('sidecar key on open', () => {
     expect(useLegacySidecarStore.getState().pending).not.toBeNull();
     await closeDocument();
     expect(useLegacySidecarStore.getState().pending).toBeNull();
+  });
+});
+
+describe('image edit state across documents', () => {
+  const selected = { pageIndex: 0 } as unknown as SelectedImage;
+
+  async function seed() {
+    await loadSource({ kind: 'bytes', data: pdf('Alice'), name: 'alice.pdf' });
+    useImageEditStore.getState().toggleActive();
+    useImageEditStore.getState().select(selected);
+    await getLocatedImages(0, 0);
+    vi.mocked(locatePageImages).mockClear();
+  }
+
+  it('drops the selection and located-images cache when another file opens', async () => {
+    await seed();
+    await loadSource({ kind: 'bytes', data: pdf('Bob'), name: 'bob.pdf' });
+    expect(useImageEditStore.getState().selected).toBeNull();
+    expect(useImageEditStore.getState().active).toBe(false);
+    await getLocatedImages(0, 0);
+    expect(locatePageImages).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops them on close too', async () => {
+    await seed();
+    await closeDocument();
+    expect(useImageEditStore.getState().selected).toBeNull();
+    await getLocatedImages(0, 0);
+    expect(locatePageImages).toHaveBeenCalledTimes(1);
   });
 });

@@ -18,6 +18,10 @@ const pdf = vi.hoisted(() => ({
   numPages: 3,
   baseWidth: 612,
   baseHeight: 792,
+  /** Per-page size overrides in user units; pages not listed use the base size. */
+  pageSizes: new Map<number, { width: number; height: number }>(),
+  /** Decoded RGBA bytes of each rendered page, in page order. */
+  renderBytes: [] as number[],
   /** The scale each page was actually rasterized at, in page order. */
   renderScales: [] as number[],
   /** Pages whose render rejects, standing in for a mid-document failure. */
@@ -52,16 +56,19 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({
         return pdf.numPages;
       },
       getPage: vi.fn(async (pageNumber: number) => ({
-        getViewport: ({ scale }: { scale: number }) => ({
-          width: pdf.baseWidth * scale,
-          height: pdf.baseHeight * scale,
-        }),
+        getViewport: ({ scale }: { scale: number }) => {
+          const size = pdf.pageSizes.get(pageNumber) ?? {
+            width: pdf.baseWidth,
+            height: pdf.baseHeight,
+          };
+          return { width: size.width * scale, height: size.height * scale };
+        },
         render: ({
           canvas,
           viewport,
         }: {
           canvas: HTMLCanvasElement;
-          viewport: { width: number };
+          viewport: { width: number; height: number };
         }) => {
           // A render that was handed no canvas draws nothing, and every
           // assertion downstream is about a viewport, so it would pass anyway.
@@ -72,6 +79,7 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({
             throw new Error('getDocument() was called without wasmUrl');
           }
           pdf.renderScales.push(viewport.width / pdf.baseWidth);
+          pdf.renderBytes.push(Math.floor(viewport.width) * Math.floor(viewport.height) * 4);
           let rejectTask: (reason: unknown) => void = () => undefined;
           const promise = new Promise<void>((resolve, reject) => {
             rejectTask = reject;
@@ -110,6 +118,8 @@ beforeEach(() => {
   pdf.numPages = 3;
   pdf.baseWidth = 612;
   pdf.baseHeight = 792;
+  pdf.pageSizes = new Map();
+  pdf.renderBytes = [];
   pdf.renderScales = [];
   pdf.failRenderOn = new Set();
   pdf.stallRenderOn = new Set();
@@ -419,6 +429,66 @@ describe('printDocument', () => {
     expect(toast.kind).toBe('error');
     expect(toast.message).toContain('print in smaller ranges');
     expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('budgets from every page, not page 1: a Letter cover then 99 A0 sheets is refused', async () => {
+    // Sized from page 1 alone this passed the check and then asked for ~4.4 GiB.
+    pdf.numPages = 100;
+    for (let page = 2; page <= 100; page += 1) {
+      pdf.pageSizes.set(page, { width: 2384, height: 3370 });
+    }
+
+    await printDocument();
+
+    expect(pdf.renderBytes).toEqual([]);
+    expect(printSpy).not.toHaveBeenCalled();
+    expect(usePrintStore.getState().status).toBe('error');
+    expect(usePrintStore.getState().error).toContain('too long to print in one pass');
+  });
+
+  it('keeps a mixed-size document inside the budget', async () => {
+    pdf.numPages = 12;
+    for (let page = 2; page <= 12; page += 1) {
+      pdf.pageSizes.set(page, { width: 2384, height: 3370 });
+    }
+
+    await printDocument();
+
+    expect(printSpy).toHaveBeenCalledTimes(1);
+    expect(pdf.renderBytes).toHaveLength(12);
+    const total = pdf.renderBytes.reduce((sum, bytes) => sum + bytes, 0);
+    expect(total).toBeLessThanOrEqual(768 * 1024 * 1024);
+  });
+
+  it('counts a page pinned to its canvas ceiling at that ceiling, not at the candidate scale', async () => {
+    // A Letter cover and two 14,400-point posters. Summing the posters at 1x
+    // says nothing fits, but the render loop clamps each of them to 4096 x
+    // 4096 (64 MiB apiece), and with the cover at 2x the run is 135 MiB.
+    pdf.numPages = 3;
+    pdf.pageSizes.set(2, { width: 14_400, height: 14_400 });
+    pdf.pageSizes.set(3, { width: 14_400, height: 14_400 });
+
+    await printDocument();
+
+    expect(printSpy).toHaveBeenCalledTimes(1);
+    // The cover gets the full print scale; each poster is exactly its ceiling.
+    expect(pdf.renderScales[0]).toBe(2);
+    expect(pdf.renderBytes[1]).toBe(4096 * 4096 * 4);
+    expect(pdf.renderBytes[2]).toBe(4096 * 4096 * 4);
+    const total = pdf.renderBytes.reduce((sum, bytes) => sum + bytes, 0);
+    expect(total).toBeLessThanOrEqual(768 * 1024 * 1024);
+  });
+
+  it('gives a uniform document the same scale page 1 alone would have', async () => {
+    // 300 Letter pages: sqrt(768 MiB / (300 x 612 x 792 x 4)) = 0.9157...
+    pdf.numPages = 300;
+
+    await printDocument();
+
+    const perPage = 612 * 792 * 4;
+    const expected = Math.sqrt((768 * 1024 * 1024) / (perPage * 300));
+    expect(pdf.renderScales[0]).toBeCloseTo(expected, 10);
+    expect(new Set(pdf.renderScales).size).toBe(1);
   });
 
   it('clamps an oversized page to the canvas ceiling', async () => {
