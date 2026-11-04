@@ -105,13 +105,17 @@ function bitmapBytes(width: number, height: number, scale: number): number {
  * The largest scale at or below PRINT_SCALE whose whole-document bitmap cost
  * fits PRINT_BITMAP_BUDGET_BYTES, or null when even MIN_PRINT_SCALE does not.
  *
+ * `pages` holds every page's size in user units, so a mixed-size document is
+ * costed by what it really holds, not by its first page times its length.
+ *
  * Cost grows with the square of the scale, so the affordable scale is
- * sqrt(budget / (pages x bytes-per-page-at-1x)).
+ * sqrt(budget / (total bytes of all pages at 1x)).
  */
-function chooseScale(width: number, height: number, pageCount: number): number | null {
-  const perPage = bitmapBytes(width, height, 1);
-  if (perPage <= 0 || pageCount <= 0) return PRINT_SCALE;
-  const affordable = Math.sqrt(PRINT_BITMAP_BUDGET_BYTES / (perPage * pageCount));
+function chooseScale(pages: readonly { width: number; height: number }[]): number | null {
+  let atScaleOne = 0;
+  for (const page of pages) atScaleOne += bitmapBytes(page.width, page.height, 1);
+  if (atScaleOne <= 0) return PRINT_SCALE;
+  const affordable = Math.sqrt(PRINT_BITMAP_BUDGET_BYTES / atScaleOne);
   if (affordable < MIN_PRINT_SCALE) return null;
   return Math.min(PRINT_SCALE, affordable);
 }
@@ -274,12 +278,18 @@ export async function printDocument(): Promise<void> {
     try {
       if (pageCount < 1) throw new Error('This document has no pages to print');
 
-      // Page 1 stands in for the whole document when sizing the run. Pages in a
-      // real PDF are near enough always the same size, and reading every
-      // viewport up front would mean loading every page before rasterizing any.
-      const firstPage = await doc.getPage(1);
-      const unitViewport = firstPage.getViewport({ scale: 1 });
-      const scale = chooseScale(unitViewport.width, unitViewport.height, pageCount);
+      // Every page's size is read before anything is rasterized, so the budget
+      // covers the whole run even when sizes differ (a Letter cover in front of
+      // a hundred A0 sheets). getPage + getViewport draw nothing; rendering is
+      // the expensive part, and it stays in the loop below.
+      const unitSizes: { width: number; height: number }[] = [];
+      for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+        if (stopIfCancelled()) return;
+        const sizedPage = await doc.getPage(pageNumber);
+        const { width, height } = sizedPage.getViewport({ scale: 1 });
+        unitSizes.push({ width, height });
+      }
+      const scale = chooseScale(unitSizes);
       if (scale === null) {
         throw new Error(
           `This document is too long to print in one pass (${pageCount} pages). ` +
@@ -291,7 +301,7 @@ export async function printDocument(): Promise<void> {
         if (stopIfCancelled()) return;
         usePrintStore.getState().setProgress(pageNumber);
 
-        const page = pageNumber === 1 ? firstPage : await doc.getPage(pageNumber);
+        const page = await doc.getPage(pageNumber);
         const unit = page.getViewport({ scale: 1 });
         const viewport = page.getViewport({ scale: capScale(unit.width, unit.height, scale) });
         const canvas = document.createElement('canvas');
