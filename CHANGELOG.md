@@ -6,6 +6,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Signatures, edits, annotations and OCR text no longer leak between files
+  made from the same form.** Folio filed all four under the PDF's internal ID,
+  which every copy filled from one template shares (and files with no ID under
+  a hash of their first kilobyte, which collides just as easily), so a
+  signature placed on one W-4 showed up on the next. They are now keyed by a
+  SHA-256 of the whole file as opened. Trade-off: a file re-saved by another
+  program no longer finds the placements Folio kept for it. State saved before
+  this release is offered back once, per template, by a banner with **Apply to
+  this file** and **Discard**, since Folio cannot tell which file it belongs to.
+
 ## [0.8.1] - 2026-11-01
 
 ### Fixed

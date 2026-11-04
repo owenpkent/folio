@@ -20,6 +20,7 @@ import { useEditStore } from '@/features/editing/store';
 import { useImageEditStore } from '@/features/imageedit/store';
 import { useOcrStore } from '@/features/ocr/store';
 import { usePlacementStore } from '@/features/placement/store';
+import { useLegacySidecarStore } from '@/features/sidecar/legacyStore';
 import { useSignatureStore } from '@/features/signatures/store';
 import { useTextEditStore } from '@/features/textedit/store';
 
@@ -116,6 +117,13 @@ export function remapPageState(pageMap: Map<number, number>, turns?: PageTurns):
 
   const ocr = useOcrStore.getState();
   ocr.replaceAll(remapOcrPages(ocr.pages, pageMap, turns));
+
+  // Sidecar state saved under this file's pre-0.8.2 key was offered for the
+  // page map it opened with, which this just replaced; and the undo snapshot
+  // taken a moment ago would write the stores' pre-apply contents straight
+  // back over anything applied from now on. The old entries stay where they
+  // are and are offered again on the next open.
+  useLegacySidecarStore.getState().reset();
 }
 
 function remapItems<T extends { pageNumber: number }>(

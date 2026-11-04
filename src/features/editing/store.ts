@@ -24,7 +24,7 @@ import {
  * transient UI state and are never persisted.
  */
 
-const storageKey = (fingerprint: string) => `folio.edits.${fingerprint}`;
+export const storageKey = (fingerprint: string) => `folio.edits.${fingerprint}`;
 
 interface EditState {
   fingerprint: string | null;

@@ -27,6 +27,7 @@ import { PrintProgressModal, registerPrintCommands } from '@/features/print';
 import { AboutModal } from '@/features/about';
 import { ContextMenu, suppressNativeContextMenu } from '@/features/contextmenu';
 import { registerSignatureCommands, SignatureModal } from '@/features/signatures';
+import { LegacySidecarBanner } from '@/features/sidecar';
 import { registerSigningCommands, SigningModal } from '@/features/signing';
 import { registerTextEditCommands } from '@/features/textedit';
 import { checkForUpdates } from '@/features/updates';
@@ -145,6 +146,7 @@ export function App() {
         )}
         {sidebarOpen && <Sidebar />}
         <main id="folio-main" className="folio-main" tabIndex={-1} aria-label="Document">
+          <LegacySidecarBanner />
           <PdfViewer />
         </main>
       </div>

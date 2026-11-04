@@ -10,7 +10,7 @@ import type { NormalizedRect, Signature } from './types';
  * user saves a copy (see features/export).
  */
 
-const storageKey = (fingerprint: string) => `folio.signatures.${fingerprint}`;
+export const storageKey = (fingerprint: string) => `folio.signatures.${fingerprint}`;
 
 interface SignatureState {
   fingerprint: string | null;

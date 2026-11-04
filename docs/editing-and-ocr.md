@@ -86,7 +86,8 @@ and the reasoning behind the bindings.
 
 ### How it works
 
-Edits are stored as a per-document sidecar (keyed by PDF fingerprint) in
+Edits are stored as a per-document sidecar (keyed by a SHA-256 of the file as
+opened; see [forms-and-signatures.md](forms-and-signatures.md)) in
 `localStorage`, exactly like annotations and signatures. Each item is a
 `NormalizedRect` (fractions 0..1 of the page, top-left origin) so it survives
 zoom, plus its content:
@@ -195,8 +196,9 @@ open document as soon as you commit it, not only when you save a copy.
   open, such as a form value, is not silently reverted; filled form values are
   preserved the same way. `reloadEditedBytes` (`src/state/actions.ts`) then
   swaps the engine's loaded document for the result, without resetting any
-  per-feature store or the document's fingerprint, so annotations, signatures,
-  and OCR state (all keyed by fingerprint) survive untouched. It bumps a
+  per-feature store or the document's fingerprint (the content hash taken at
+  open), so annotations, signatures, and OCR state (all keyed by it) survive
+  untouched. It bumps a
   `docVersion` counter that each page's render effect depends on, so every
   page repaints its canvas, text layer, and annotation layer in place from the
   new bytes instead of unmounting; scroll position is undisturbed, so there is
@@ -339,8 +341,8 @@ Use a scanned or image-only PDF (one with no embedded text).
 - *Save a copy* bakes an invisible text layer over the image, so the exported PDF
   is searchable and copyable in any reader.
 
-Results persist per document (fingerprint), so re-opening a recognized PDF does
-not re-run OCR.
+Results persist per document (keyed by the file's content hash), so re-opening
+a recognized PDF does not re-run OCR.
 
 A recognition pass can take minutes on a long document, and it does not lock the
 app while it runs. Saving, printing, signing, and both in-place editors stay

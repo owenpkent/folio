@@ -8,7 +8,7 @@ import type { OcrPage, OcrStatus } from './types';
  * and are not persisted.
  */
 
-const storageKey = (fingerprint: string) => `folio.ocr.${fingerprint}`;
+export const storageKey = (fingerprint: string) => `folio.ocr.${fingerprint}`;
 
 interface OcrProgress {
   /** 1-based page currently being recognized (0 = not started). */
@@ -89,7 +89,12 @@ export const useOcrStore = create<OcrState>((set, get) => {
       }),
 
     start: (total) =>
-      set({ status: 'running', progress: { current: 0, total, page: 0 }, error: null, cancelRequested: false }),
+      set({
+        status: 'running',
+        progress: { current: 0, total, page: 0 },
+        error: null,
+        cancelRequested: false,
+      }),
 
     setProgress: (current, page = 0) =>
       set((s) => ({ progress: { ...s.progress, current, page } })),

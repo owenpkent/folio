@@ -76,10 +76,28 @@ keyboard path into the tool (see
 - **Delete** it with the button that appears on hover, or from the Signatures
   panel.
 
-Signatures are stored per document in a local sidecar (keyed by the PDF
-fingerprint), exactly like annotations, so they persist across sessions
+Signatures are stored per document in a local sidecar (keyed by a SHA-256 of
+the file as opened), exactly like annotations, so they persist across sessions
 without touching the PDF itself; they are only written into the document when
 you save.
+
+The key is a hash of the whole file, not the PDF's internal ID, because every
+copy filled from the same blank form carries the same ID: keyed on that, a
+signature placed on one person's W-4 reappeared on the next W-4 opened. The
+trade-off is that a file re-saved by another program (same ID, different
+bytes) no longer finds the placements Folio kept for it; losing unsaved
+placements that way is safer than putting them on the wrong document.
+
+Folio releases up to 0.8.1 keyed the sidecar on the shared ID. When a file turns
+up with saved state under that old key and none of its own, Folio shows a
+banner: **Apply to this file** moves the old entries to this file, **Discard**
+deletes them. Folio cannot tell which file from the template they were placed
+on, so the choice is yours, and either way the next file from the same
+template opens clean rather than asking again. Deciding has to wait for a
+page operation in progress, and the banner goes away once one lands, since
+the old entries describe the page order the file opened with; reopening the
+file offers them again. If the browser's storage is too full to make the
+copy, nothing is deleted and the banner stays.
 
 ### How signatures are stored and coordinates
 
@@ -103,13 +121,12 @@ way, Folio produces the output in two stages (see
    `/Text` annotations, not flattened graphics). When none of those are
    present, the step-1 bytes are returned as-is.
 
-Step 2 also mints a fresh trailer `/ID` whenever it runs, so a baked export no
-longer carries the source document's PDF.js fingerprint. This is deliberate:
-every placed edit, signature, and OCR result lives in a fingerprint-keyed
-local sidecar until it is baked, and if the export kept the source's
-fingerprint, reopening it would make Folio load that same sidecar again on
-top of content that was now also baked into the page, doubling everything. One
-consequence worth knowing: once you reopen a saved or exported copy, its baked
+Step 2 also mints a fresh trailer `/ID` whenever it runs, so a baked export is
+a new document to any reader, not another revision of the source. Folio's own
+sidecar is keyed on the file's bytes rather than its `/ID` (see above), so a
+reopened export, whose bytes differ from the source's, starts with no sidecar
+of its own either way, and nothing is painted twice. One consequence worth
+knowing: once you reopen a saved or exported copy, its baked
 content (edits, signatures, OCR text, and annotations) is ordinary page
 content with no sidecar entry behind it, so it can no longer be dragged,
 resized, or deleted the way it could in the source document.
