@@ -394,6 +394,13 @@ pub fn run() {
     builder = builder
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
+        // External links in a PDF. The window registers no new-window handler,
+        // and on Windows the webview drops a target=_blank request it has no
+        // handler for, so the annotation layer hands such links to the OS
+        // through this plugin instead (see createLinkService in
+        // src/core/pdf/PdfJsEngine.ts). Scoped to http, https, mailto and tel
+        // in capabilities/default.json.
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init());
 
     // tauri-plugin-updater only supports desktop targets.

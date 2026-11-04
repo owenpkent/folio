@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { uid } from '@/core/id';
+import { persistSidecar } from '@/features/sidecar/persist';
 
 import type { NormalizedRect, Signature } from './types';
 
@@ -29,11 +30,7 @@ export const useSignatureStore = create<SignatureState>((set, get) => {
   const persist = () => {
     const { fingerprint, signatures } = get();
     if (!fingerprint) return;
-    try {
-      localStorage.setItem(storageKey(fingerprint), JSON.stringify(signatures));
-    } catch {
-      /* storage unavailable; signatures remain in memory */
-    }
+    persistSidecar(fingerprint, storageKey(fingerprint), signatures);
   };
 
   return {

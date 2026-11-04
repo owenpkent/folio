@@ -243,7 +243,7 @@ const engine = getEngine();
 const text = await engine.getPageText(1); // text of page 1
 ```
 
-Use `fingerprint` as a stable per-file storage key when you want results to persist across sessions for the same file: it is a SHA-256 of the whole file as opened, so two different files never share one. (Up to 0.8.1 it was the PDF.js fingerprint, which every file filled from the same form template shares; a plugin that stored anything under it will find those entries under the old key only.) It does not change while the document is open: in-place edits and page operations swap the bytes but keep the key, so per-page results you store survive them. A file re-saved by another program gets a new one.
+Use `fingerprint` as a stable per-file storage key when you want results to persist across sessions for the same file: it is a SHA-256 of the whole file as opened, so two different files never share one. (Up to 0.8.1 it was the PDF.js fingerprint, which every file filled from the same form template shares; a plugin that stored anything under it will find those entries under the old key only.) It does not change while the document is open: in-place edits and page operations swap the bytes but keep the key. Note what that does and does not give you. Anything you store per file stays findable. Anything you store *per page* is keyed by a page number that a page operation can change: after the user deletes page 2, what you filed under page 3 describes the page now numbered 2, and nothing renumbers it for you, since there is no page-change hook in v0.1 (one is planned). Treat per-page results as a cache you may have to discard, or re-derive them on each `onPageRender`. A file re-saved by another program gets a new key.
 
 ### Plugin storage
 
@@ -252,12 +252,12 @@ Each plugin gets a private key/value store, namespaced by `plugin.id` (keys are 
 ```ts
 interface PluginStorage {
   get<T = unknown>(key: string): T | null;   // null if absent or unparseable
-  set<T = unknown>(key: string, value: T): void;
+  set<T = unknown>(key: string, value: T): boolean; // false when the browser refused the write
   remove(key: string): void;
 }
 ```
 
-Storage is scoped by the id prefix so two plugins do not read or clobber each other's keys. It is meant for plugin state and small caches, not for large binary blobs. `get` returns `null` (never throws) if the key is missing or the stored value cannot be parsed.
+Storage is scoped by the id prefix so two plugins do not read or clobber each other's keys. It is meant for plugin state and small caches, not for large binary blobs. `get` returns `null` (never throws) if the key is missing or the stored value cannot be parsed. `set` returns `false` (never throws) when the browser refuses the write, which in practice means `localStorage` is over quota; the previous value, if any, is still there. Check it for anything you would miss.
 
 **Planned:** richer storage helpers (`keys()`, `clear()`, and a Tauri-backed store in the app data directory that survives a `localStorage` clear) are on the roadmap. The three synchronous methods above are what ships today.
 

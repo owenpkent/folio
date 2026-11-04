@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { uid } from '@/core/id';
+import { persistSidecar } from '@/features/sidecar/persist';
 
 import {
   DEFAULT_FONT_SIZE_PT,
@@ -84,11 +85,7 @@ export const useEditStore = create<EditState>((set, get) => {
   const persist = () => {
     const { fingerprint, edits } = get();
     if (!fingerprint) return;
-    try {
-      localStorage.setItem(storageKey(fingerprint), JSON.stringify(edits));
-    } catch {
-      /* storage unavailable; edits remain in memory */
-    }
+    persistSidecar(fingerprint, storageKey(fingerprint), edits);
   };
 
   return {

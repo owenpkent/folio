@@ -155,7 +155,9 @@ function filenameFromContentDisposition(header: string): string | null {
  */
 function basename(url: URL, res: Response): string {
   const disposition = res.headers.get('content-disposition');
-  const fromHeader = disposition ? sanitizeFilename(filenameFromContentDisposition(disposition) ?? '') : '';
+  const fromHeader = disposition
+    ? sanitizeFilename(filenameFromContentDisposition(disposition) ?? '')
+    : '';
   if (fromHeader) return fromHeader;
 
   let fromPath: string;
@@ -263,12 +265,14 @@ export async function openFromQueryParam(): Promise<void> {
       data: new Uint8Array(await res.arrayBuffer()),
       name: basename(url, res),
     };
-    await loadSource(source);
-    // loadSource swallows its own errors (an error state, not a throw), so
-    // success is confirmed here rather than assumed: only a document that
-    // actually finished loading gets associated with this URL.
+    // loadSource reports failure as a value, not a throw, and the store
+    // cannot stand in for it: when the open is refused (the mutation lock is
+    // held) the store still shows the PREVIOUS document as ready, and this URL
+    // would get attached to that unrelated file. Only an explicit success
+    // associates the URL.
+    const opened = await loadSource(source);
     const { status, info } = useDocumentStore.getState();
-    if (status === 'ready' && info) {
+    if (opened && status === 'ready' && info) {
       originalUrl = url.href;
       originalUrlFingerprint = info.fingerprint;
     }

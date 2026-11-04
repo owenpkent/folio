@@ -104,7 +104,8 @@ async function formContentOnPage(
   const xobject = page.node.Resources()?.lookupMaybe(PDFName.of('XObject'), PDFDict);
   const ref = xobject?.get(PDFName.of(name));
   const stream = doc.context.lookup(ref, PDFStream);
-  const decoded = stream instanceof PDFRawStream ? decodePDFRawStream(stream).decode() : stream.getContents();
+  const decoded =
+    stream instanceof PDFRawStream ? decodePDFRawStream(stream).decode() : stream.getContents();
   return latin1(decoded);
 }
 
@@ -118,6 +119,45 @@ describe('getPageContentStreams', () => {
 });
 
 describe('commitTextEdit', () => {
+  it('keeps the replacement at the original position in painting order (under a later rectangle)', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([595, 842]);
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    page.drawText('Covered', { x: 72, y: 700, size: 18, font, color: rgb(0, 0, 0) });
+    page.drawRectangle({ x: 60, y: 690, width: 200, height: 40, color: rgb(1, 0, 0) });
+    const bytes = await doc.save();
+
+    const streams = await getPageContentStreams(bytes, 0);
+    const run = parseContentStreams(streams).find((r) => r.op === 'Tj')!;
+
+    const result = await commitTextEdit({
+      pdfBytes: bytes,
+      pageIndex: 0,
+      target: { x: run.x, y: run.y, op: 'Tj' },
+      newText: 'Replaced',
+      style: { fontFamilyHint: 'Helvetica', fontSize: 18, color: { r: 0, g: 0, b: 0 } },
+    });
+
+    const after = await getPageContentStreams(result, 0);
+    const text = after.map(latin1).join(String.fromCharCode(10)).toUpperCase();
+    const textAt = text.indexOf(hex('Replaced'));
+    // pdf-lib builds a rectangle as a path (m/l/h) ended by a bare `f`.
+    const rectAt = text.search(/\sH\s+F\s/);
+    expect(textAt).toBeGreaterThanOrEqual(0);
+    expect(rectAt).toBeGreaterThanOrEqual(0);
+    // The replacement is painted before the rectangle, so the rectangle still covers it.
+    expect(textAt).toBeLessThan(rectAt);
+    // Nothing is appended after the rectangle's fill.
+    expect(text.slice(rectAt)).not.toContain(hex('Replaced'));
+    expect(text.slice(rectAt)).not.toMatch(/\sTJ\s/);
+
+    // The replacement still sits at the original origin and size.
+    const newRun = parseContentStreams(after).find((r) => r.op === 'Tj')!;
+    expect(newRun.x).toBeCloseTo(run.x);
+    expect(newRun.y).toBeCloseTo(run.y);
+    expect(newRun.fontSize).toBeCloseTo(18);
+  });
+
   it('replaces the located Tj with new text at the same origin', async () => {
     const { bytes, x, y, size } = await onePagePdfWithText('Hello world');
 
@@ -305,6 +345,150 @@ async function nestedFormContentOnPage(
   return latin1(decoded);
 }
 
+/**
+ * A one-page PDF whose content stream is exactly `content`. The page's
+ * resources: F1 Helvetica, F2 Courier, GS1 an ExtGState selecting Courier 20
+ * through /Font, GS2 an ExtGState with only /ca (alpha, no font).
+ */
+async function pdfWithContent(content: string): Promise<{ bytes: Uint8Array }> {
+  const doc = await PDFDocument.create();
+  const helv = await doc.embedFont(StandardFonts.Helvetica);
+  const courier = await doc.embedFont(StandardFonts.Courier);
+  const page = doc.addPage([595, 842]);
+  page.node.setFontDictionary(PDFName.of('F1'), helv.ref);
+  page.node.setFontDictionary(PDFName.of('F2'), courier.ref);
+  page.node.setExtGState(
+    PDFName.of('GS1'),
+    doc.context.register(doc.context.obj({ Type: 'ExtGState', Font: [courier.ref, 20] })),
+  );
+  page.node.setExtGState(
+    PDFName.of('GS2'),
+    doc.context.register(doc.context.obj({ Type: 'ExtGState', ca: 0.5 })),
+  );
+  const contentRef = doc.context.register(
+    PDFRawStream.of(doc.context.obj({}), new TextEncoder().encode(content)),
+  );
+  page.node.set(PDFName.of('Contents'), contentRef);
+  return { bytes: await doc.save() };
+}
+
+const helvStyle = {
+  fontFamilyHint: 'Helvetica',
+  fontSize: 18,
+  color: { r: 0, g: 0, b: 0 },
+};
+
+async function pageText(bytes: Uint8Array): Promise<string> {
+  const streams = await getPageContentStreams(bytes, 0);
+  return streams.map(latin1).join(String.fromCharCode(10));
+}
+
+describe('commitTextEdit (state restore after the insertion)', () => {
+  it('replays the last Tf and the gs after it, so an untouched text object keeps its inherited font', async () => {
+    const untouched = 'BT 72 600 Td (Untouched) Tj ET';
+    const { bytes } = await pdfWithContent(
+      `/F1 12 Tf /GS1 gs BT 72 700 Td (Edit) Tj ET ${untouched}`,
+    );
+
+    const result = await commitTextEdit({
+      pdfBytes: bytes,
+      pageIndex: 0,
+      target: { x: 72, y: 700, op: 'Tj' },
+      newText: 'Replaced',
+      style: helvStyle,
+    });
+
+    const text = await pageText(result);
+    const at = text.toUpperCase().indexOf(hex('Replaced'));
+    expect(at).toBeGreaterThanOrEqual(0);
+    // After the replacement: the original Tf, then the original gs (which
+    // re-selects Courier 20), both before the untouched text object.
+    const restoreTf = text.indexOf('/F1 12 Tf', at);
+    const restoreGs = text.indexOf('/GS1 gs', at);
+    expect(restoreTf).toBeGreaterThan(at);
+    expect(restoreGs).toBeGreaterThan(restoreTf);
+    expect(text.indexOf(untouched)).toBeGreaterThan(restoreGs);
+    // The untouched text object is byte-identical.
+    expect(text).toContain(untouched);
+  });
+
+  it('keeps working when the gs since the Tf does not set a font', async () => {
+    const { bytes } = await pdfWithContent('/F1 12 Tf /GS2 gs BT 72 700 Td (Edit) Tj ET');
+    const result = await commitTextEdit({
+      pdfBytes: bytes,
+      pageIndex: 0,
+      target: { x: 72, y: 700, op: 'Tj' },
+      newText: 'Replaced',
+      style: helvStyle,
+    });
+    const text = await pageText(result);
+    expect(text.toUpperCase()).toContain(hex('Replaced'));
+    expect(text.lastIndexOf('/GS2 gs')).toBeGreaterThan(
+      text.toUpperCase().indexOf(hex('Replaced')),
+    );
+  });
+
+  it('refuses when a gs since the Tf names an ExtGState that cannot be found', async () => {
+    const { bytes } = await pdfWithContent('/F1 12 Tf /Missing gs BT 72 700 Td (Edit) Tj ET');
+    const promise = commitTextEdit({
+      pdfBytes: bytes,
+      pageIndex: 0,
+      target: { x: 72, y: 700, op: 'Tj' },
+      newText: 'Replaced',
+      style: helvStyle,
+    });
+    await expect(promise).rejects.toBeInstanceOf(TexteditError);
+    await expect(promise).rejects.toMatchObject({ code: 'run-not-found' });
+  });
+});
+
+describe('commitTextEdit (text normalization)', () => {
+  it('turns a tab into four spaces instead of failing as unencodable', async () => {
+    const { bytes } = await onePagePdfWithText('Hello world');
+    const run = parseContentStreams(await getPageContentStreams(bytes, 0))[0];
+    const result = await commitTextEdit({
+      pdfBytes: bytes,
+      pageIndex: 0,
+      target: { x: run.x, y: run.y, op: 'Tj' },
+      newText: 'Two' + String.fromCharCode(9) + 'columns',
+      style: helvStyle,
+    });
+    const text = await pageText(result);
+    expect(text.toUpperCase()).toContain(hex('Two    columns'));
+  });
+
+  it('commits a newline as a second Tj after a Td, and puts the line matrix back afterwards', async () => {
+    const { bytes } = await pdfWithContent(
+      'BT /F1 18 Tf 1 0 0 1 72 700 Tm (A) Tj 0 -30 Td (B) Tj ET',
+    );
+    const result = await commitTextEdit({
+      pdfBytes: bytes,
+      pageIndex: 0,
+      target: { x: 72, y: 700, op: 'Tj' },
+      newText: 'Two' + String.fromCharCode(10) + 'lines',
+      style: helvStyle,
+    });
+
+    const text = await pageText(result);
+    const upper = text.toUpperCase();
+    const first = upper.indexOf(hex('Two'));
+    const second = upper.indexOf(hex('lines'));
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(second).toBeGreaterThan(first);
+    // A move down by the font size sits between the two Tj, and the same
+    // distance back up follows the last one.
+    const down = text.indexOf('0 -18 Td', first);
+    expect(down).toBeGreaterThan(first);
+    expect(down).toBeLessThan(second);
+    expect(text.indexOf('0 18 Td', second)).toBeGreaterThan(second);
+
+    // The operator after the insertion (the original 0 -30 Td) still sees
+    // the original line matrix: B stays at y = 670.
+    const runs = parseContentStreams(await getPageContentStreams(result, 0));
+    expect(runs.some((r) => Math.abs(r.x - 72) < 0.01 && Math.abs(r.y - 670) < 0.01)).toBe(true);
+  });
+});
+
 describe('commitTextEdit (text inside a Form XObject)', () => {
   it('replaces text located inside a Do-invoked form, and leaves a second page sharing the same XObject unchanged', async () => {
     // Matrix translates by (20, 30); the form's own Td adds (10, 5) on top of
@@ -336,13 +520,12 @@ describe('commitTextEdit (text inside a Form XObject)', () => {
     expect(resultDoc.getPageCount()).toBe(2);
 
     // Page 0 (the page the edit targeted): its own copy of the form has the
-    // original text spliced out, and the replacement is drawn on the page.
-    // drawText hex-encodes the string it is given (see the existing
+    // original text spliced out, and the replacement shown in its place there.
+    // The font encodes the string as hex (see the existing
     // commitTextEdit tests above), hence comparing against hex('Goodbye')
     // rather than the literal text.
     expect(await formContentOnPage(result, 0, 'Fm1')).not.toContain('Hello world');
-    const page0After = await getPageContentStreams(result, 0);
-    expect(page0After.map(latin1).join('\n').toUpperCase()).toContain(hex('Goodbye'));
+    expect((await formContentOnPage(result, 0, 'Fm1')).toUpperCase()).toContain(hex('Goodbye'));
 
     // Page 1: still invokes the ORIGINAL, unedited form. This is the
     // sharing-safety guarantee: editing page 0 must not touch bytes page 1
@@ -393,11 +576,12 @@ describe('commitTextEdit (text inside a Form XObject)', () => {
 
     // Page 0 (the page the edit targeted): the chain now resolves, at both
     // levels, to fresh copies with the original text spliced out of the
-    // child, and the replacement is drawn on the page itself (same as the
+    // child, and the replacement shown in its place there (same as the
     // single-level test above).
     expect(await nestedFormContentOnPage(result, 0, 'Fm1', 'Fm2')).not.toContain('EDITME');
-    const page0After = await getPageContentStreams(result, 0);
-    expect(page0After.map(latin1).join('\n').toUpperCase()).toContain(hex('Replaced'));
+    expect((await nestedFormContentOnPage(result, 0, 'Fm1', 'Fm2')).toUpperCase()).toContain(
+      hex('Replaced'),
+    );
 
     // Page 1: never targeted by the edit, so its chain must still resolve,
     // top to bottom, to the ORIGINAL parent and the original child. Fm1 is
