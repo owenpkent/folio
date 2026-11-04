@@ -252,12 +252,12 @@ Each plugin gets a private key/value store, namespaced by `plugin.id` (keys are 
 ```ts
 interface PluginStorage {
   get<T = unknown>(key: string): T | null;   // null if absent or unparseable
-  set<T = unknown>(key: string, value: T): void;
+  set<T = unknown>(key: string, value: T): boolean; // false when the browser refused the write
   remove(key: string): void;
 }
 ```
 
-Storage is scoped by the id prefix so two plugins do not read or clobber each other's keys. It is meant for plugin state and small caches, not for large binary blobs. `get` returns `null` (never throws) if the key is missing or the stored value cannot be parsed.
+Storage is scoped by the id prefix so two plugins do not read or clobber each other's keys. It is meant for plugin state and small caches, not for large binary blobs. `get` returns `null` (never throws) if the key is missing or the stored value cannot be parsed. `set` returns `false` (never throws) when the browser refuses the write, which in practice means `localStorage` is over quota; the previous value, if any, is still there. Check it for anything you would miss.
 
 **Planned:** richer storage helpers (`keys()`, `clear()`, and a Tauri-backed store in the app data directory that survives a `localStorage` clear) are on the roadmap. The three synchronous methods above are what ships today.
 

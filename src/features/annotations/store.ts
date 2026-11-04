@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { uid } from '@/core/id';
+import { persistSidecar } from '@/features/sidecar/persist';
 
 import type { Annotation, NormalizedRect } from './types';
 
@@ -49,11 +50,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => {
   const persist = () => {
     const { fingerprint, annotations } = get();
     if (!fingerprint) return;
-    try {
-      localStorage.setItem(storageKey(fingerprint), JSON.stringify(annotations));
-    } catch {
-      /* storage unavailable; annotations remain in memory */
-    }
+    persistSidecar(fingerprint, storageKey(fingerprint), annotations);
   };
 
   return {

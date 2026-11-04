@@ -52,7 +52,8 @@ export interface AnnotationToolDef {
 /** Persisted key/value storage, namespaced per plugin. */
 export interface PluginStorage {
   get<T = unknown>(key: string): T | null;
-  set<T = unknown>(key: string, value: T): void;
+  /** Returns false, and keeps the old value, when the browser refuses the write (quota). */
+  set<T = unknown>(key: string, value: T): boolean;
   remove(key: string): void;
 }
 
