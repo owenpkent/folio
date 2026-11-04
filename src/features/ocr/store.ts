@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { persistSidecar } from '@/features/sidecar/persist';
+
 import type { OcrPage, OcrStatus } from './types';
 
 /**
@@ -43,11 +45,7 @@ export const useOcrStore = create<OcrState>((set, get) => {
   const persist = () => {
     const { fingerprint, pages } = get();
     if (!fingerprint) return;
-    try {
-      localStorage.setItem(storageKey(fingerprint), JSON.stringify(pages));
-    } catch {
-      /* storage unavailable or over quota; results stay in memory */
-    }
+    persistSidecar(fingerprint, storageKey(fingerprint), pages);
   };
 
   const idleProgress: OcrProgress = { current: 0, total: 0, page: 0 };

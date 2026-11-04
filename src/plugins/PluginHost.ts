@@ -152,8 +152,13 @@ function createPluginStorage(pluginId: string): PluginStorage {
     set(key, value) {
       try {
         localStorage.setItem(prefix + key, JSON.stringify(value));
-      } catch {
-        /* storage unavailable; ignore */
+        return true;
+      } catch (error) {
+        // Quota, usually. The plugin is the one that knows whether this
+        // value matters, so it gets the verdict rather than a toast the
+        // user cannot act on; the log is for the plugin's author.
+        console.warn(`[folio] plugin ${pluginId} could not store "${key}"`, error);
+        return false;
       }
     },
     remove(key) {

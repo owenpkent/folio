@@ -17,6 +17,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   program no longer finds the placements Folio kept for it. State saved before
   this release is offered back once, per template, by a banner with **Apply to
   this file** and **Discard**, since Folio cannot tell which file it belongs to.
+- **A full browser storage no longer loses edits silently.** When the write
+  that keeps a signature, highlight, text box, or OCR text between sessions
+  failed (usually for quota: a signature is an image), Folio said nothing, and
+  the item was gone on the next open, or, after a page operation, back on the
+  page it used to be on. The first failed write for a document now shows an
+  error and a screen-reader announcement; what is on the page stays there
+  until the file is closed, and a saved copy still bakes it in. Plugin
+  storage's `set` now returns `false` instead of failing silently.
 
 ## [0.8.1] - 2026-11-01
 
