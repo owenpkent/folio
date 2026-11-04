@@ -23,6 +23,7 @@ import { useOcrStore } from '@/features/ocr';
 import { usePageOpsStore } from '@/features/pageops/store';
 import { usePlacementStore } from '@/features/placement/store';
 // Store only, not the feature barrel: that also exports the banner component.
+import { useImageEditStore } from '@/features/imageedit/store';
 import { useLegacySidecarStore } from '@/features/sidecar/legacyStore';
 import { useSignatureStore } from '@/features/signatures';
 import { detectSignatures, useSigningStore, type DetectedSignature } from '@/features/signing';
@@ -162,6 +163,11 @@ export async function loadSourceHoldingLock(source: DocumentSource): Promise<voi
     // document's bytes mean nothing here, and restoring one would be a disaster.
     usePageOpsStore.getState().reset();
     usePlacementStore.getState().cancel();
+    // The selected image is a locator into the last document's page content, and
+    // the located-images cache is keyed on page index and docVersion, neither of
+    // which distinguishes this document. Left alone, Delete would remove whichever
+    // image here happens to match the stale selection.
+    useImageEditStore.getState().reset();
     // Also not persisted: a hint resolved against the previous document's page
     // geometry must not survive into this one.
     useAddressHover.getState().clear();
@@ -208,6 +214,7 @@ export async function closeDocument(): Promise<void> {
       useTextEditStore.getState().reset();
       usePageOpsStore.getState().reset();
       usePlacementStore.getState().cancel();
+      useImageEditStore.getState().reset();
       useAddressHover.getState().clear();
       useSigningStore.getState().setDetected([]);
       document.title = 'Folio';
