@@ -9,6 +9,7 @@ import type {
 } from 'pdfjs-dist';
 
 import { LruMap } from '@/core/lru';
+import { useViewerStore } from '@/state/viewerStore';
 
 import type { PageTextItems, PdfEngine } from './PdfEngine';
 import { ensureWorker, pdfWasmUrl } from './setupWorker';
@@ -145,7 +146,7 @@ export class PdfJsEngine implements PdfEngine {
   /** Keyed on page and scale together: a viewport is only valid at the scale
    *  it was built for. */
   private viewportCache = new LruMap<string, PageViewport>(VIEWPORT_CACHE_LIMIT);
-  private readonly linkService = createLinkService();
+  private readonly linkService = createLinkService(() => this.doc);
 
   get isReady(): boolean {
     return this.doc !== null;
@@ -680,7 +681,10 @@ function serializePerContainer(container: HTMLElement, run: () => Promise<void>)
   // Errors are the caller's to handle; they must not break the chain for the
   // renders queued behind this one.
   const next = previous.catch(() => {}).then(run);
-  layerRenders.set(container, next.catch(() => {}));
+  layerRenders.set(
+    container,
+    next.catch(() => {}),
+  );
   return next;
 }
 
@@ -718,10 +722,16 @@ function buildSnippet(text: string, index: number, length: number): string {
 
 /**
  * A minimal link service for the annotation layer. Form widgets need one to be
- * present; external links open in a new window. Internal navigation is not
- * wired up here (the viewer handles page navigation elsewhere).
+ * present. External links always open in a new window: pdf.js passes
+ * `newWindow` only for links that ask for one, so honouring it alone would let
+ * an ordinary link navigate the Folio webview away and lose unsaved edits.
+ * Internal links resolve their destination against the loaded document and
+ * drive the viewer store, the same way the outline does.
  */
-function createLinkService() {
+export function createLinkService(getDoc: () => PDFDocumentProxy | null = () => null) {
+  const goToPage = (pageNumber: number) => {
+    if (Number.isFinite(pageNumber)) useViewerStore.getState().goToPage(pageNumber);
+  };
   return {
     externalLinkEnabled: true,
     externalLinkTarget: 2, // LinkTarget.BLANK
@@ -732,15 +742,20 @@ function createLinkService() {
     rotation: 0,
     getDestinationHash: () => '',
     getAnchorUrl: (url: string) => url,
-    addLinkAttributes: (link: HTMLAnchorElement, url: string, newWindow?: boolean) => {
+    addLinkAttributes: (link: HTMLAnchorElement, url: string, _newWindow?: boolean) => {
       link.href = url || '';
       link.rel = 'noopener noreferrer nofollow';
-      link.target = newWindow ? '_blank' : '';
+      link.target = '_blank';
     },
     setHash: () => {},
     executeNamedAction: () => {},
     executeSetOCGState: () => {},
-    goToDestination: async () => {},
-    goToPage: () => {},
+    goToDestination: async (dest: string | unknown[] | null) => {
+      const doc = getDoc();
+      if (!doc) return;
+      const page = await destToPageNumber(doc, dest);
+      if (page !== null) goToPage(page);
+    },
+    goToPage,
   };
 }
