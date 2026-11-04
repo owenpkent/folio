@@ -9,7 +9,7 @@ import type { OcrPage } from '@/features/ocr/types';
 import { useSignatureStore } from '@/features/signatures/store';
 import type { Signature } from '@/features/signatures/types';
 
-import { capturePageState, remapPageState, restorePageState } from './pageState';
+import { capturePageState, remapPageState, restorePageState, undoPageState } from './pageState';
 
 const rect = (x: number) => ({ x, y: 0.2, width: 0.3, height: 0.4 });
 
@@ -222,5 +222,150 @@ describe('capturePageState / restorePageState', () => {
     // turned rects inside them cannot reach back into it.
     expect(snapshot.edits.map((e) => e.pageNumber)).toEqual([1, 2, 3]);
     expect(snapshot.edits[1].rect).toEqual(rect(0.1));
+  });
+});
+
+/** toEqual on a rect that has been through a rotation and back. */
+function expectRect(actual: ReturnType<typeof rect>, expected: ReturnType<typeof rect>): void {
+  expect(actual.x).toBeCloseTo(expected.x);
+  expect(actual.y).toBeCloseTo(expected.y);
+  expect(actual.width).toBeCloseTo(expected.width);
+  expect(actual.height).toBeCloseTo(expected.height);
+}
+
+describe('undoPageState', () => {
+  beforeEach(() => {
+    useEditStore.getState().reset();
+    useSignatureStore.getState().reset();
+    useAnnotationStore.getState().reset();
+    useOcrStore.getState().reset();
+    seed();
+  });
+
+  /** Run a plan the way commitPagePlan does: capture, remap, record the plan. */
+  function commit(pageMap: Map<number, number>, turns?: Map<number, number>) {
+    const snapshot = capturePageState(new Uint8Array(), 3);
+    remapPageState(pageMap, turns);
+    snapshot.pageMap = pageMap;
+    snapshot.turns = turns;
+    return snapshot;
+  }
+
+  it('keeps a signature placed after the operation, on the page it was placed on', () => {
+    // Delete page 1: pages 2 and 3 become 1 and 2.
+    const snapshot = commit(
+      new Map([
+        [2, 1],
+        [3, 2],
+      ]),
+    );
+    // Placed on what is now page 2, which was page 3.
+    useSignatureStore
+      .getState()
+      .replaceAll([...useSignatureStore.getState().signatures, signature('later', 2)]);
+
+    undoPageState(snapshot);
+
+    const pages = Object.fromEntries(
+      useSignatureStore.getState().signatures.map((s) => [s.id, s.pageNumber]),
+    );
+    expect(pages).toEqual({ s1: 1, s2: 2, s3: 3, later: 3 });
+  });
+
+  it('brings back only what sat on the deleted page, from the snapshot', () => {
+    const snapshot = commit(
+      new Map([
+        [2, 1],
+        [3, 2],
+      ]),
+    );
+    expect(editPages()).toEqual([
+      ['e2', 1],
+      ['e3', 2],
+    ]);
+
+    undoPageState(snapshot);
+
+    expect(editPages().sort()).toEqual([
+      ['e1', 1],
+      ['e2', 2],
+      ['e3', 3],
+    ]);
+    expect(Object.keys(useOcrStore.getState().pages).sort()).toEqual(['1', '2', '3']);
+    expect(useOcrStore.getState().pages[1].text).toBe('page 1');
+  });
+
+  it('leaves an item the user removed after the operation removed', () => {
+    const snapshot = commit(
+      new Map([
+        [1, 1],
+        [2, 2],
+        [3, 3],
+      ]),
+    );
+    useAnnotationStore
+      .getState()
+      .replaceAll(useAnnotationStore.getState().annotations.filter((a) => a.id !== 'h2'));
+
+    undoPageState(snapshot);
+
+    expect(useAnnotationStore.getState().annotations.map((a) => a.id)).toEqual(['h1', 'n3']);
+  });
+
+  it('turns a rect placed on a rotated page back with the page', () => {
+    const snapshot = commit(
+      new Map([
+        [1, 1],
+        [2, 2],
+        [3, 3],
+      ]),
+      new Map([[2, 90]]),
+    );
+    const placed = rect(0.1);
+    useEditStore.getState().replaceAll([...useEditStore.getState().edits, textEdit('later', 2)]);
+
+    undoPageState(snapshot);
+
+    const edits = Object.fromEntries(useEditStore.getState().edits.map((e) => [e.id, e.rect]));
+    // Turned 90 and back: where it was, to floating-point rounding.
+    expectRect(edits.e2, rect(0.1));
+    // Placed on the turned page, so turning back moves it the other way.
+    expect(edits.later).not.toEqual(placed);
+    expect(edits.later.width).toBeCloseTo(placed.height);
+    expect(edits.later.height).toBeCloseTo(placed.width);
+    // Words too.
+    expectRect(useOcrStore.getState().pages[2].words[0].rect, rect(0.1));
+  });
+
+  it('reverses a reorder, carrying later work to the page it is on', () => {
+    // Reverse the pages.
+    const snapshot = commit(
+      new Map([
+        [1, 3],
+        [2, 2],
+        [3, 1],
+      ]),
+    );
+    useSignatureStore
+      .getState()
+      .replaceAll([...useSignatureStore.getState().signatures, signature('later', 1)]);
+
+    undoPageState(snapshot);
+
+    const pages = Object.fromEntries(
+      useSignatureStore.getState().signatures.map((s) => [s.id, s.pageNumber]),
+    );
+    // 'later' went on page 1, which was page 3 before the reorder.
+    expect(pages).toEqual({ s1: 1, s2: 2, s3: 3, later: 3 });
+  });
+
+  it('falls back to a plain restore for a snapshot that records no plan', () => {
+    const snapshot = capturePageState(new Uint8Array(), 3);
+    remapPageState(new Map([[1, 1]]));
+    useSignatureStore.getState().replaceAll([signature('later', 1)]);
+
+    undoPageState(snapshot);
+
+    expect(useSignatureStore.getState().signatures.map((s) => s.id)).toEqual(['s1', 's2', 's3']);
   });
 });

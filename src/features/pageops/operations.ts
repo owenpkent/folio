@@ -23,6 +23,7 @@ import {
   clearTransientPageState,
   remapPageState,
   restorePageState,
+  undoPageState,
   type PageOpsSnapshot,
   type PageTurns,
 } from './pageState';
@@ -98,8 +99,13 @@ async function commitPagePlan(plan: PagePlan, announcement: string): Promise<boo
         // document that never changed, saved to disk, with nothing in the undo
         // stack to put it back.
         await swapInDocument(result.bytes, result.numPages, wasOn, result.pageMap);
-        remapPageState(result.pageMap, turnsByPageNumber(plan));
+        const turns = turnsByPageNumber(plan);
+        remapPageState(result.pageMap, turns);
 
+        // Now that it has landed, the snapshot records how, so undo can carry
+        // anything placed from here on back across it (see undoPageState).
+        snapshot.pageMap = result.pageMap;
+        snapshot.turns = turns;
         usePageOpsStore.getState().pushUndo(snapshot);
         usePageOpsStore.getState().remapSelection(result.pageMap);
         announce(announcement);
@@ -147,7 +153,7 @@ export async function undoPageOp(): Promise<boolean> {
         // failed attempt from leaving every highlight, signature, text box, and
         // OCR page pointed at a document that never went back.
         await swapInDocument(snapshot.bytes, snapshot.numPages, wasOn, null);
-        restorePageState(snapshot);
+        undoPageState(snapshot);
         usePageOpsStore.getState().clearSelection();
         announce('Page change undone');
         return true;

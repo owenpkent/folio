@@ -86,7 +86,11 @@ the AcroForm, document metadata — and losing a document's bookmarks because
 someone moved page 4 above page 3 is not a trade worth making.
 
 Undo restores the document's bytes *and* everything placed on its pages, because
-deleting a page also deletes the highlights and signatures that were on it.
+deleting a page also deletes the highlights and signatures that were on it. What
+was placed, drawn, or recognized *after* the operation is kept and carried back
+to the page it is on: a signature put on the new page 2 ends up on whichever
+page that was, and an item removed since stays removed. Only a text or image
+edit, which rewrites the bytes the undo would restore, clears the undo stack.
 
 A page operation holds the [document mutation
 lock](architecture.md#the-document-mutation-lock) for its whole commit, at the

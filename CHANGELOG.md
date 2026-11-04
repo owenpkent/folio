@@ -25,6 +25,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   error and a screen-reader announcement; what is on the page stays there
   until the file is closed, and a saved copy still bakes it in. Plugin
   storage's `set` now returns `false` instead of failing silently.
+- **Undoing a page operation no longer discards work done after it.** A
+  signature, highlight, text box, or OCR run added after a page was deleted,
+  moved, or rotated was replaced by the pre-operation snapshot on undo, and
+  the replacement written through to storage. Undo now maps that later work
+  back through the operation and restores from the snapshot only what sat on
+  a deleted page.
 
 ## [0.8.1] - 2026-11-01
 
