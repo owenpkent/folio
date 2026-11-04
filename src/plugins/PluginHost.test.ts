@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { commandRegistry } from '@/commands';
 
 import { useContributionStore } from './contributionStore';
+import { useDocumentStore } from '@/state/documentStore';
+
 import { pluginHost } from './PluginHost';
 import type { DocumentInfo, FolioPlugin, PluginContext } from './types';
 
@@ -41,7 +43,9 @@ describe('PluginHost', () => {
     await pluginHost.deactivate('test.plugin');
 
     expect(commandRegistry.has('test.cmd')).toBe(false);
-    expect(useContributionStore.getState().toolbarItems.some((i) => i.id === 'test.tb')).toBe(false);
+    expect(useContributionStore.getState().toolbarItems.some((i) => i.id === 'test.tb')).toBe(
+      false,
+    );
     expect(useContributionStore.getState().sidebarPanels.some((p) => p.id === 'test.panel')).toBe(
       false,
     );
@@ -56,5 +60,24 @@ describe('PluginHost', () => {
 
     expect(handler).toHaveBeenCalledWith(doc);
     expect(pluginHost.getActiveDocument()).toEqual(doc);
+  });
+
+  it('returns null from getActiveDocument once the document is cleared', () => {
+    pluginHost.emitDocumentOpen({ name: 'a.pdf', numPages: 3, fingerprint: 'fp' });
+    pluginHost.clearActiveDocument();
+
+    expect(pluginHost.getActiveDocument()).toBeNull();
+  });
+
+  it('reports the current page count after a page operation changes it', () => {
+    const info = { name: 'a.pdf', numPages: 3, fingerprint: 'fp' };
+    useDocumentStore.setState({ status: 'ready', info: info as never });
+    pluginHost.emitDocumentOpen({ ...info });
+
+    useDocumentStore.getState().setNumPages(2);
+
+    expect(pluginHost.getActiveDocument()?.numPages).toBe(2);
+    useDocumentStore.getState().reset();
+    pluginHost.clearActiveDocument();
   });
 });

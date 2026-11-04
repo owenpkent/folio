@@ -1,5 +1,6 @@
 import { commandRegistry } from '@/commands';
 import { pushToast } from '@/components/common/toastStore';
+import { useDocumentStore } from '@/state/documentStore';
 
 import { useContributionStore } from './contributionStore';
 import {
@@ -82,8 +83,26 @@ class PluginHost {
     }
   }
 
+  /** Forget the active document; called when the document is closed. */
+  clearActiveDocument(): void {
+    this.activeDoc = null;
+  }
+
+  /**
+   * The cached open-time record, with `numPages` read live from the document
+   * store: a page operation changes the count without reopening the document,
+   * so the snapshot taken at open time would otherwise go stale. The
+   * fingerprint check keeps a record for a different document from lending
+   * its count to this one.
+   */
   getActiveDocument(): DocumentInfo | null {
-    return this.activeDoc;
+    const cached = this.activeDoc;
+    if (!cached) return null;
+    const info = useDocumentStore.getState().info;
+    if (info && info.fingerprint === cached.fingerprint && info.numPages !== cached.numPages) {
+      return { ...cached, numPages: info.numPages };
+    }
+    return cached;
   }
 
   private createContext(pluginId: string, disposables: Disposable[]): PluginContext {
@@ -123,7 +142,7 @@ class PluginHost {
         this.pageHandlers.set(pluginId, set);
         return track(() => set.delete(handler));
       },
-      getActiveDocument: () => this.activeDoc,
+      getActiveDocument: () => this.getActiveDocument(),
       storage: createPluginStorage(pluginId),
       ui: { showToast: (message, opts) => pushToast(message, opts?.kind ?? 'info') },
     };
