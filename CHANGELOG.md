@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-04
+
 ### Fixed
 
 - **Finishing an update on Windows now really puts your document back.** The
@@ -1218,7 +1220,8 @@ Prepared but never published; everything below first shipped in 0.8.1.
   a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
   cargo-deny policy.
 
-[Unreleased]: https://github.com/owenpkent/folio/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/owenpkent/folio/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/owenpkent/folio/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/owenpkent/folio/compare/v0.7.0...v0.8.1
 [0.8.0]: https://github.com/owenpkent/folio/compare/v0.7.0...303d363
 [0.7.0]: https://github.com/owenpkent/folio/compare/v0.6.0...v0.7.0
