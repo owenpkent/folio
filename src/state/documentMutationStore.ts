@@ -24,7 +24,9 @@ export type MutationOwner =
   | 'imageedit'
   /** Save, Save a copy, Print, and digital signing: all read the same snapshot. */
   | 'export'
-  | 'ocr';
+  | 'ocr'
+  /** Moving sidecar state saved under a pre-0.8.2 key to this document's key. */
+  | 'migration';
 
 /**
  * What an operation writes, which is what decides who may overlap with whom.

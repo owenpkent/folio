@@ -93,7 +93,11 @@ up with saved state under that old key and none of its own, Folio shows a
 banner: **Apply to this file** moves the old entries to this file, **Discard**
 deletes them. Folio cannot tell which file from the template they were placed
 on, so the choice is yours, and either way the next file from the same
-template opens clean rather than asking again.
+template opens clean rather than asking again. Deciding has to wait for a
+page operation in progress, and the banner goes away once one lands, since
+the old entries describe the page order the file opened with; reopening the
+file offers them again. If the browser's storage is too full to make the
+copy, nothing is deleted and the banner stays.
 
 ### How signatures are stored and coordinates
 

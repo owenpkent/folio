@@ -1,4 +1,8 @@
 import { Button } from '@/components/common';
+import {
+  DOCUMENT_MUTATION_BUSY_TITLE,
+  useDocumentMutationBlocked,
+} from '@/state/documentMutationStore';
 
 import { useLegacySidecarStore } from './legacyStore';
 
@@ -11,6 +15,11 @@ export function LegacySidecarBanner() {
   const pending = useLegacySidecarStore((s) => s.pending);
   const apply = useLegacySidecarStore((s) => s.apply);
   const discard = useLegacySidecarStore((s) => s.discard);
+  // Apply rewrites the page-keyed stores, so it waits for a page operation
+  // the same way every other page-map change does; the store refuses it
+  // anyway, this just says why up front. Discard only deletes the old entries
+  // and conflicts with nothing.
+  const blocked = useDocumentMutationBlocked('migration', 'pages');
 
   if (!pending) return null;
 
@@ -22,7 +31,12 @@ export function LegacySidecarBanner() {
         Found edits saved for a document with the same PDF ID. They may belong to another file
         filled from the same form.
       </span>
-      <Button variant="primary" onClick={apply}>
+      <Button
+        variant="primary"
+        onClick={apply}
+        disabled={blocked}
+        title={blocked ? DOCUMENT_MUTATION_BUSY_TITLE : undefined}
+      >
         Apply to this file
       </Button>
       <Button onClick={discard}>Discard</Button>
