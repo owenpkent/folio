@@ -3,7 +3,7 @@ import { Button } from '@/components/common';
 import { useLegacySidecarStore } from './legacyStore';
 
 /**
- * Asks what to do with sidecar state saved under this document's pre-0.9 key.
+ * Asks what to do with sidecar state saved under this document's old (up to 0.8.1) key.
  * Folio cannot tell which file from the template it was placed on, so the
  * choice is the user's each time; see legacyStore.ts for what each button does.
  */

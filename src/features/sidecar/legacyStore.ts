@@ -7,7 +7,7 @@ import { storageKey as signatureKey, useSignatureStore } from '@/features/signat
 import { useDocumentStore } from '@/state/documentStore';
 
 /**
- * Sidecar state saved by Folio before 0.9 was keyed by the PDF.js
+ * Sidecar state saved by Folio releases up to 0.8.1 was keyed by the PDF.js
  * fingerprint, which two files filled from the same template share (see
  * core/document/contentKey.ts). Those entries are still in localStorage under
  * the old key, and Folio cannot tell which file they really belong to: a
@@ -30,7 +30,7 @@ const SIDECARS = [annotationKey, signatureKey, editKey, ocrKey] as const;
 export interface LegacySidecar {
   /** The content key the document is open under. */
   fingerprint: string;
-  /** The PDF.js fingerprint the pre-0.9 sidecar is filed under. */
+  /** The PDF.js fingerprint the old (up to 0.8.1) sidecar is filed under. */
   legacyKey: string;
 }
 

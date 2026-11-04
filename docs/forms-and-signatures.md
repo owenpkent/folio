@@ -88,7 +88,7 @@ trade-off is that a file re-saved by another program (same ID, different
 bytes) no longer finds the placements Folio kept for it; losing unsaved
 placements that way is safer than putting them on the wrong document.
 
-Folio versions before 0.9 keyed the sidecar on the shared ID. When a file turns
+Folio releases up to 0.8.1 keyed the sidecar on the shared ID. When a file turns
 up with saved state under that old key and none of its own, Folio shows a
 banner: **Apply to this file** moves the old entries to this file, **Discard**
 deletes them. Folio cannot tell which file from the template they were placed

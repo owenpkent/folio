@@ -31,11 +31,9 @@ export async function contentKey(source: DocumentSource): Promise<string | null>
     // Must run before the engine takes the bytes: PDF.js transfers the array
     // to its worker and detaches this view, so there is nothing left to hash
     // afterwards. loadSourceHoldingLock orders the calls accordingly.
-    const { data } = source;
-    const digest = await crypto.subtle.digest(
-      'SHA-256',
-      data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer,
-    );
+    // The view itself, not a copy: slicing the buffer first would hold a
+    // second copy of the whole file for the duration of the hash.
+    const digest = await crypto.subtle.digest('SHA-256', source.data as Uint8Array<ArrayBuffer>);
     return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
   } catch {
     return null;

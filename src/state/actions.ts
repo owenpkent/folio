@@ -137,7 +137,7 @@ export async function loadSourceHoldingLock(source: DocumentSource): Promise<voi
     // The engine's fingerprint is a property of the template the file was
     // made from, not of the file (see contentKey.ts), so nothing downstream
     // sees it as the document's identity. It stays in `legacyKey` only to find
-    // sidecar state saved under it before 0.9.
+    // sidecar state saved under it by releases up to 0.8.1.
     const info = { ...loaded, fingerprint: hash ?? loaded.fingerprint };
     const legacyKey = loaded.fingerprint;
     const [metadata, outline] = await Promise.all([engine.getMetadata(), engine.getOutline()]);
