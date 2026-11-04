@@ -95,14 +95,20 @@ export async function openDroppedPdfs(sources: BytesDocumentSource[]): Promise<v
  * A blocked open says so rather than doing nothing: Open is reachable from a
  * dropped file and a keyboard shortcut as well as the menu, and only the menu
  * can be disabled up front.
+ *
+ * Resolves true only when the document actually loaded. A refused open (lock
+ * held) and a failed one (error state) both resolve false without throwing, so
+ * a caller cannot tell them from success by looking at the store afterwards:
+ * on a refusal it still holds the previously open document.
  */
-export async function loadSource(source: DocumentSource): Promise<void> {
+export async function loadSource(source: DocumentSource): Promise<boolean> {
   return withDocumentMutation(
     { owner: 'document', scope: 'pages' },
     () => loadSourceHoldingLock(source),
     () => {
       pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
       announce(DOCUMENT_MUTATION_BUSY_TITLE, true);
+      return false;
     },
   );
 }
@@ -120,7 +126,7 @@ export async function loadSource(source: DocumentSource): Promise<void> {
  * the new document while the page op went on to reload the OLD one's bytes and
  * remap the OLD one's sidecar over them.
  */
-export async function loadSourceHoldingLock(source: DocumentSource): Promise<void> {
+export async function loadSourceHoldingLock(source: DocumentSource): Promise<boolean> {
   const engine = getEngine();
   const doc = useDocumentStore.getState();
   const viewer = useViewerStore.getState();
@@ -180,10 +186,12 @@ export async function loadSourceHoldingLock(source: DocumentSource): Promise<voi
       fingerprint: info.fingerprint,
     });
     announce(`Opened ${info.name}, ${info.numPages} page${info.numPages === 1 ? '' : 's'}`);
+    return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to open document';
     doc.setError(message);
     announce(`Could not open document: ${message}`, true);
+    return false;
   }
 }
 

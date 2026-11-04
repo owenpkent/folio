@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { PdfDocumentInfo } from '@/core/pdf';
+import { useDocumentMutationStore } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 
 vi.mock('./openDocument', () => ({ isTauri: () => false }));
@@ -44,6 +45,7 @@ beforeEach(() => {
   // the first place, so they do not need to override this.
   loadSource.mockImplementation(async () => {
     markReady();
+    return true;
   });
 });
 
@@ -72,7 +74,11 @@ describe('openFromQueryParam', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response(PDF_BYTES, { status: 200 }));
 
-    window.history.replaceState(null, '', `/?file=${encodeURIComponent('https://example.com/a.pdf')}`);
+    window.history.replaceState(
+      null,
+      '',
+      `/?file=${encodeURIComponent('https://example.com/a.pdf')}`,
+    );
     await openFromQueryParam();
 
     expect(fetchSpy).toHaveBeenCalledWith('https://example.com/a.pdf', { redirect: 'error' });
@@ -82,7 +88,11 @@ describe('openFromQueryParam', () => {
     // The fragment comes from a page navigation, so any site can choose it.
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
-    for (const hostile of ['javascript:alert(1)', 'data:application/pdf;base64,AA==', 'file:///c:/a.pdf']) {
+    for (const hostile of [
+      'javascript:alert(1)',
+      'data:application/pdf;base64,AA==',
+      'file:///c:/a.pdf',
+    ]) {
       withHash(`#file=${hostile}`);
       await openFromQueryParam();
     }
@@ -159,12 +169,33 @@ describe('openFromQueryParam', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(PDF_BYTES, { status: 200 }));
     loadSource.mockImplementation(async () => {
       useDocumentStore.setState({ status: 'error', info: null });
+      return false;
     });
 
     withHash('#file=https://example.com/a.pdf');
     await openFromQueryParam();
 
     expect(originalDocumentUrl()).toBeNull();
+  });
+
+  it('does not attach the URL to the already-open document when the open is refused', async () => {
+    // A page operation holds the mutation lock, so loadSource refuses without
+    // throwing and the store still shows the previous document as ready.
+    markReady('already-open-document');
+    const release = useDocumentMutationStore
+      .getState()
+      .acquire({ owner: 'pageops', scope: 'pages' });
+    loadSource.mockImplementation(async () => false);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(PDF_BYTES, { status: 200 }));
+
+    withHash('#file=https://example.com/a.pdf');
+    await openFromQueryParam();
+    release?.();
+
+    expect(loadSource).toHaveBeenCalledTimes(1);
+    expect(originalDocumentUrl()).toBeNull();
+    expect(await downloadOriginal()).toBe(false);
+    expect(downloadBytes).not.toHaveBeenCalled();
   });
 
   it('forgets the URL once a different document is open', async () => {
@@ -217,7 +248,10 @@ describe('basename (via the DocumentSource handed to loadSource)', () => {
 
   it('appends .pdf when the path has no extension and the response says it is one', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(PDF_BYTES, { status: 200, headers: { 'content-type': 'application/pdf; charset=binary' } }),
+      new Response(PDF_BYTES, {
+        status: 200,
+        headers: { 'content-type': 'application/pdf; charset=binary' },
+      }),
     );
     // This PR's own headline URL shape: no filename in the path at all.
     withHash('#file=https://example.com/download?doc=42&fmt=pdf');
@@ -253,7 +287,9 @@ describe('downloadOriginal', () => {
   it('hands the refetched bytes to the shared download helper and reports success', async () => {
     // A fresh Response per call: openFromQueryParam and downloadOriginal each
     // consume a body, and a Response's body can only be read once.
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(PDF_BYTES, { status: 200 }));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () => new Response(PDF_BYTES, { status: 200 }),
+    );
     withHash('#file=https://example.com/a.pdf');
     await openFromQueryParam();
 
