@@ -31,6 +31,13 @@ async function getWorker(): Promise<Worker> {
         },
       });
     })();
+    // A failed creation (asset fetch, wasm load, a moment offline) must not stay
+    // cached, or every later attempt would replay the same rejection. Attached
+    // at assignment time so it runs before any second caller can await it.
+    const attempt = workerPromise;
+    attempt.catch(() => {
+      if (workerPromise === attempt) workerPromise = null;
+    });
   }
   return workerPromise;
 }
@@ -75,6 +82,12 @@ export async function recognizeImage(
       }
     }
     return { words, text: data.text ?? '' };
+  } catch (err) {
+    // The worker may be wedged or dead after a failed run; drop it so the next
+    // page gets a fresh one instead of reusing a broken instance.
+    workerPromise = null;
+    void worker.terminate().catch(() => {});
+    throw err;
   } finally {
     progressCb = null;
   }
