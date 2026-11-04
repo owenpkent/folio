@@ -460,6 +460,25 @@ describe('printDocument', () => {
     expect(total).toBeLessThanOrEqual(768 * 1024 * 1024);
   });
 
+  it('counts a page pinned to its canvas ceiling at that ceiling, not at the candidate scale', async () => {
+    // A Letter cover and two 14,400-point posters. Summing the posters at 1x
+    // says nothing fits, but the render loop clamps each of them to 4096 x
+    // 4096 (64 MiB apiece), and with the cover at 2x the run is 135 MiB.
+    pdf.numPages = 3;
+    pdf.pageSizes.set(2, { width: 14_400, height: 14_400 });
+    pdf.pageSizes.set(3, { width: 14_400, height: 14_400 });
+
+    await printDocument();
+
+    expect(printSpy).toHaveBeenCalledTimes(1);
+    // The cover gets the full print scale; each poster is exactly its ceiling.
+    expect(pdf.renderScales[0]).toBe(2);
+    expect(pdf.renderBytes[1]).toBe(4096 * 4096 * 4);
+    expect(pdf.renderBytes[2]).toBe(4096 * 4096 * 4);
+    const total = pdf.renderBytes.reduce((sum, bytes) => sum + bytes, 0);
+    expect(total).toBeLessThanOrEqual(768 * 1024 * 1024);
+  });
+
   it('gives a uniform document the same scale page 1 alone would have', async () => {
     // 300 Letter pages: sqrt(768 MiB / (300 x 612 x 792 x 4)) = 0.9157...
     pdf.numPages = 300;

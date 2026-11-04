@@ -96,9 +96,24 @@ const DECODE_CONCURRENCY = 4;
  */
 const PRINT_TEARDOWN_TIMEOUT_MS = 60_000;
 
+/** A page's size in user units, as getViewport({ scale: 1 }) reports it. */
+interface PageSize {
+  width: number;
+  height: number;
+}
+
 /** Bytes a decoded RGBA bitmap of this page costs at `scale`. */
 function bitmapBytes(width: number, height: number, scale: number): number {
   return Math.floor(width * scale) * Math.floor(height * scale) * 4;
+}
+
+/** Bytes the whole document costs at `scale`, each page held to its canvas ceilings. */
+function documentBytes(pages: readonly PageSize[], scale: number): number {
+  let total = 0;
+  for (const page of pages) {
+    total += bitmapBytes(page.width, page.height, capScale(page.width, page.height, scale));
+  }
+  return total;
 }
 
 /**
@@ -108,16 +123,48 @@ function bitmapBytes(width: number, height: number, scale: number): number {
  * `pages` holds every page's size in user units, so a mixed-size document is
  * costed by what it really holds, not by its first page times its length.
  *
- * Cost grows with the square of the scale, so the affordable scale is
- * sqrt(budget / (total bytes of all pages at 1x)).
+ * A page is rendered at `scale` or at its canvas ceiling (capScale), whichever
+ * is lower, so a page already pinned to its ceiling costs the same at every
+ * candidate scale above it. Costing such pages at the candidate scale instead
+ * refused a Letter cover with two poster pages that the render loop would in
+ * fact have drawn at 4096 x 4096 each, well inside the budget. So the cost is
+ * taken in bands: between any two ceilings no page changes from scaling to
+ * pinned, the pinned ones cost a fixed amount, and the rest grow with the
+ * square of the scale, which gives the affordable scale in that band as
+ * sqrt((budget - pinned) / (scaling bytes at 1x)). The bands are walked from
+ * the top; the first one whose answer lies inside it is the one.
  */
-function chooseScale(pages: readonly { width: number; height: number }[]): number | null {
-  let atScaleOne = 0;
-  for (const page of pages) atScaleOne += bitmapBytes(page.width, page.height, 1);
-  if (atScaleOne <= 0) return PRINT_SCALE;
-  const affordable = Math.sqrt(PRINT_BITMAP_BUDGET_BYTES / atScaleOne);
-  if (affordable < MIN_PRINT_SCALE) return null;
-  return Math.min(PRINT_SCALE, affordable);
+function chooseScale(pages: readonly PageSize[]): number | null {
+  if (documentBytes(pages, MIN_PRINT_SCALE) > PRINT_BITMAP_BUDGET_BYTES) return null;
+  if (documentBytes(pages, PRINT_SCALE) <= PRINT_BITMAP_BUDGET_BYTES) return PRINT_SCALE;
+
+  const ceilings = pages.map((page) => capScale(page.width, page.height, PRINT_SCALE));
+  // Band floors, highest first: every distinct ceiling strictly inside the
+  // range, then the minimum scale closing the last band.
+  const floors = [...new Set(ceilings.filter((c) => c > MIN_PRINT_SCALE && c < PRINT_SCALE))]
+    .sort((a, b) => b - a)
+    .concat(MIN_PRINT_SCALE);
+
+  let upper = PRINT_SCALE;
+  for (const lower of floors) {
+    let pinned = 0;
+    let scaling = 0;
+    pages.forEach((page, i) => {
+      if (ceilings[i] <= lower) pinned += bitmapBytes(page.width, page.height, ceilings[i]);
+      else scaling += bitmapBytes(page.width, page.height, 1);
+    });
+    const affordable =
+      scaling > 0
+        ? Math.sqrt((PRINT_BITMAP_BUDGET_BYTES - pinned) / scaling)
+        : pinned <= PRINT_BITMAP_BUDGET_BYTES
+          ? upper
+          : -Infinity;
+    if (affordable >= upper) return upper;
+    if (affordable >= lower) return affordable;
+    upper = lower;
+  }
+  // Unreachable: the band ending at MIN_PRINT_SCALE is affordable by the first check.
+  return null;
 }
 
 /** `scale` reduced until this page fits both canvas ceilings. */
@@ -282,7 +329,7 @@ export async function printDocument(): Promise<void> {
       // covers the whole run even when sizes differ (a Letter cover in front of
       // a hundred A0 sheets). getPage + getViewport draw nothing; rendering is
       // the expensive part, and it stays in the loop below.
-      const unitSizes: { width: number; height: number }[] = [];
+      const unitSizes: PageSize[] = [];
       for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
         if (stopIfCancelled()) return;
         const sizedPage = await doc.getPage(pageNumber);
