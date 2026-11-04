@@ -22,8 +22,8 @@ import { useOcrStore } from '@/features/ocr';
 // in UI modules this low-level orchestration module has no business importing.
 import { usePageOpsStore } from '@/features/pageops/store';
 import { usePlacementStore } from '@/features/placement/store';
-// Store only, not the feature barrel: that also exports the banner component.
 import { useImageEditStore } from '@/features/imageedit/store';
+// Store only, not the feature barrel: that also exports the banner component.
 import { useLegacySidecarStore } from '@/features/sidecar/legacyStore';
 import { useSignatureStore } from '@/features/signatures';
 import { detectSignatures, useSigningStore, type DetectedSignature } from '@/features/signing';
