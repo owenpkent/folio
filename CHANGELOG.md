@@ -8,6 +8,25 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Edited text keeps its place in the drawing order.** Replacement text was
+  appended after everything else on the page, so a run that sat under an image
+  or a filled box came out on top of it. It is now spliced in where the
+  original was.
+- **Links in a PDF work.** An ordinary external link navigated the Folio window
+  away, unsaved edits and all; it now opens in a new window. Internal links,
+  which did nothing, now go to their page.
+- **Printing a document with mixed page sizes stays within memory.** The raster
+  budget was sized from page 1 times the page count, so a Letter cover in
+  front of large pages could ask for gigabytes. Every page's size is counted.
+- **Opening another PDF clears the image selection.** A selected image from the
+  previous document could otherwise be deleted in the new one.
+- **"Download original" cannot download the wrong file.** A web open refused
+  during a page operation no longer attaches its URL to the document already
+  open.
+- **Plugins see the current document.** `getActiveDocument()` now reports the
+  page count after a page operation and `null` after the document is closed.
+- **OCR recovers from a failed start.** One failure to load the recognizer no
+  longer makes every later OCR attempt fail until the app is reloaded.
 - **Signatures, edits, annotations and OCR text no longer leak between files
   made from the same form.** Folio filed all four under the PDF's internal ID,
   which every copy filled from one template shares (and files with no ID under
