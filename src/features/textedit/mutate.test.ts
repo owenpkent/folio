@@ -345,6 +345,150 @@ async function nestedFormContentOnPage(
   return latin1(decoded);
 }
 
+/**
+ * A one-page PDF whose content stream is exactly `content`. The page's
+ * resources: F1 Helvetica, F2 Courier, GS1 an ExtGState selecting Courier 20
+ * through /Font, GS2 an ExtGState with only /ca (alpha, no font).
+ */
+async function pdfWithContent(content: string): Promise<{ bytes: Uint8Array }> {
+  const doc = await PDFDocument.create();
+  const helv = await doc.embedFont(StandardFonts.Helvetica);
+  const courier = await doc.embedFont(StandardFonts.Courier);
+  const page = doc.addPage([595, 842]);
+  page.node.setFontDictionary(PDFName.of('F1'), helv.ref);
+  page.node.setFontDictionary(PDFName.of('F2'), courier.ref);
+  page.node.setExtGState(
+    PDFName.of('GS1'),
+    doc.context.register(doc.context.obj({ Type: 'ExtGState', Font: [courier.ref, 20] })),
+  );
+  page.node.setExtGState(
+    PDFName.of('GS2'),
+    doc.context.register(doc.context.obj({ Type: 'ExtGState', ca: 0.5 })),
+  );
+  const contentRef = doc.context.register(
+    PDFRawStream.of(doc.context.obj({}), new TextEncoder().encode(content)),
+  );
+  page.node.set(PDFName.of('Contents'), contentRef);
+  return { bytes: await doc.save() };
+}
+
+const helvStyle = {
+  fontFamilyHint: 'Helvetica',
+  fontSize: 18,
+  color: { r: 0, g: 0, b: 0 },
+};
+
+async function pageText(bytes: Uint8Array): Promise<string> {
+  const streams = await getPageContentStreams(bytes, 0);
+  return streams.map(latin1).join(String.fromCharCode(10));
+}
+
+describe('commitTextEdit (state restore after the insertion)', () => {
+  it('replays the last Tf and the gs after it, so an untouched text object keeps its inherited font', async () => {
+    const untouched = 'BT 72 600 Td (Untouched) Tj ET';
+    const { bytes } = await pdfWithContent(
+      `/F1 12 Tf /GS1 gs BT 72 700 Td (Edit) Tj ET ${untouched}`,
+    );
+
+    const result = await commitTextEdit({
+      pdfBytes: bytes,
+      pageIndex: 0,
+      target: { x: 72, y: 700, op: 'Tj' },
+      newText: 'Replaced',
+      style: helvStyle,
+    });
+
+    const text = await pageText(result);
+    const at = text.toUpperCase().indexOf(hex('Replaced'));
+    expect(at).toBeGreaterThanOrEqual(0);
+    // After the replacement: the original Tf, then the original gs (which
+    // re-selects Courier 20), both before the untouched text object.
+    const restoreTf = text.indexOf('/F1 12 Tf', at);
+    const restoreGs = text.indexOf('/GS1 gs', at);
+    expect(restoreTf).toBeGreaterThan(at);
+    expect(restoreGs).toBeGreaterThan(restoreTf);
+    expect(text.indexOf(untouched)).toBeGreaterThan(restoreGs);
+    // The untouched text object is byte-identical.
+    expect(text).toContain(untouched);
+  });
+
+  it('keeps working when the gs since the Tf does not set a font', async () => {
+    const { bytes } = await pdfWithContent('/F1 12 Tf /GS2 gs BT 72 700 Td (Edit) Tj ET');
+    const result = await commitTextEdit({
+      pdfBytes: bytes,
+      pageIndex: 0,
+      target: { x: 72, y: 700, op: 'Tj' },
+      newText: 'Replaced',
+      style: helvStyle,
+    });
+    const text = await pageText(result);
+    expect(text.toUpperCase()).toContain(hex('Replaced'));
+    expect(text.lastIndexOf('/GS2 gs')).toBeGreaterThan(
+      text.toUpperCase().indexOf(hex('Replaced')),
+    );
+  });
+
+  it('refuses when a gs since the Tf names an ExtGState that cannot be found', async () => {
+    const { bytes } = await pdfWithContent('/F1 12 Tf /Missing gs BT 72 700 Td (Edit) Tj ET');
+    const promise = commitTextEdit({
+      pdfBytes: bytes,
+      pageIndex: 0,
+      target: { x: 72, y: 700, op: 'Tj' },
+      newText: 'Replaced',
+      style: helvStyle,
+    });
+    await expect(promise).rejects.toBeInstanceOf(TexteditError);
+    await expect(promise).rejects.toMatchObject({ code: 'run-not-found' });
+  });
+});
+
+describe('commitTextEdit (text normalization)', () => {
+  it('turns a tab into four spaces instead of failing as unencodable', async () => {
+    const { bytes } = await onePagePdfWithText('Hello world');
+    const run = parseContentStreams(await getPageContentStreams(bytes, 0))[0];
+    const result = await commitTextEdit({
+      pdfBytes: bytes,
+      pageIndex: 0,
+      target: { x: run.x, y: run.y, op: 'Tj' },
+      newText: 'Two' + String.fromCharCode(9) + 'columns',
+      style: helvStyle,
+    });
+    const text = await pageText(result);
+    expect(text.toUpperCase()).toContain(hex('Two    columns'));
+  });
+
+  it('commits a newline as a second Tj after a Td, and puts the line matrix back afterwards', async () => {
+    const { bytes } = await pdfWithContent(
+      'BT /F1 18 Tf 1 0 0 1 72 700 Tm (A) Tj 0 -30 Td (B) Tj ET',
+    );
+    const result = await commitTextEdit({
+      pdfBytes: bytes,
+      pageIndex: 0,
+      target: { x: 72, y: 700, op: 'Tj' },
+      newText: 'Two' + String.fromCharCode(10) + 'lines',
+      style: helvStyle,
+    });
+
+    const text = await pageText(result);
+    const upper = text.toUpperCase();
+    const first = upper.indexOf(hex('Two'));
+    const second = upper.indexOf(hex('lines'));
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(second).toBeGreaterThan(first);
+    // A move down by the font size sits between the two Tj, and the same
+    // distance back up follows the last one.
+    const down = text.indexOf('0 -18 Td', first);
+    expect(down).toBeGreaterThan(first);
+    expect(down).toBeLessThan(second);
+    expect(text.indexOf('0 18 Td', second)).toBeGreaterThan(second);
+
+    // The operator after the insertion (the original 0 -30 Td) still sees
+    // the original line matrix: B stays at y = 670.
+    const runs = parseContentStreams(await getPageContentStreams(result, 0));
+    expect(runs.some((r) => Math.abs(r.x - 72) < 0.01 && Math.abs(r.y - 670) < 0.01)).toBe(true);
+  });
+});
+
 describe('commitTextEdit (text inside a Form XObject)', () => {
   it('replaces text located inside a Do-invoked form, and leaves a second page sharing the same XObject unchanged', async () => {
     // Matrix translates by (20, 30); the form's own Td adds (10, 5) on top of

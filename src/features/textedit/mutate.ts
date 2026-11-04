@@ -335,20 +335,27 @@ const COLOR_EPSILON = 0.5 / 255;
  * lands on the original baseline origin with no coordinate conversion (runs
  * under a rotated or skewed matrix are not editable and never reach here).
  * Font, size, and (when it differs) fill color are switched for the
- * replacement and switched straight back, so the graphics state after the
- * insertion is what the rest of the stream expects.
+ * replacement and switched back afterwards. The font state is restored by
+ * replaying the stream's own last Tf and every `gs` since it, in order,
+ * because an ExtGState can select a font too and the stream may be relying
+ * on that; re-emitting just the parsed font and size would change it.
  *
  * Tf's size operand is in text space; the style size is in user units, so it
- * is divided by the Tm/CTM scale the run was located with (fontSize/tfSize).
+ * is divided by the Tm/CTM scale the run was located with.
+ *
+ * Several lines are stacked downward by one font size each (`0 -L Td`), then
+ * the line matrix is moved back up so whatever follows sees the Tlm the
+ * original stream expects.
  */
 function replacementOperators(
   run: LocatedRun,
   fontName: string,
-  encoded: string,
+  encodedLines: string[],
   style: CommitEditParams['style'],
 ): string {
-  const scale = run.tfSize !== 0 && run.fontSize !== 0 ? run.fontSize / run.tfSize : 1;
-  const size = style.fontSize / Math.abs(scale);
+  const scale = run.textScale !== 0 ? Math.abs(run.textScale) : 1;
+  // Round once so the moves down and back up use the exact same leading.
+  const size = Number(formatNumber(style.fontSize / scale));
   const { color } = style;
   const recolor =
     Math.abs(color.r - run.color.r) > COLOR_EPSILON ||
@@ -359,12 +366,53 @@ function replacementOperators(
 
   const ops = [`${PDFName.of(fontName).toString()} ${formatNumber(size)} Tf`];
   if (recolor) ops.push(rg(color));
-  ops.push(`${encoded} Tj`);
-  if (run.fontResource !== '') {
-    ops.push(`${PDFName.of(run.fontResource).toString()} ${formatNumber(run.tfSize)} Tf`);
+  encodedLines.forEach((encoded, i) => {
+    if (i > 0) ops.push(`0 ${formatNumber(-size)} Td`);
+    if (encoded !== '') ops.push(`${encoded} Tj`);
+  });
+  if (encodedLines.length > 1) {
+    ops.push(`0 ${formatNumber(size * (encodedLines.length - 1))} Td`);
   }
+  if (run.tfOperator !== '') ops.push(run.tfOperator);
+  for (const gs of run.gsOperators) ops.push(gs.raw);
   if (recolor) ops.push(rg(run.color));
   return ops.join(' ');
+}
+
+/**
+ * pdf-lib's drawText normalization, which this feature used to get for free:
+ * tabs and U+0085/U+2028/U+2029 become four spaces, backspace and vertical
+ * tab are dropped, then the text splits into lines on \n, \f, \r. The
+ * editor forwards contentEditable text unnormalized.
+ */
+function textLines(text: string): string[] {
+  const cleaned = text.replace(/\t|\u0085|\u2028|\u2029/g, '    ').replace(/[\b\v]/g, '');
+  return cleaned.split(/\r\n|[\n\f\r]/);
+}
+
+/**
+ * Throw if a `gs` since the last Tf names an ExtGState that cannot be looked
+ * up: it may select the font, so the state to restore cannot be known. A gs
+ * with no /Font (alpha, overprint, ...) is the common case and is fine.
+ */
+function assertGsResolvable(
+  run: LocatedRun,
+  streamCount: number,
+  pageResources: PDFDict | undefined,
+  forms: Map<number, FormEntry>,
+): void {
+  for (const gs of run.gsOperators) {
+    const resources = resourcesForStream(gs.streamIndex, streamCount, pageResources, forms);
+    const extGState = resources
+      ?.lookupMaybe(PDFName.of('ExtGState'), PDFDict)
+      ?.lookupMaybe(PDFName.of(gs.name), PDFDict);
+    if (!extGState) {
+      throw new TexteditError(
+        'run-not-found',
+        'Could not read the graphics state this text depends on',
+      );
+    }
+  }
 }
 
 export async function commitTextEdit(params: CommitEditParams): Promise<Uint8Array> {
@@ -388,11 +436,14 @@ export async function commitTextEdit(params: CommitEditParams): Promise<Uint8Arr
   // Validate and encode the replacement before touching anything, so an
   // unencodable character fails without any partial work.
   let font: PDFFont | undefined;
-  let encoded = '';
+  let encodedLines: string[] = [];
   if (newText.length > 0) {
-    font = await doc.embedFont(standardFontFor(style.fontFamilyHint));
+    const embedded = await doc.embedFont(standardFontFor(style.fontFamilyHint));
+    font = embedded;
     try {
-      encoded = font.encodeText(newText).toString();
+      encodedLines = textLines(newText).map((line) =>
+        line === '' ? '' : embedded.encodeText(line).toString(),
+      );
     } catch (error) {
       if (error instanceof Error && /cannot encode/i.test(error.message)) {
         throw new TexteditError(
@@ -404,12 +455,14 @@ export async function commitTextEdit(params: CommitEditParams): Promise<Uint8Arr
     }
   }
 
+  if (font) assertGsResolvable(run, streams.length, page.node.Resources(), forms);
+
   if (run.streamIndex < streams.length) {
     // Run located in one of the page's own content streams.
     let insertion = '';
     if (font) {
       const fontName = page.node.newFontDictionary(FONT_TAG, font.ref).decodeText();
-      insertion = replacementOperators(run, fontName, encoded, style);
+      insertion = replacementOperators(run, fontName, encodedLines, style);
     }
     const spliced = streams.map((bytes, i) =>
       i === run.streamIndex ? spliceRun(bytes, run, insertion) : bytes,
@@ -449,7 +502,7 @@ export async function commitTextEdit(params: CommitEditParams): Promise<Uint8Arr
       formFonts.set(fontKey, font.ref);
       formResources.set(PDFName.of('Font'), formFonts);
       copiedDict.set(PDFName.of('Resources'), formResources);
-      insertion = replacementOperators(run, fontKey.decodeText(), encoded, style);
+      insertion = replacementOperators(run, fontKey.decodeText(), encodedLines, style);
     }
     const splicedBytes = spliceRun(entry.bytes, run, insertion);
 

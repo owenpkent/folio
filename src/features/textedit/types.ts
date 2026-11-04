@@ -22,6 +22,13 @@ export interface RunColor {
 /** Show-text operator kinds we can locate. */
 export type ShowOp = 'Tj' | 'TJ' | "'" | '"';
 
+/** A `gs` operator: its raw text, the ExtGState name, and the stream it appeared in. */
+export interface LocatedGs {
+  raw: string;
+  name: string;
+  streamIndex: number;
+}
+
 /** A show-text operator located in a page's content stream(s). */
 export interface LocatedRun {
   /** Index into the page's Contents array (0 when the page has one stream). */
@@ -43,6 +50,16 @@ export interface LocatedRun {
   fontResource: string;
   /** The raw Tf size operand active at the show op (before Tm/CTM scaling). */
   tfSize: number;
+  /** Vertical scale the Tm/CTM apply to text space (fontSize / tfSize, but known even when tfSize is 0). */
+  textScale: number;
+  /** Raw text of the last Tf operator seen (operands and operator), or '' when none. */
+  tfOperator: string;
+  /**
+   * Every `gs` operator seen since that Tf, in order. An ExtGState can set
+   * the font too (its /Font entry), so re-establishing the stream's state
+   * after an edit means replaying these after the Tf.
+   */
+  gsOperators: LocatedGs[];
   /** Fill color active at the show op. */
   color: RunColor;
   /**

@@ -9,7 +9,7 @@
  * spliceRun can make a surgical, otherwise byte-identical edit.
  */
 
-import type { LocatedRun, PageTextItemRef, RunColor, ShowOp } from './types';
+import type { LocatedGs, LocatedRun, PageTextItemRef, RunColor, ShowOp } from './types';
 
 // ---------------------------------------------------------------------------
 // Byte classification (ISO 32000-1 7.2.2/7.2.3)
@@ -317,6 +317,8 @@ interface GraphicsState {
   fillColor: RunColor;
   fontResource: string;
   tfSize: number;
+  tfOperator: string;
+  gsOperators: LocatedGs[];
   tl: number;
 }
 
@@ -331,6 +333,8 @@ interface InterpreterState {
   tl: number;
   fontResource: string;
   tfSize: number;
+  tfOperator: string;
+  gsOperators: LocatedGs[];
 }
 
 function initialState(): InterpreterState {
@@ -343,6 +347,8 @@ function initialState(): InterpreterState {
     tl: 0,
     fontResource: '',
     tfSize: 0,
+    tfOperator: '',
+    gsOperators: [],
   };
 }
 
@@ -393,6 +399,9 @@ function buildRun(
     fontSize: state.tfSize * scaleY,
     fontResource: state.fontResource,
     tfSize: state.tfSize,
+    textScale: scaleY,
+    tfOperator: state.tfOperator,
+    gsOperators: [...state.gsOperators],
     color: { ...state.fillColor },
     editable: !rotatedOrSkewed,
   };
@@ -518,6 +527,8 @@ export function parseContentStreams(
             fillColor: state.fillColor,
             fontResource: state.fontResource,
             tfSize: state.tfSize,
+            tfOperator: state.tfOperator,
+            gsOperators: state.gsOperators,
             tl: state.tl,
           });
           break;
@@ -528,6 +539,8 @@ export function parseContentStreams(
             state.fillColor = restored.fillColor;
             state.fontResource = restored.fontResource;
             state.tfSize = restored.tfSize;
+            state.tfOperator = restored.tfOperator;
+            state.gsOperators = restored.gsOperators;
             state.tl = restored.tl;
           }
           break;
@@ -580,6 +593,22 @@ export function parseContentStreams(
           const sizeTok = operands.find((t) => t.kind === 'number');
           if (nameTok) state.fontResource = nameTok.text ?? '';
           if (sizeTok) state.tfSize = sizeTok.num ?? 0;
+          state.tfOperator = decodeLatin1(bytes, start, operatorEnd);
+          state.gsOperators = [];
+          break;
+        }
+        case 'gs': {
+          const nameTok = operands.find((t) => t.kind === 'name');
+          if (nameTok) {
+            state.gsOperators = [
+              ...state.gsOperators,
+              {
+                raw: decodeLatin1(bytes, start, operatorEnd),
+                name: nameTok.text ?? '',
+                streamIndex,
+              },
+            ];
+          }
           break;
         }
         case 'TL': {
@@ -708,6 +737,8 @@ export function parseContentStreams(
           const savedFillColor = state.fillColor;
           const savedFontResource = state.fontResource;
           const savedTfSize = state.tfSize;
+          const savedTfOperator = state.tfOperator;
+          const savedGsOperators = state.gsOperators;
           const savedTl = state.tl;
           const savedTm = state.tm;
           const savedTlm = state.tlm;
@@ -725,6 +756,8 @@ export function parseContentStreams(
           state.fillColor = savedFillColor;
           state.fontResource = savedFontResource;
           state.tfSize = savedTfSize;
+          state.tfOperator = savedTfOperator;
+          state.gsOperators = savedGsOperators;
           state.tl = savedTl;
           state.tm = savedTm;
           state.tlm = savedTlm;
