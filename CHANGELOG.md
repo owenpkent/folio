@@ -17,6 +17,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   program no longer finds the placements Folio kept for it. State saved before
   this release is offered back once, per template, by a banner with **Apply to
   this file** and **Discard**, since Folio cannot tell which file it belongs to.
+- **Undoing a page operation no longer discards work done after it.** A
+  signature, highlight, text box, or OCR run added after a page was deleted,
+  moved, or rotated was replaced by the pre-operation snapshot on undo, and
+  the replacement written through to storage. Undo now maps that later work
+  back through the operation and restores from the snapshot only what sat on
+  a deleted page.
 
 ## [0.8.1] - 2026-11-01
 
