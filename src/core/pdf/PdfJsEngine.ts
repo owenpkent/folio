@@ -8,6 +8,7 @@ import type {
   PDFPageProxy,
 } from 'pdfjs-dist';
 
+import { isTauri } from '@/core/document/openDocument';
 import { LruMap } from '@/core/lru';
 import { useViewerStore } from '@/state/viewerStore';
 
@@ -721,12 +722,35 @@ function buildSnippet(text: string, index: number, length: number): string {
 }
 
 /**
+ * The URL schemes the desktop build hands to the operating system. Matches
+ * the opener plugin's default scope (`opener:allow-default-urls` in
+ * src-tauri/capabilities/default.json); anything else is left to the webview.
+ */
+const OS_OPENED_SCHEMES = /^(?:https?:|mailto:|tel:)/i;
+
+/**
+ * Open an external link with the OS default application. Loaded on first use
+ * so the browser and extension builds never pull the plugin in.
+ */
+async function openExternally(url: string): Promise<void> {
+  try {
+    const { openUrl } = await import('@tauri-apps/plugin-opener');
+    await openUrl(url);
+  } catch (error) {
+    console.warn('[folio] could not open link', url, error);
+  }
+}
+
+/**
  * A minimal link service for the annotation layer. Form widgets need one to be
  * present. External links always open in a new window: pdf.js passes
  * `newWindow` only for links that ask for one, so honouring it alone would let
  * an ordinary link navigate the Folio webview away and lose unsaved edits.
- * Internal links resolve their destination against the loaded document and
- * drive the viewer store, the same way the outline does.
+ * On the desktop a new-window request goes nowhere (the window registers no
+ * handler, and the Windows webview drops the request), so there the link is
+ * handed to the OS instead. Internal links resolve their destination against
+ * the loaded document and drive the viewer store, the same way the outline
+ * does.
  */
 export function createLinkService(getDoc: () => PDFDocumentProxy | null = () => null) {
   const goToPage = (pageNumber: number) => {
@@ -746,6 +770,12 @@ export function createLinkService(getDoc: () => PDFDocumentProxy | null = () => 
       link.href = url || '';
       link.rel = 'noopener noreferrer nofollow';
       link.target = '_blank';
+      if (url && isTauri() && OS_OPENED_SCHEMES.test(url)) {
+        link.addEventListener('click', (event) => {
+          event.preventDefault();
+          void openExternally(url);
+        });
+      }
     },
     setHash: () => {},
     executeNamedAction: () => {},
