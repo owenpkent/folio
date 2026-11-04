@@ -198,11 +198,16 @@ Four rules make it a resume rather than a surprise:
   on, and reopening the document they had then is not a convenience. On
   Windows, accepting the update *is* that choice: `tauri-plugin-updater` hands
   the NSIS installer the job of restarting Folio and exits the process from
-  inside `downloadAndInstall`, so there is no later prompt and nothing after
-  that call runs. The note is therefore written before the install starts,
-  and taken back if the install fails or, on the platforms where the call
-  returns, if the restart prompt is answered "Later". (0.7.0 to 0.8.1 wrote
-  it after the install, which on Windows is never.)
+  inside `install`, so there is no later prompt and nothing after that call
+  runs. The update is therefore downloaded first with nothing recorded (the
+  window stays usable through the download, and a note taken before it would
+  reopen a document closed or swapped out in the meantime, or on a launch
+  after an ordinary quit mid-download), and the note is written right before
+  `install`, from whatever is open at that moment. An edit made during the
+  download gets its own warning before the installer runs. On the platforms
+  where `install` returns, the note is written only once "Restart now" is
+  chosen, and a failed install leaves none. (0.7.0 to 0.8.1 wrote it after
+  the install, which on Windows is never.)
 - **Only for documents that came from disk.** `documentStore.sourcePath` is null
   for a file picked in the browser or fetched through a `folio://` link (bytes
   with no on-disk origin), and there is nothing to reopen. Nothing is recorded

@@ -30,15 +30,20 @@ const RESTART_PROMPT = 'Update installed. Restart Folio to finish?';
 const EDITED_WARNING =
   '\n\nThe open document has been edited in place. Restarting reopens it from the file on disk, so any change you have not saved will be lost.';
 
+/** Read at each prompt rather than once: the reader can edit while the download runs. */
+function editedInPlace(): boolean {
+  return useDocumentStore.getState().docVersion > 0;
+}
+
 /**
  * Whether installing the update is itself the restart.
  *
  * On Windows tauri-plugin-updater hands the NSIS installer the job of
- * restarting Folio and exits this process from inside `downloadAndInstall`
- * (its Windows install path ends in `std::process::exit`), so nothing after
- * that call ever runs there: no restart prompt, and no second chance to
- * record anything. On macOS and Linux the call returns and the app keeps
- * running until `relaunch` is asked for.
+ * restarting Folio and exits this process from inside `install` (its Windows
+ * install path ends in `std::process::exit`), so nothing after that call ever
+ * runs there: no restart prompt, and no second chance to record anything. On
+ * macOS and Linux the call returns and the app keeps running until `relaunch`
+ * is asked for.
  */
 function installRestarts(): boolean {
   return /windows/i.test(navigator.userAgent);
@@ -48,6 +53,16 @@ function installRestarts(): boolean {
  * Check GitHub Releases for a newer Folio via tauri-plugin-updater and, if the
  * user agrees, download, install, and relaunch. No-op in the browser build
  * (there is no Tauri shell to update).
+ *
+ * The resume note (see resumeAfterUpdate.ts) is written at the last moment
+ * before the process can go away, never earlier: the download can take a
+ * while, the window stays usable through it, and a note taken before it would
+ * reopen whatever was open then, including a document the reader closed or
+ * swapped out in the meantime, or on a launch after an ordinary quit mid
+ * download, when no restart ever happened. So the download runs first with
+ * nothing recorded; where installing is the restart the note goes down right
+ * before `install`, and where it is not, only once the reader has chosen
+ * "Restart now".
  *
  * @param silent When true (the launch check) stay quiet on "up to date" and on
  *   errors so a network hiccup never nags. When false (a manual "Check for
@@ -64,39 +79,51 @@ export async function checkForUpdates(silent = true): Promise<void> {
     }
 
     const restartsOnInstall = installRestarts();
-    const edited = useDocumentStore.getState().docVersion > 0;
+    const warnedAtAccept = restartsOnInstall && editedInPlace();
     const notes = update.body ? `\n\n${update.body}` : '';
     const accepted = await ask(
       `Folio ${update.version} is available (you have ${update.currentVersion}).${notes}` +
         `\n\nDownload and install it now?${restartsOnInstall ? ' Folio restarts to finish.' : ''}` +
-        `${restartsOnInstall && edited ? EDITED_WARNING : ''}`,
+        `${warnedAtAccept ? EDITED_WARNING : ''}`,
       {
         title: 'Update available',
-        kind: restartsOnInstall && edited ? 'warning' : 'info',
+        kind: warnedAtAccept ? 'warning' : 'info',
         okLabel: 'Update',
         cancelLabel: 'Later',
       },
     );
     if (!accepted) return;
 
-    // The note goes down before the install, while the process is still ours:
-    // where installing is the restart (see installRestarts) this is the only
-    // moment it can be written, and accepting the update there is the user's
-    // restart decision. Where the call returns, the prompt below refines it:
-    // "Later" takes the note back, because that update then lands on some
-    // future launch the user starts for their own reasons, and reopening a
-    // document from days ago at that point would be a surprise rather than a
-    // convenience. See resumeAfterUpdate.ts.
-    rememberOpenDocument();
     pushToast(`Downloading Folio ${update.version}...`, 'info');
+    await update.download();
+
+    if (restartsOnInstall) {
+      // Accepting the update was the restart decision, but the warning that
+      // went with it described the document as it was then. An edit made
+      // during the download is about to be thrown away by a restart the
+      // reader has not been told about, so it gets its own question.
+      if (!warnedAtAccept && editedInPlace()) {
+        const proceed = await ask(`Folio ${update.version} is downloaded.${EDITED_WARNING}`, {
+          title: 'Install update',
+          kind: 'warning',
+          okLabel: 'Install and restart',
+          cancelLabel: 'Later',
+        });
+        if (!proceed) return;
+      }
+      // The last moment this process is ours: what is open right now is what
+      // comes back, and nothing is recorded if nothing is.
+      rememberOpenDocument();
+    }
     try {
-      await update.downloadAndInstall();
+      await update.install();
     } catch (error) {
       // Nothing was installed, so no restart is coming to use the note.
       forgetOpenDocument();
       throw error;
     }
 
+    const edited = editedInPlace();
     const restart = await ask(edited ? `${RESTART_PROMPT}${EDITED_WARNING}` : RESTART_PROMPT, {
       title: 'Restart Folio',
       kind: edited ? 'warning' : 'info',
@@ -104,20 +131,20 @@ export async function checkForUpdates(silent = true): Promise<void> {
       cancelLabel: 'Later',
     });
     if (!restart) {
+      // Choosing "Later" means the update lands on some future launch the
+      // reader starts for their own reasons, and reopening a document from
+      // days ago at that point would be a surprise rather than a convenience.
       forgetOpenDocument();
       return;
     }
-    // Written again rather than trusted from before the download: the reader
-    // may have turned pages while it ran.
     rememberOpenDocument();
     try {
       await relaunch();
     } catch (error) {
       // Still running, so that restart never happened and the note now
       // describes one that never will. Left in place it would reopen the
-      // document on whatever launch the user starts next, which is the
-      // surprise the "only on the restart branch" rule above exists to
-      // avoid. Rethrown so the outer handler still reports the failure.
+      // document on whatever launch the user starts next. Rethrown so the
+      // outer handler still reports the failure.
       forgetOpenDocument();
       throw error;
     }
