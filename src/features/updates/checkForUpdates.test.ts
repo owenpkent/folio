@@ -47,14 +47,16 @@ function pendingUpdate(opts: { duringDownload?: () => void; installNeverReturns?
     seen.noteAtInstall = note();
     if (opts.installNeverReturns) await new Promise<never>(() => {});
   });
+  const close = vi.fn(async () => {});
   vi.mocked(check).mockResolvedValue({
     version: '9.9.9',
     currentVersion: '0.8.1',
     body: '',
     download,
     install,
+    close,
   } as unknown as Awaited<ReturnType<typeof check>>);
-  return { seen, download, install };
+  return { seen, download, install, close };
 }
 
 /** Make the code see a Windows webview, where installing is the restart. */
@@ -93,28 +95,31 @@ describe('checkForUpdates, where the install returns (macOS, Linux)', () => {
     expect(relaunch).toHaveBeenCalledTimes(1);
   });
 
-  it('writes nothing when the update is declined', async () => {
-    const { download } = pendingUpdate();
+  it('writes nothing, and releases the update, when it is declined', async () => {
+    const { download, close } = pendingUpdate();
     vi.mocked(ask).mockResolvedValueOnce(false);
 
     await checkForUpdates();
 
     expect(download).not.toHaveBeenCalled();
     expect(note()).toBeNull();
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves no note when the restart is put off', async () => {
-    pendingUpdate();
+  it('leaves no note, and releases the downloaded installer, when the restart is put off', async () => {
+    const { close } = pendingUpdate();
     vi.mocked(ask).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
     await checkForUpdates();
 
     expect(relaunch).not.toHaveBeenCalled();
     expect(note()).toBeNull();
+    // The installer's bytes live in the Rust resource table until closed.
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves no note when the install fails', async () => {
-    pendingUpdate();
+  it('leaves no note, and releases the downloaded installer, when the install fails', async () => {
+    const close = vi.fn(async () => {});
     vi.mocked(check).mockResolvedValue({
       version: '9.9.9',
       currentVersion: '0.8.1',
@@ -123,6 +128,7 @@ describe('checkForUpdates, where the install returns (macOS, Linux)', () => {
       install: vi.fn(async () => {
         throw new Error('installer refused');
       }),
+      close,
     } as unknown as Awaited<ReturnType<typeof check>>);
     vi.mocked(ask).mockResolvedValueOnce(true);
 
@@ -130,6 +136,16 @@ describe('checkForUpdates, where the install returns (macOS, Linux)', () => {
 
     expect(note()).toBeNull();
     expect(relaunch).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('still releases the update when closing it fails', async () => {
+    const { close } = pendingUpdate();
+    close.mockRejectedValueOnce(new Error('already gone'));
+    vi.mocked(ask).mockResolvedValueOnce(false);
+
+    await expect(checkForUpdates(false)).resolves.toBeUndefined();
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it('warns on the restart prompt about an edit made while the download ran', async () => {
@@ -241,8 +257,8 @@ describe('checkForUpdates on Windows, where installing is the restart', () => {
     expect(seen.noteAtInstall).toBe(noteFor(PATH, 7));
   });
 
-  it('does not install when that second question is answered "Later"', async () => {
-    const { install } = pendingUpdate({
+  it('does not install, and releases the installer, when that second question is answered "Later"', async () => {
+    const { install, close } = pendingUpdate({
       duringDownload: () => useDocumentStore.getState().bumpDocVersion(),
     });
     vi.mocked(ask).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
@@ -251,6 +267,7 @@ describe('checkForUpdates on Windows, where installing is the restart', () => {
 
     expect(install).not.toHaveBeenCalled();
     expect(note()).toBeNull();
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it('warns once, at acceptance, when the document was already edited', async () => {
