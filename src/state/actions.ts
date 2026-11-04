@@ -211,6 +211,7 @@ export async function closeDocument(): Promise<void> {
       useAddressHover.getState().clear();
       useSigningStore.getState().setDetected([]);
       document.title = 'Folio';
+      pluginHost.clearActiveDocument();
       announce('Closed document');
     },
     () => {
