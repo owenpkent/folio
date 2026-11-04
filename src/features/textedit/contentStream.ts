@@ -392,6 +392,7 @@ function buildRun(
     y,
     fontSize: state.tfSize * scaleY,
     fontResource: state.fontResource,
+    tfSize: state.tfSize,
     color: { ...state.fillColor },
     editable: !rotatedOrSkewed,
   };
@@ -846,25 +847,37 @@ export function spliceOperatorBytes(
   const before = start > 0 ? stream[start - 1] : 0x20;
   const after = end < stream.length ? stream[end] : 0x20;
   const needsLeading = !isBoundaryByte(before) && !isBoundaryByte(replacement[0]);
-  const needsTrailing = !isBoundaryByte(after) && !isBoundaryByte(replacement[replacement.length - 1]);
+  const needsTrailing =
+    !isBoundaryByte(after) && !isBoundaryByte(replacement[replacement.length - 1]);
   if (!needsLeading && !needsTrailing) return spliceBytes(stream, start, end, replacement);
 
-  const padded = new Uint8Array(replacement.length + (needsLeading ? 1 : 0) + (needsTrailing ? 1 : 0));
+  const padded = new Uint8Array(
+    replacement.length + (needsLeading ? 1 : 0) + (needsTrailing ? 1 : 0),
+  );
   if (needsLeading) padded[0] = 0x20;
   padded.set(replacement, needsLeading ? 1 : 0);
   if (needsTrailing) padded[padded.length - 1] = 0x20;
   return spliceBytes(stream, start, end, padded);
 }
 
-export function spliceRun(stream: Uint8Array, run: LocatedRun): Uint8Array {
+/**
+ * Remove the run's show-text operator and put `insertion` (already-formed
+ * content-stream operators) where it was, so the replacement keeps the
+ * original's place in painting order. The side effects of ' and " are kept
+ * ahead of the insertion, as before.
+ */
+export function spliceRun(stream: Uint8Array, run: LocatedRun, insertion = ''): Uint8Array {
+  const extra = insertion.length > 0 ? ` ${insertion}` : '';
   if (run.op === 'Tj' || run.op === 'TJ') {
+    if (extra)
+      return spliceOperatorBytes(stream, run.start, run.end, textEncoder.encode(insertion));
     return removeOperatorBytes(stream, run.start, run.end);
   }
 
   if (run.op === "'") {
     // ' is defined as T* followed by showing the string; keep the T* so
     // whatever follows still gets the line advance it was written expecting.
-    return spliceBytes(stream, run.start, run.end, textEncoder.encode('T*'));
+    return spliceBytes(stream, run.start, run.end, textEncoder.encode(`T*${extra}`));
   }
 
   // '"': `aw ac string "` is defined as `aw Tw ac Tc string '`, i.e. it also
@@ -877,6 +890,6 @@ export function spliceRun(stream: Uint8Array, run: LocatedRun): Uint8Array {
   const ac = readNumber(stream, acStart);
   const awText = decodeLatin1(stream, aw.start, aw.end);
   const acText = decodeLatin1(stream, ac.start, ac.end);
-  const replacement = textEncoder.encode(`${awText} Tw ${acText} Tc T*`);
+  const replacement = textEncoder.encode(`${awText} Tw ${acText} Tc T*${extra}`);
   return spliceBytes(stream, run.start, run.end, replacement);
 }

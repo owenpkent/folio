@@ -1,8 +1,8 @@
 /**
  * pdf-lib side of in-place text editing: locate the target run inside the
  * current PDF bytes, splice its show-text operator out of the content
- * stream, and (unless the replacement is empty) draw new text at the same
- * baseline origin. See features/textedit/types.ts for the overall pipeline
+ * stream, and (unless the replacement is empty) show the new text in the
+ * same spot of the stream, so it keeps the original's painting order. See features/textedit/types.ts for the overall pipeline
  * and contentStream.ts for the tokenizer/interpreter this builds on.
  *
  * Text located inside a Do-invoked Form XObject is spliced out of a *new*
@@ -23,7 +23,7 @@ import {
   PDFStream,
   StandardFonts,
   decodePDFRawStream,
-  rgb,
+  type PDFFont,
   type PDFPage,
 } from 'pdf-lib';
 
@@ -319,6 +319,54 @@ function standardFontFor(hint: string): StandardFonts {
   return StandardFonts.Helvetica;
 }
 
+const FONT_TAG = 'FolioEdit';
+
+/** A content-stream number: fixed precision, no exponent, no trailing zeros. */
+function formatNumber(n: number): string {
+  const text = n.toFixed(4).replace(/\.?0+$/, '');
+  return text === '' || text === '-0' ? '0' : text;
+}
+
+const COLOR_EPSILON = 0.5 / 255;
+
+/**
+ * The operators that stand in for the removed show-text operator. They sit
+ * inside the original's BT/ET and inherit its Tm and CTM, so the replacement
+ * lands on the original baseline origin with no coordinate conversion (runs
+ * under a rotated or skewed matrix are not editable and never reach here).
+ * Font, size, and (when it differs) fill color are switched for the
+ * replacement and switched straight back, so the graphics state after the
+ * insertion is what the rest of the stream expects.
+ *
+ * Tf's size operand is in text space; the style size is in user units, so it
+ * is divided by the Tm/CTM scale the run was located with (fontSize/tfSize).
+ */
+function replacementOperators(
+  run: LocatedRun,
+  fontName: string,
+  encoded: string,
+  style: CommitEditParams['style'],
+): string {
+  const scale = run.tfSize !== 0 && run.fontSize !== 0 ? run.fontSize / run.tfSize : 1;
+  const size = style.fontSize / Math.abs(scale);
+  const { color } = style;
+  const recolor =
+    Math.abs(color.r - run.color.r) > COLOR_EPSILON ||
+    Math.abs(color.g - run.color.g) > COLOR_EPSILON ||
+    Math.abs(color.b - run.color.b) > COLOR_EPSILON;
+  const rg = (c: { r: number; g: number; b: number }) =>
+    `${formatNumber(c.r)} ${formatNumber(c.g)} ${formatNumber(c.b)} rg`;
+
+  const ops = [`${PDFName.of(fontName).toString()} ${formatNumber(size)} Tf`];
+  if (recolor) ops.push(rg(color));
+  ops.push(`${encoded} Tj`);
+  if (run.fontResource !== '') {
+    ops.push(`${PDFName.of(run.fontResource).toString()} ${formatNumber(run.tfSize)} Tf`);
+  }
+  if (recolor) ops.push(rg(run.color));
+  return ops.join(' ');
+}
+
 export async function commitTextEdit(params: CommitEditParams): Promise<Uint8Array> {
   const { pdfBytes, pageIndex, target, newText, style } = params;
   const doc = await PDFDocument.load(pdfBytes);
@@ -337,11 +385,34 @@ export async function commitTextEdit(params: CommitEditParams): Promise<Uint8Arr
     );
   }
 
+  // Validate and encode the replacement before touching anything, so an
+  // unencodable character fails without any partial work.
+  let font: PDFFont | undefined;
+  let encoded = '';
+  if (newText.length > 0) {
+    font = await doc.embedFont(standardFontFor(style.fontFamilyHint));
+    try {
+      encoded = font.encodeText(newText).toString();
+    } catch (error) {
+      if (error instanceof Error && /cannot encode/i.test(error.message)) {
+        throw new TexteditError(
+          'unencodable-text',
+          'Some characters are not supported by built-in fonts yet',
+        );
+      }
+      throw error;
+    }
+  }
+
   if (run.streamIndex < streams.length) {
-    // Run located in one of the page's own content streams: unchanged from
-    // before this feature understood Form XObjects.
+    // Run located in one of the page's own content streams.
+    let insertion = '';
+    if (font) {
+      const fontName = page.node.newFontDictionary(FONT_TAG, font.ref).decodeText();
+      insertion = replacementOperators(run, fontName, encoded, style);
+    }
     const spliced = streams.map((bytes, i) =>
-      i === run.streamIndex ? spliceRun(bytes, run) : bytes,
+      i === run.streamIndex ? spliceRun(bytes, run, insertion) : bytes,
     );
     const mergedRef = doc.context.register(
       PDFRawStream.of(doc.context.obj({}), mergeStreams(spliced)),
@@ -360,7 +431,27 @@ export async function commitTextEdit(params: CommitEditParams): Promise<Uint8Arr
       throw new TexteditError('run-not-found', 'Could not find that text in the page content');
     }
 
-    const splicedBytes = spliceRun(entry.bytes, run);
+    // The replacement lives inside the form, so its font has to be in the
+    // form's own Resources (a form without /Resources uses the invoking
+    // page's, so start from those). Both the Resources dict and its /Font
+    // subdictionary are cloned: the originals may be shared with other forms
+    // or pages.
+    const copiedDict = copyStreamDict(doc, entry.dict);
+    let insertion = '';
+    if (font) {
+      const baseResources =
+        entry.dict.lookupMaybe(PDFName.of('Resources'), PDFDict) ?? entry.resourcesDict;
+      const formResources = baseResources.clone(doc.context);
+      const formFonts =
+        baseResources.lookupMaybe(PDFName.of('Font'), PDFDict)?.clone(doc.context) ??
+        doc.context.obj({});
+      const fontKey = formFonts.uniqueKey(FONT_TAG);
+      formFonts.set(fontKey, font.ref);
+      formResources.set(PDFName.of('Font'), formFonts);
+      copiedDict.set(PDFName.of('Resources'), formResources);
+      insertion = replacementOperators(run, fontKey.decodeText(), encoded, style);
+    }
+    const splicedBytes = spliceRun(entry.bytes, run, insertion);
 
     // Rebuild the whole chain of forms from the edited one up to the page,
     // giving each level a stream of its own. Replacing only the edited form
@@ -368,9 +459,7 @@ export async function commitTextEdit(params: CommitEditParams): Promise<Uint8Arr
     // and a parent form can be Do-invoked from another page just as readily
     // as the form holding the edit, so the change has to stop being
     // observable at every level rather than only the last one.
-    let childRef = doc.context.register(
-      PDFRawStream.of(copyStreamDict(doc, entry.dict), splicedBytes),
-    );
+    let childRef = doc.context.register(PDFRawStream.of(copiedDict, splicedBytes));
     let level: FormEntry = entry;
     // The parser caps descent depth and refuses cycles, so this chain is
     // already finite. The visited set is belt and braces against a later
@@ -402,36 +491,6 @@ export async function commitTextEdit(params: CommitEditParams): Promise<Uint8Arr
       parentDict.set(PDFName.of('Resources'), clonedResources);
       childRef = doc.context.register(PDFRawStream.of(parentDict, parent.bytes));
       level = parent;
-    }
-  }
-
-  if (newText.length > 0) {
-    const font = await doc.embedFont(standardFontFor(style.fontFamilyHint));
-    try {
-      // run.x/run.y are the baseline origin after Tm and CTM (LocatedRun's
-      // "device space", i.e. PDF user space after the content stream's own
-      // graphics state, a form's own Matrix included); drawText's x/y are
-      // plain page user space. These coincide exactly when the run's CTM is
-      // identity or a pure translation/uniform-scale, because such a matrix
-      // only shifts and scales the origin, it does not change which space it
-      // is measured in, and fontSize was scaled by that same matrix above.
-      // Rotated or skewed CTMs would break this, but parseContentStreams
-      // already marks those runs not editable, so they never reach here.
-      page.drawText(newText, {
-        x: run.x,
-        y: run.y,
-        size: style.fontSize,
-        font,
-        color: rgb(style.color.r, style.color.g, style.color.b),
-      });
-    } catch (error) {
-      if (error instanceof Error && /cannot encode/i.test(error.message)) {
-        throw new TexteditError(
-          'unencodable-text',
-          'Some characters are not supported by built-in fonts yet',
-        );
-      }
-      throw error;
     }
   }
 

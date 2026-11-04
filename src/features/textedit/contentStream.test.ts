@@ -450,7 +450,9 @@ describe('spliceOperatorBytes', () => {
   it('does not glue the replacement to a following token with no whitespace', () => {
     const src = '/Im1 Do0 0 1 RG';
     const [start, end] = [src.indexOf('/Im1'), src.indexOf('Do') + 2];
-    const out = decode(spliceOperatorBytes(encode(src), start, end, encode('q 1 0 0 1 0 0 cm /Im1 Do Q')));
+    const out = decode(
+      spliceOperatorBytes(encode(src), start, end, encode('q 1 0 0 1 0 0 cm /Im1 Do Q')),
+    );
     expect(out).toBe('q 1 0 0 1 0 0 cm /Im1 Do Q 0 0 1 RG');
     expect(out).not.toContain('Q0');
   });
@@ -565,6 +567,7 @@ function makeRun(overrides: Partial<LocatedRun>): LocatedRun {
     y: 0,
     fontSize: 12,
     fontResource: 'F1',
+    tfSize: 12,
     color: { r: 0, g: 0, b: 0 },
     editable: true,
     ...overrides,

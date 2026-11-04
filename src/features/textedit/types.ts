@@ -2,14 +2,14 @@
  * In-place editing of existing PDF text (feature: textedit).
  *
  * Unlike features/editing (additive-only text boxes), this feature removes the
- * original show-text operator from the page content stream and draws replacement
- * text at the same baseline origin. Pipeline:
+ * original show-text operator from the page content stream and shows replacement
+ * text in its place (same stream position, so painting order is preserved). Pipeline:
  *   1. contentStream.ts parses decoded page content streams and locates every
  *      show-text operator (Tj / TJ / ' / ") with its byte range, baseline
  *      origin in PDF user space, font, size, and fill color.
  *   2. The UI matches a clicked PDF.js text item to a located run by baseline
  *      origin proximity.
- *   3. mutate.ts splices the operator out with pdf-lib and draws the new text.
+ *   3. mutate.ts splices the operator out and the replacement operators in.
  */
 
 /** Fill color captured from the graphics state, normalized to sRGB 0..1. */
@@ -41,6 +41,8 @@ export interface LocatedRun {
   fontSize: number;
   /** Font resource name selected by the active Tf, e.g. "F3". */
   fontResource: string;
+  /** The raw Tf size operand active at the show op (before Tm/CTM scaling). */
+  tfSize: number;
   /** Fill color active at the show op. */
   color: RunColor;
   /**
