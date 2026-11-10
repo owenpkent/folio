@@ -8,6 +8,7 @@
  * transparency groups and their offscreen canvases, and whatever is painted on
  * top. For an image drawn with alpha `a` over a backdrop `B`, the page shows
  * `a * image + (1 - a) * invert(B)`: the photo as is, over the dark page.
+ * Every image is kept, scans included: a scanned page stays as scanned.
  *
  * PDF.js has no public hook for this, so it wraps four methods on the render's
  * private CanvasGraphics instance (`renderTask._internalRenderTask.gfx`, pinned
@@ -17,13 +18,6 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
-
-/**
- * An image covering at least this share of the page is the page itself (a
- * scan, or a full-page background) and is inverted along with it: that is the
- * case dark mode exists for.
- */
-const PAGE_IMAGE_SHARE = 0.5;
 
 /** Invert the finished page in place, then multiply by the reading tint. */
 export function invertPage(
@@ -112,7 +106,6 @@ interface ImageObject {
 
 /** The parts of PDF.js's private CanvasGraphics this file relies on. */
 interface Graphics {
-  ctx: CanvasRenderingContext2D;
   canvasFactory: {
     create(width: number, height: number): CanvasEntry;
     destroy(entry: CanvasEntry): void;
@@ -145,7 +138,6 @@ function isGraphics(value: unknown): value is Graphics {
   const gfx = value as Partial<Graphics> | null | undefined;
   return (
     !!gfx &&
-    !!gfx.ctx &&
     !!gfx.canvasFactory &&
     Array.isArray(gfx.smaskStack) &&
     HOOKED.every((name) => typeof gfx[name] === 'function')
@@ -154,17 +146,13 @@ function isGraphics(value: unknown): value is Graphics {
 
 /**
  * Have `task` keep photos in their own colours through the page invert that
- * follows it. `pageArea` is the canvas's backing-store area, which decides what
- * counts as a page-sized image (see PAGE_IMAGE_SHARE).
+ * follows it.
  *
  * The graphics object exists only once the page's resources are ready, so this
  * takes the first `onContinue` call, which PDF.js makes before it draws
  * anything. The result's `hooked` says whether the hook took (for tests).
  */
-export function keepPhotoColours(
-  task: pdfjsLib.RenderTask,
-  pageArea: number,
-): { readonly hooked: boolean } {
+export function keepPhotoColours(task: pdfjsLib.RenderTask): { readonly hooked: boolean } {
   const state = { hooked: false };
   let tried = false;
   task.onContinue = (cont: () => void) => {
@@ -173,7 +161,7 @@ export function keepPhotoColours(
       const gfx = (task as unknown as { _internalRenderTask?: { gfx?: unknown } })
         ._internalRenderTask?.gfx;
       if (isGraphics(gfx)) {
-        hookPhotos(gfx, pageArea);
+        hookPhotos(gfx);
         state.hooked = true;
       } else if (import.meta.env.DEV) {
         console.warn('[folio] dark mode: PDF.js internals changed; photos will be inverted');
@@ -184,7 +172,7 @@ export function keepPhotoColours(
   return state;
 }
 
-function hookPhotos(gfx: Graphics, pageArea: number): void {
+function hookPhotos(gfx: Graphics): void {
   const paint = gfx.paintInlineImageXObject;
   const paintGroup = gfx.paintInlineImageXObjectGroup;
   const toBitmap = gfx.applyTransferMapsToBitmap;
@@ -193,14 +181,8 @@ function hookPhotos(gfx: Graphics, pageArea: number): void {
   // which is where every photo's pixels pass on their way to the canvas.
   let photo = false;
 
-  // Device-pixel area of the unit square, which is where a PDF image lands.
-  const unitArea = (): number => {
-    const m = gfx.ctx.getTransform();
-    return Math.abs(m.a * m.d - m.b * m.c);
-  };
-  const isPhoto = (area: number): boolean =>
-    // Inside a soft mask the image is the mask, not something on the page.
-    gfx.smaskStack.length === 0 && area > 0 && area < pageArea * PAGE_IMAGE_SHARE;
+  // Inside a soft mask the image is the mask, not something on the page.
+  const isPhoto = (): boolean => gfx.smaskStack.length === 0;
 
   const invertedCopy = (source: CanvasImageSource, width: number, height: number) => {
     const entry = gfx.canvasFactory.create(width, height);
@@ -210,7 +192,7 @@ function hookPhotos(gfx: Graphics, pageArea: number): void {
   };
 
   gfx.paintInlineImageXObject = function (this: Graphics, opIdx, image) {
-    photo = isPhoto(unitArea());
+    photo = isPhoto();
     try {
       paint.call(this, opIdx, image);
     } finally {
@@ -219,10 +201,7 @@ function hookPhotos(gfx: Graphics, pageArea: number): void {
   };
 
   gfx.paintInlineImageXObjectGroup = function (this: Graphics, opIdx, image, map) {
-    const base = unitArea();
-    let area = 0;
-    for (const { transform: t } of map) area += base * Math.abs(t[0] * t[3] - t[1] * t[2]);
-    photo = isPhoto(area);
+    photo = isPhoto();
     let copy: CanvasEntry | null = null;
     try {
       // This painter draws a bitmap straight from the image object, skipping

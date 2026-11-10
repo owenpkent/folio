@@ -267,7 +267,7 @@ export class PdfJsEngine implements PdfEngine {
     });
     // Dark mode keeps photos in their own colours: a negative photo is
     // unsettling to look at. See darkPhotos.ts for how.
-    if (invert) keepPhotoColours(task, canvas.width * canvas.height);
+    if (invert) keepPhotoColours(task);
     // Registered after the awaits above, so a signal that aborted while we were
     // fetching the page would never reach the task.
     if (signal?.aborted) task.cancel();

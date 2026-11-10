@@ -85,8 +85,8 @@ export interface RenderPageOptions {
    * than a CSS filter, which some engines re-rasterise at CSS resolution and
    * blur. The caller re-renders when the theme changes. Photos and figures
    * keep their own colours (pre-inverted as they are drawn, see darkPhotos.ts;
-   * a reading tint still applies to them); an image covering half the page or
-   * more is taken to be a scan and is inverted with the page.
+   * a reading tint still applies to them). That includes scans, which stay
+   * as scanned.
    */
   invert?: boolean;
   /**

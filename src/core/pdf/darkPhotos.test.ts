@@ -127,7 +127,7 @@ async function renderDark(
     const viewport = page.getViewport({ scale: 1 });
     const canvas = createCanvas(viewport.width, viewport.height);
     const task = page.render({ canvas: canvas as unknown as HTMLCanvasElement, viewport });
-    const hook = keepPhotoColours(task, canvas.width * canvas.height);
+    const hook = keepPhotoColours(task);
     if (bitmaps) feedBitmaps(task);
     await task.promise;
     const context = canvas.getContext('2d');
@@ -215,12 +215,12 @@ describe.each([
     expectColour(page.at(20, 20), BLACK);
   });
 
-  it('inverts a page-sized image (a scan) with the page', async () => {
+  it('keeps a page-sized image (a scan) as it is too', async () => {
     const page = await renderDark(
       pagePdf('q 200 0 0 200 0 0 cm /Im Do Q', '<< /XObject << /Im 5 0 R >> >>', [RED_IMAGE]),
     );
 
-    expectColour(page.at(100, 100), [0, 255, 255]);
+    expectColour(page.at(100, 100), RED);
   });
 
   it('finds a photo inside an offscreen transparency group, and nothing else', async () => {
