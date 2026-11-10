@@ -15,13 +15,12 @@ const { state } = vi.hoisted(() => ({
   state: {
     getDocumentParams: null as Record<string, unknown> | null,
     renderParams: [] as Record<string, unknown>[],
+    renderTasks: [] as { onContinue: unknown }[],
     annotationLayerParams: [] as Record<string, unknown>[],
     annotationRenderParams: [] as Record<string, unknown>[],
     textLayerParams: [] as Record<string, unknown>[],
     loadingTasksDestroyed: 0,
     saveError: null as Error | null,
-    imageCoordinates: null as number[] | null,
-    contextCalls: [] as string[],
   },
 }));
 
@@ -57,13 +56,12 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => {
     getViewport: ({ scale }: { scale: number }) => makeViewport(scale),
     render: (params: Record<string, unknown>) => {
       state.renderParams.push(params);
-      return { promise: Promise.resolve(), cancel: () => {} };
+      const task = { promise: Promise.resolve(), cancel: () => {}, onContinue: null };
+      state.renderTasks.push(task);
+      return task;
     },
     getTextContent: async () => ({ items: [], styles: {} }),
     getAnnotations: async () => [],
-    get imageCoordinates() {
-      return state.imageCoordinates;
-    },
   };
 
   return {
@@ -116,30 +114,18 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => {
   };
 });
 
-import { invertKeepingAlpha, PdfJsEngine, photoQuads } from './PdfJsEngine';
+import { invertKeepingAlpha, PdfJsEngine } from './PdfJsEngine';
 
-/**
- * jsdom has no canvas backend; the engine only needs these to answer. Fills
- * (with their composite mode) and image draws are logged, in order.
- */
+/** jsdom has no canvas backend; the engine only needs these two to answer. */
 function stubCanvas(): void {
-  HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement) {
-    const context = {
-      save: () => {},
-      restore: () => {},
-      setTransform: () => {},
-      beginPath: () => {},
-      moveTo: () => {},
-      lineTo: () => {},
-      closePath: () => {},
-      clip: () => {},
-      fillRect: () => state.contextCalls.push(`fill:${context.globalCompositeOperation}`),
-      drawImage: () => state.contextCalls.push('drawImage'),
-      globalCompositeOperation: '',
-      fillStyle: '',
-    };
-    return context;
-  } as unknown as typeof HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = (() => ({
+    save: () => {},
+    restore: () => {},
+    setTransform: () => {},
+    fillRect: () => {},
+    globalCompositeOperation: '',
+    fillStyle: '',
+  })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
   HTMLCanvasElement.prototype.toDataURL = () => 'data:image/png;base64,';
 }
 
@@ -153,12 +139,11 @@ describe('PdfJsEngine on the PDF.js 6 API', () => {
   beforeEach(() => {
     state.getDocumentParams = null;
     state.renderParams = [];
+    state.renderTasks = [];
     state.annotationLayerParams = [];
     state.annotationRenderParams = [];
     state.textLayerParams = [];
     state.loadingTasksDestroyed = 0;
-    state.imageCoordinates = null;
-    state.contextCalls = [];
     stubCanvas();
   });
 
@@ -252,7 +237,7 @@ describe('PdfJsEngine on the PDF.js 6 API', () => {
     }
   });
 
-  it('asks PDF.js where images landed only in dark mode', async () => {
+  it('hooks photo drawing only in dark mode', async () => {
     const engine = await loadEngine();
     await engine.renderPage(1, { scale: 1, canvas: document.createElement('canvas') });
     await engine.renderPage(1, {
@@ -261,40 +246,8 @@ describe('PdfJsEngine on the PDF.js 6 API', () => {
       invert: true,
     });
 
-    expect(state.renderParams.map((params) => params.recordImages)).toEqual([false, true]);
-  });
-
-  it('puts a photo back after inverting and tinting the page', async () => {
-    const engine = await loadEngine();
-    // A photo in the top-left quarter of the page.
-    state.imageCoordinates = [0, 0.5, 0, 0, 0.5, 0.5];
-    await engine.renderPage(1, {
-      scale: 1,
-      canvas: document.createElement('canvas'),
-      invert: true,
-      tint: [240, 185, 80],
-    });
-
-    // Snapshot first, then invert and tint, then the photo goes back on top:
-    // restored any earlier, the tint would land on it.
-    expect(state.contextCalls).toEqual([
-      'drawImage',
-      'fill:difference',
-      'fill:multiply',
-      'drawImage',
-    ]);
-  });
-
-  it('inverts a page-sized image (a scan) with the page', async () => {
-    const engine = await loadEngine();
-    state.imageCoordinates = [0, 1, 0, 0, 1, 1];
-    await engine.renderPage(1, {
-      scale: 1,
-      canvas: document.createElement('canvas'),
-      invert: true,
-    });
-
-    expect(state.contextCalls).toEqual(['fill:difference']);
+    // The hook itself is exercised against real PDF.js in darkPhotos.test.ts.
+    expect(state.renderTasks.map((task) => typeof task.onContinue)).toEqual(['object', 'function']);
   });
 
   describe('saveDocument', () => {
@@ -322,32 +275,6 @@ describe('PdfJsEngine on the PDF.js 6 API', () => {
 
       await expect(engine.saveDocument()).rejects.toThrow('stray )');
     });
-  });
-});
-
-describe('photoQuads', () => {
-  it('scales normalised corners to backing-store pixels', () => {
-    expect(photoQuads([0.1, 0.4, 0.1, 0.2, 0.3, 0.4], 1000, 2000)).toEqual([
-      [100, 800, 100, 400, 300, 800],
-    ]);
-  });
-
-  it('leaves out page-sized images and empty ones', () => {
-    const scan = [0, 1, 0, 0, 1, 1];
-    const line = [0.2, 0.2, 0.2, 0.2, 0.8, 0.2];
-    const logo = [0, 0.1, 0, 0, 0.1, 0.1];
-    expect(photoQuads([...scan, ...line, ...logo], 100, 100)).toHaveLength(1);
-  });
-
-  it('measures a rotated image by its true area, not its bounding box', () => {
-    // A square at 45 degrees: its bounding box is 64% of the page, the image
-    // itself 32%.
-    const diamond = [0.5, 0.1, 0.1, 0.5, 0.9, 0.5];
-    expect(photoQuads(diamond, 100, 100)).toHaveLength(1);
-  });
-
-  it('copes with no record at all', () => {
-    expect(photoQuads(null, 100, 100)).toEqual([]);
   });
 });
 

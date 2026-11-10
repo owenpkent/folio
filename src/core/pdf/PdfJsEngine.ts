@@ -12,6 +12,7 @@ import { isTauri } from '@/core/document/openDocument';
 import { LruMap } from '@/core/lru';
 import { useViewerStore } from '@/state/viewerStore';
 
+import { invertPage, invertPixels, keepPhotoColours } from './darkPhotos';
 import type { PageTextItems, PdfEngine } from './PdfEngine';
 import { ensureWorker, pdfWasmUrl } from './setupWorker';
 import { isTextItem } from './textHit';
@@ -263,11 +264,10 @@ export class PdfJsEngine implements PdfEngine {
       // Cast: the published type predates the per-state arrays (checked and
       // unchecked glyphs) that render() now stores for one annotation id.
       annotationCanvasMap: annotationCanvases as Map<string, HTMLCanvasElement> | undefined,
-      // Dark mode keeps photos and figures in their own colours (a negative
-      // photo is unsettling to look at), so it needs to know where they landed.
-      // PDF.js records this once per page and keeps it on the page proxy.
-      recordImages: invert,
     });
+    // Dark mode keeps photos in their own colours: a negative photo is
+    // unsettling to look at. See darkPhotos.ts for how.
+    if (invert) keepPhotoColours(task, canvas.width * canvas.height);
     // Registered after the awaits above, so a signal that aborted while we were
     // fetching the page would never reach the task.
     if (signal?.aborted) task.cancel();
@@ -284,32 +284,10 @@ export class PdfJsEngine implements PdfEngine {
     }
 
     // Dark mode: invert the freshly-painted pixels at full backing-store
-    // resolution. `difference` with white computes |255 - channel| per pixel —
-    // exactly invert(1) — but on the real canvas, so it never triggers the
-    // CSS-filter path that some engines re-rasterise at CSS resolution (blur).
+    // resolution (photos were pre-inverted as they were drawn, so they flip
+    // back to their own colours here).
     if (invert && !signal?.aborted) {
-      const photos = photoQuads(
-        (page as { imageCoordinates?: ArrayLike<number> | null }).imageCoordinates,
-        canvas.width,
-        canvas.height,
-      );
-      const originals = photos.length ? snapshotQuads(canvas, photos) : null;
-      context.save();
-      context.setTransform(1, 0, 0, 1, 0, 0);
-      context.globalCompositeOperation = 'difference';
-      context.fillStyle = '#ffffff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      // A green/amber reading scheme: multiply the inverted page by the tint so
-      // the (now white) ink takes the colour while black stays black. Multiply
-      // scales each channel, so anti-aliased edges become a gradient of the tint
-      // rather than a hard mask.
-      if (tint) {
-        context.globalCompositeOperation = 'multiply';
-        context.fillStyle = `rgb(${tint[0]}, ${tint[1]}, ${tint[2]})`;
-        context.fillRect(0, 0, canvas.width, canvas.height);
-      }
-      context.restore();
-      if (originals) restoreQuads(context, originals, photos);
+      invertPage(context, canvas.width, canvas.height, tint);
       for (const entry of annotationCanvases?.values() ?? []) {
         for (const own of Array.isArray(entry) ? entry : [entry]) invertKeepingAlpha(own, tint);
       }
@@ -608,121 +586,7 @@ export function invertKeepingAlpha(
   tint?: [number, number, number],
 ): void {
   const context = canvas.getContext('2d');
-  if (!context || canvas.width === 0 || canvas.height === 0) return;
-  const image = context.getImageData(0, 0, canvas.width, canvas.height);
-  const px = image.data;
-  const [r, g, b] = tint ?? [255, 255, 255];
-  for (let i = 0; i < px.length; i += 4) {
-    px[i] = ((255 - px[i]) * r) / 255;
-    px[i + 1] = ((255 - px[i + 1]) * g) / 255;
-    px[i + 2] = ((255 - px[i + 2]) * b) / 255;
-  }
-  context.putImageData(image, 0, 0);
-}
-
-/**
- * A painted image in backing-store pixels: corners a, b and c of a
- * parallelogram (the fourth is b + c - a), so rotated and skewed images fit.
- */
-export type ImageQuad = [ax: number, ay: number, bx: number, by: number, cx: number, cy: number];
-
-/**
- * An image covering at least this share of the page is the page itself (a
- * scan, or a full-page background) and is inverted along with it: that is the
- * case dark mode exists for.
- */
-const PAGE_IMAGE_SHARE = 0.5;
-
-/**
- * The images dark mode should leave in their own colours, from PDF.js's
- * `imageCoordinates` (six numbers per image: corners a, b, c, normalised to
- * the canvas). Page-sized images are dropped (see PAGE_IMAGE_SHARE), and so
- * are degenerate ones. Exported for tests.
- */
-export function photoQuads(
-  coords: ArrayLike<number> | null | undefined,
-  width: number,
-  height: number,
-): ImageQuad[] {
-  const quads: ImageQuad[] = [];
-  if (!coords) return quads;
-  for (let i = 0; i + 5 < coords.length; i += 6) {
-    const ax = coords[i];
-    const ay = coords[i + 1];
-    const bx = coords[i + 2];
-    const by = coords[i + 3];
-    const cx = coords[i + 4];
-    const cy = coords[i + 5];
-    // Normalised coordinates, so the parallelogram's area is its page share.
-    const share = Math.abs((bx - ax) * (cy - ay) - (by - ay) * (cx - ax));
-    if (!(share > 0) || share >= PAGE_IMAGE_SHARE) continue;
-    quads.push([ax * width, ay * height, bx * width, by * height, cx * width, cy * height]);
-  }
-  return quads;
-}
-
-interface QuadSnapshot {
-  canvas: HTMLCanvasElement;
-  x: number;
-  y: number;
-}
-
-/** Copy the pixels under `quads` (their joint bounding box) before inverting. */
-function snapshotQuads(source: HTMLCanvasElement, quads: ImageQuad[]): QuadSnapshot | null {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const [ax, ay, bx, by, cx, cy] of quads) {
-    for (const [x, y] of [
-      [ax, ay],
-      [bx, by],
-      [cx, cy],
-      [bx + cx - ax, by + cy - ay],
-    ]) {
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-    }
-  }
-  const x = Math.max(0, Math.floor(minX));
-  const y = Math.max(0, Math.floor(minY));
-  const width = Math.min(source.width, Math.ceil(maxX)) - x;
-  const height = Math.min(source.height, Math.ceil(maxY)) - y;
-  if (width <= 0 || height <= 0) return null;
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (!context) return null;
-  context.drawImage(source, x, y, width, height, 0, 0, width, height);
-  return { canvas, x, y };
-}
-
-/** Paint the snapshot back inside each image's own outline, then free it. */
-function restoreQuads(
-  context: CanvasRenderingContext2D,
-  snapshot: QuadSnapshot | null,
-  quads: ImageQuad[],
-): void {
-  if (!snapshot) return;
-  for (const [ax, ay, bx, by, cx, cy] of quads) {
-    context.save();
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.beginPath();
-    context.moveTo(ax, ay);
-    context.lineTo(bx, by);
-    context.lineTo(bx + cx - ax, by + cy - ay);
-    context.lineTo(cx, cy);
-    context.closePath();
-    context.clip();
-    context.drawImage(snapshot.canvas, snapshot.x, snapshot.y);
-    context.restore();
-  }
-  // Release the backing store now rather than whenever GC gets to it.
-  snapshot.canvas.width = 0;
-  snapshot.canvas.height = 0;
+  if (context) invertPixels(context, canvas.width, canvas.height, tint);
 }
 
 function setLayerScale(container: HTMLElement, viewport: PageViewport): void {
