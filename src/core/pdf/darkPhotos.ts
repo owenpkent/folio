@@ -106,6 +106,7 @@ interface ImageObject {
 
 /** The parts of PDF.js's private CanvasGraphics this file relies on. */
 interface Graphics {
+  ctx: CanvasRenderingContext2D;
   canvasFactory: {
     create(width: number, height: number): CanvasEntry;
     destroy(entry: CanvasEntry): void;
@@ -138,6 +139,7 @@ function isGraphics(value: unknown): value is Graphics {
   const gfx = value as Partial<Graphics> | null | undefined;
   return (
     !!gfx &&
+    !!gfx.ctx &&
     !!gfx.canvasFactory &&
     Array.isArray(gfx.smaskStack) &&
     HOOKED.every((name) => typeof gfx[name] === 'function')
@@ -203,16 +205,27 @@ function hookPhotos(gfx: Graphics): void {
   gfx.paintInlineImageXObjectGroup = function (this: Graphics, opIdx, image, map) {
     photo = isPhoto();
     let copy: CanvasEntry | null = null;
+    let filter: string | undefined;
     try {
-      // This painter draws a bitmap straight from the image object, skipping
-      // the transfer-map step the hooks below sit on, so hand it a copy.
+      // This painter draws a bitmap straight from the image object, with any
+      // transfer map (/TR) still on the context as a filter, so it would land
+      // after the inversion; the single-image painter applies it to the pixels
+      // first. Do it in that order here too, through the hooked
+      // applyTransferMapsToBitmap below (transfer map, then invert, into a
+      // canvas of its own), and take the filter off for the draw.
       if (photo && image.bitmap && !this.current.transferMapsFallback) {
-        copy = invertedCopy(image.bitmap, image.width, image.height);
-        image = { ...image, bitmap: copy.canvas };
+        const { img, canvasEntry } = this.applyTransferMapsToBitmap(image);
+        copy = canvasEntry;
+        image = { ...image, bitmap: img };
+        if (this.ctx.filter !== undefined) {
+          filter = this.ctx.filter;
+          this.ctx.filter = 'none';
+        }
       }
       paintGroup.call(this, opIdx, image, map);
     } finally {
       photo = false;
+      if (filter !== undefined) this.ctx.filter = filter;
       if (copy) this.canvasFactory.destroy(copy);
     }
   };
