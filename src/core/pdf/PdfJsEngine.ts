@@ -12,6 +12,7 @@ import { isTauri } from '@/core/document/openDocument';
 import { LruMap } from '@/core/lru';
 import { useViewerStore } from '@/state/viewerStore';
 
+import { invertPage, invertPixels, keepPhotoColours } from './darkPhotos';
 import type { PageTextItems, PdfEngine } from './PdfEngine';
 import { ensureWorker, pdfWasmUrl } from './setupWorker';
 import { isTextItem } from './textHit';
@@ -264,6 +265,9 @@ export class PdfJsEngine implements PdfEngine {
       // unchecked glyphs) that render() now stores for one annotation id.
       annotationCanvasMap: annotationCanvases as Map<string, HTMLCanvasElement> | undefined,
     });
+    // Dark mode keeps photos in their own colours: a negative photo is
+    // unsettling to look at. See darkPhotos.ts for how.
+    if (invert) keepPhotoColours(task);
     // Registered after the awaits above, so a signal that aborted while we were
     // fetching the page would never reach the task.
     if (signal?.aborted) task.cancel();
@@ -280,25 +284,10 @@ export class PdfJsEngine implements PdfEngine {
     }
 
     // Dark mode: invert the freshly-painted pixels at full backing-store
-    // resolution. `difference` with white computes |255 - channel| per pixel —
-    // exactly invert(1) — but on the real canvas, so it never triggers the
-    // CSS-filter path that some engines re-rasterise at CSS resolution (blur).
+    // resolution (photos were pre-inverted as they were drawn, so they flip
+    // back to their own colours here).
     if (invert && !signal?.aborted) {
-      context.save();
-      context.setTransform(1, 0, 0, 1, 0, 0);
-      context.globalCompositeOperation = 'difference';
-      context.fillStyle = '#ffffff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      // A green/amber reading scheme: multiply the inverted page by the tint so
-      // the (now white) ink takes the colour while black stays black. Multiply
-      // scales each channel, so anti-aliased edges become a gradient of the tint
-      // rather than a hard mask.
-      if (tint) {
-        context.globalCompositeOperation = 'multiply';
-        context.fillStyle = `rgb(${tint[0]}, ${tint[1]}, ${tint[2]})`;
-        context.fillRect(0, 0, canvas.width, canvas.height);
-      }
-      context.restore();
+      invertPage(context, canvas.width, canvas.height, tint);
       for (const entry of annotationCanvases?.values() ?? []) {
         for (const own of Array.isArray(entry) ? entry : [entry]) invertKeepingAlpha(own, tint);
       }
@@ -597,16 +586,7 @@ export function invertKeepingAlpha(
   tint?: [number, number, number],
 ): void {
   const context = canvas.getContext('2d');
-  if (!context || canvas.width === 0 || canvas.height === 0) return;
-  const image = context.getImageData(0, 0, canvas.width, canvas.height);
-  const px = image.data;
-  const [r, g, b] = tint ?? [255, 255, 255];
-  for (let i = 0; i < px.length; i += 4) {
-    px[i] = ((255 - px[i]) * r) / 255;
-    px[i + 1] = ((255 - px[i + 1]) * g) / 255;
-    px[i + 2] = ((255 - px[i + 2]) * b) / 255;
-  }
-  context.putImageData(image, 0, 0);
+  if (context) invertPixels(context, canvas.width, canvas.height, tint);
 }
 
 function setLayerScale(container: HTMLElement, viewport: PageViewport): void {

@@ -15,6 +15,7 @@ const { state } = vi.hoisted(() => ({
   state: {
     getDocumentParams: null as Record<string, unknown> | null,
     renderParams: [] as Record<string, unknown>[],
+    renderTasks: [] as { onContinue: unknown }[],
     annotationLayerParams: [] as Record<string, unknown>[],
     annotationRenderParams: [] as Record<string, unknown>[],
     textLayerParams: [] as Record<string, unknown>[],
@@ -55,7 +56,9 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => {
     getViewport: ({ scale }: { scale: number }) => makeViewport(scale),
     render: (params: Record<string, unknown>) => {
       state.renderParams.push(params);
-      return { promise: Promise.resolve(), cancel: () => {} };
+      const task = { promise: Promise.resolve(), cancel: () => {}, onContinue: null };
+      state.renderTasks.push(task);
+      return task;
     },
     getTextContent: async () => ({ items: [], styles: {} }),
     getAnnotations: async () => [],
@@ -136,6 +139,7 @@ describe('PdfJsEngine on the PDF.js 6 API', () => {
   beforeEach(() => {
     state.getDocumentParams = null;
     state.renderParams = [];
+    state.renderTasks = [];
     state.annotationLayerParams = [];
     state.annotationRenderParams = [];
     state.textLayerParams = [];
@@ -231,6 +235,19 @@ describe('PdfJsEngine on the PDF.js 6 API', () => {
       expect(container.style.getPropertyValue('--scale-round-x')).toBe('1px');
       expect(container.style.getPropertyValue('--scale-round-y')).toBe('1px');
     }
+  });
+
+  it('hooks photo drawing only in dark mode', async () => {
+    const engine = await loadEngine();
+    await engine.renderPage(1, { scale: 1, canvas: document.createElement('canvas') });
+    await engine.renderPage(1, {
+      scale: 1,
+      canvas: document.createElement('canvas'),
+      invert: true,
+    });
+
+    // The hook itself is exercised against real PDF.js in darkPhotos.test.ts.
+    expect(state.renderTasks.map((task) => typeof task.onContinue)).toEqual(['object', 'function']);
   });
 
   describe('saveDocument', () => {

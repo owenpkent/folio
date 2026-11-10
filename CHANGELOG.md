@@ -6,6 +6,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Dark mode no longer turns photos into negatives.** The page is still
+  inverted, but photos, figures and logos keep their own colours, including
+  where they are clipped, faded or partly transparent. In the green and amber
+  schemes they take the tint like the rest of the page. Scanned pages are
+  images too, so they now stay as scanned rather than turning light-on-dark.
+
 ## [0.8.2] - 2026-11-04
 
 ### Fixed
