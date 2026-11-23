@@ -121,6 +121,9 @@ const PAGES_PER_YIELD = 8;
  * {@link mergeNamedDestinations}); a name two inputs share is kept for the
  * first and the later one is renamed, along with the links that use it, and a
  * link to a name its own file never defined stays unresolved.
+ * Page labels (such as i, ii, iii for front matter) are carried too, so every
+ * page keeps the label it had in its own file; an input without labels
+ * restarts at 1 (see {@link writePageLabels}).
  *
  * An input this function has to parse itself is validated with
  * {@link looksLikePdf} first; one that arrives already parsed (the modal's
@@ -159,6 +162,9 @@ export async function combinePdfs(
   const usedFieldNames = new Set<string>();
   // Likewise shared: a destination name from input 3 is checked against 1 and 2.
   const destinations: MergedDestinations = { entries: new Map(), used: new Set() };
+  // Per input, and only written once the loop is done: whether any input has
+  // labels decides whether the unlabelled ones need an explicit restart.
+  const pageLabels: InputPageLabels[] = [];
 
   for (let i = 0; i < inputs.length; i++) {
     if (options.isCancelled?.()) throw new CombineCancelledError();
@@ -210,6 +216,14 @@ export async function combinePdfs(
         if ((p + 1) % PAGES_PER_YIELD === 0) await yieldToUi();
       }
       pagesCopied += srcPages.length;
+      // An input with no pages has no page to label, and its offset is the
+      // next input's: a range for it would put two entries at one index.
+      if (srcPages.length > 0) {
+        pageLabels.push({
+          offset: pagesCopied - srcPages.length,
+          ranges: collectPageLabels(src, srcPages.length, out.context),
+        });
+      }
       const form = mergeAcroForm(out, src, copier, usedFieldNames);
       if (form.merged) formsMerged = true;
       if (form.degraded) formsDegraded = true;
@@ -244,6 +258,7 @@ export async function combinePdfs(
   }
 
   writeNamedDestinations(out, destinations);
+  writePageLabels(out, pageLabels);
   if (firstSrc) copyMetadata(out, firstSrc);
 
   // Checked here and again below, either side of save(). On a large output
@@ -1093,6 +1108,150 @@ function writeNamedDestinations(out: PDFDocument, merged: MergedDestinations): v
     tree = context.obj({ Kids: kids });
   }
   out.catalog.set(PDFName.of('Names'), context.obj({ Dests: tree }));
+}
+
+/** One labelling range: the 0-based page index it starts at, and its label dictionary. */
+interface LabelRange {
+  index: number;
+  label: PDFDict;
+}
+
+/** One input's ranges (indices local to that input) and where its pages start in the output. */
+interface InputPageLabels {
+  offset: number;
+  ranges: LabelRange[];
+}
+
+/** The numbering styles PDF 12.4.2 allows in a label's `/S`. */
+const LABEL_STYLES = new Set(['D', 'R', 'r', 'A', 'a']);
+/** Ceiling on the pairs examined in one input's page-label tree (see {@link MAX_NAMED_DESTINATIONS_PER_INPUT}). */
+const MAX_PAGE_LABEL_PAIRS_PER_INPUT = 100_000;
+/** Ranges per node of the written number tree. */
+const PAGE_LABEL_LEAF_SIZE = 64;
+
+/** The value as an integer, or undefined for anything else (including NaN-like numbers). */
+function integerOf(value: PDFObject | undefined): number | undefined {
+  if (!(value instanceof PDFNumber)) return undefined;
+  const number = value.asNumber();
+  return Number.isInteger(number) ? number : undefined;
+}
+
+/**
+ * A fresh label dictionary in `context` holding only the parts of `source`
+ * that are well-formed: `/S` if it is one of the five styles, `/P` if it is a
+ * string (copied byte-exact), `/St` if it is an integer of at least 1. The
+ * source dictionary is never copied: it is untrusted, and a reader should not
+ * meet whatever else it carries, or a bad entry that fails a strict reader.
+ * PDF.js is one: a single malformed entry makes it drop every label in the
+ * document, so what is written here has to be valid entry by entry.
+ */
+function sanitizedLabel(source: PDFDict, context: PDFContext): PDFDict {
+  const label = context.obj({});
+  const style = source.lookup(PDFName.of('S'));
+  if (style instanceof PDFName && LABEL_STYLES.has(style.decodeText())) {
+    label.set(PDFName.of('S'), style);
+  } else if (style !== undefined && style !== PDFNull) {
+    // A style that is there but is not one the spec defines becomes decimal,
+    // the plain numbering a reader falls back to. Left out it would mean "no
+    // number at all", and every page of the range would show a blank label.
+    label.set(PDFName.of('S'), PDFName.of('D'));
+  }
+  const prefix = source.lookup(PDFName.of('P'));
+  if (prefix instanceof PDFString || prefix instanceof PDFHexString) {
+    label.set(PDFName.of('P'), hexFromBytes(stringBytes(prefix)));
+  }
+  const start = integerOf(source.lookup(PDFName.of('St')));
+  if (start !== undefined && start >= 1) label.set(PDFName.of('St'), PDFNumber.of(start));
+  return label;
+}
+
+/**
+ * Read one input's page-label ranges from the catalog's `/PageLabels` number
+ * tree (`/Nums` pairs, and `/Kids` below them), keeping a pair only if its
+ * index is a page of this input and its value is a dictionary; the later of
+ * two pairs for one index wins, as it does in PDF.js. Bounded like {@link collectNamedDestinations}: by
+ * depth, by a visited set (cycles) and by a cap on pairs examined. A malformed
+ * tree costs this input its labels and nothing else.
+ */
+function collectPageLabels(src: PDFDocument, pageCount: number, context: PDFContext): LabelRange[] {
+  const root = dictOf(src.catalog.lookup(PDFName.of('PageLabels')));
+  if (!root) return [];
+  const found = new Map<number, LabelRange>();
+  const visited = new Set<PDFDict>();
+  const stack: Array<{ node: PDFDict; depth: number }> = [{ node: root, depth: 0 }];
+  let examined = 0;
+  while (stack.length > 0) {
+    const entry = stack.pop();
+    if (!entry || visited.has(entry.node)) continue;
+    visited.add(entry.node);
+    const pairs = arrayOf(entry.node.lookup(PDFName.of('Nums')));
+    for (let i = 0; pairs && i + 1 < pairs.size(); i += 2) {
+      if (++examined > MAX_PAGE_LABEL_PAIRS_PER_INPUT) return sortedRanges(found);
+      const index = integerOf(pairs.lookup(i));
+      const source = dictOf(pairs.lookup(i + 1));
+      if (index === undefined || index < 0 || index >= pageCount || !source) continue;
+      // Set, not set-if-absent: PDF.js keeps the later of two entries for one
+      // page, and the combined file should number as the input did there.
+      found.set(index, { index, label: sanitizedLabel(source, context) });
+    }
+    const kids = arrayOf(entry.node.lookup(PDFName.of('Kids')));
+    if (!kids || entry.depth >= MAX_NAME_TREE_DEPTH) continue;
+    for (let i = kids.size() - 1; i >= 0; i--) {
+      const kid = dictOf(kids.lookup(i));
+      if (kid) stack.push({ node: kid, depth: entry.depth + 1 });
+    }
+  }
+  return sortedRanges(found);
+}
+
+function sortedRanges(found: Map<number, LabelRange>): LabelRange[] {
+  return [...found.values()].sort((a, b) => a.index - b.index);
+}
+
+/**
+ * Write the merged page labels into `out`'s catalog so every page keeps the
+ * label it had in its own file. If no input had any, nothing is written and
+ * the viewer shows plain 1..N, as before. Otherwise each input's ranges move
+ * to its offset in the output, and each input gets a decimal range at its
+ * first page when it has none there: the spec requires a range at page 0 and
+ * readers carry the previous range on, so without it an input with no labels
+ * would continue the previous file's numbering instead of restarting at 1.
+ * The tree follows 12.4.2: up to {@link PAGE_LABEL_LEAF_SIZE} ranges in the
+ * root's `/Nums`, more in leaf kids each with `/Limits`.
+ */
+function writePageLabels(out: PDFDocument, inputs: InputPageLabels[]): void {
+  if (!inputs.some((input) => input.ranges.length > 0)) return;
+  const context = out.context;
+  const entries: Array<[number, PDFDict]> = [];
+  for (const input of inputs) {
+    if (input.ranges[0]?.index !== 0) entries.push([input.offset, context.obj({ S: 'D' })]);
+    for (const range of input.ranges) entries.push([input.offset + range.index, range.label]);
+  }
+  const leaf = (chunk: Array<[number, PDFDict]>): PDFDict => {
+    const nums = PDFArray.withContext(context);
+    for (const [index, label] of chunk) {
+      nums.push(PDFNumber.of(index));
+      nums.push(label);
+    }
+    return context.obj({ Nums: nums });
+  };
+  let tree: PDFDict;
+  if (entries.length <= PAGE_LABEL_LEAF_SIZE) {
+    tree = leaf(entries);
+  } else {
+    const kids = PDFArray.withContext(context);
+    for (let i = 0; i < entries.length; i += PAGE_LABEL_LEAF_SIZE) {
+      const chunk = entries.slice(i, i + PAGE_LABEL_LEAF_SIZE);
+      const kid = leaf(chunk);
+      kid.set(
+        PDFName.of('Limits'),
+        context.obj([PDFNumber.of(chunk[0][0]), PDFNumber.of(chunk[chunk.length - 1][0])]),
+      );
+      kids.push(context.register(kid));
+    }
+    tree = context.obj({ Kids: kids });
+  }
+  out.catalog.set(PDFName.of('PageLabels'), tree);
 }
 
 export interface StagedPdf {

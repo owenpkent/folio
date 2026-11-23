@@ -23,6 +23,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   those links but not the list of names, so they did nothing in the combined
   file. The names are now carried over from every file. When two files use the
   same name, the later file's is renamed and its links follow.
+- **Combined PDFs keep their page numbering.** A document can number its
+  pages its own way, such as i, ii, iii for the front matter. Combine dropped
+  that, so other PDF readers showed plain 1, 2, 3. Each page now keeps the
+  number it had in its own file, and a file with no numbering of its own
+  starts again at 1. Folio itself does not show these numbers yet.
 
 ### Security
 
