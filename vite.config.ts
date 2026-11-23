@@ -161,6 +161,9 @@ export default defineConfig({
       // The corpus harness itself is opt-in (vitest.corpus.config.ts); only
       // its pure baseline logic runs here.
       'scripts/corpus/baseline.test.ts',
+      // Checks the Jazzer.js harness's static inputs (the fuzzer itself runs
+      // nightly, never on a pull request).
+      'fuzz/*.test.mjs',
     ],
     css: false,
     // Comfortably above the 30s `interruptAfterTimeLimit` the fast-check setup

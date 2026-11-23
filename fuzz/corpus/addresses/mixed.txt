@@ -1,0 +1,2 @@
+Contact: ada@example.com, or visit https://example.com/path?q=1#frag.
+(www.example.org) <mailto:team@example.co.uk> intranet:8080 t.co/aB3xY9 bad@ @@ http://
