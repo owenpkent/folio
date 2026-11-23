@@ -305,6 +305,35 @@ describe('cryptographic signing', () => {
       expect(ber.pkcs8).not.toBeNull();
     }, 20000);
 
+    // Found by the nightly fuzzer (#172). Without macData nothing rejects a
+    // wrong password before decryption, and the cipher's own error escaped: a
+    // WebCrypto OperationError that does not mention PKCS#12.
+    it('reports an undecryptable container without a MAC as a PKCS#12 error', async () => {
+      const { p12 } = await generateSelfSignedP12({ commonName: 'NoMac', passphrase: 'pw' });
+      const pfx = asn1js.fromBER(ab(p12)).result as asn1js.Sequence;
+      expect(pfx.valueBlock.value).toHaveLength(3);
+      const noMac = new Uint8Array(
+        new asn1js.Sequence({ value: pfx.valueBlock.value.slice(0, 2) }).toBER(),
+      );
+      // Still readable with the right password, so the MAC really is optional.
+      expect((await readPkcs12(noMac, 'pw')).pkcs8).not.toBeNull();
+      const failure = await readPkcs12(noMac, 'wrong').then(
+        () => null,
+        (err: unknown) => err,
+      );
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).toMatch(/PKCS#12/);
+      expect((failure as Error).name).toBe('Error');
+    }, 20000);
+
+    // Also from the fuzzer: asn1js throws its own Error on a GeneralizedTime
+    // that is not a date, where other bad input comes back as an offset of -1.
+    it('reports input the ASN.1 parser throws on as a PKCS#12 error', async () => {
+      const notADate = new Uint8Array([0x18, 0x02, 0x41, 0x42]);
+      expect(() => asn1js.fromBER(ab(notADate))).toThrow();
+      await expect(readPkcs12(notADate, 'pw')).rejects.toThrow(/PKCS#12/);
+    });
+
     it('round trips through writePkcs12 and readPkcs12', async () => {
       const { p12 } = await generateSelfSignedP12({ commonName: 'Round', passphrase: 'pw' });
       const { certificates, pkcs8 } = await readPkcs12(p12, 'pw');

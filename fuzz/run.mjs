@@ -4,7 +4,7 @@
 // The time budget also comes from FUZZ_SECONDS (default 60). The evolved corpus
 // lives in fuzz/.corpus/<target>/ (untracked) and is seeded from the committed
 // fuzz/corpus/<target>/; crashing inputs land in fuzz/crashes/<target>/.
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -115,17 +115,13 @@ if (hasDict) {
   }
 }
 
-// Output is passed through as it arrives and also watched for libFuzzer's
-// closing "Done N runs" line, which it prints only after a fuzzing loop that
-// ran to its time budget.
-let tail = '';
-let finished = false;
-const watch = (stream) => (chunk) => {
-  stream.write(chunk);
-  tail = (tail + chunk.toString('latin1')).slice(-4096);
-  if (/Done \d+ runs in \d+ second/.test(tail)) finished = true;
-};
-const child = spawn(
+// The fuzzer writes straight to this process's own stdout and stderr. Do not put
+// a pipe in between to read what it prints: libFuzzer writes from native code
+// to descriptors Node has made non-blocking, so a burst (the dictionary it
+// recommends at the end) is cut short when the reader falls behind. The first
+// nightly run lost the closing line that way.
+const started = performance.now();
+const result = spawnSync(
   process.execPath,
   [
     jazzer,
@@ -142,23 +138,18 @@ const child = spawn(
     `-artifact_prefix=${crashes}${path.sep}`,
     ...(hasDict ? [`-dict=${dictFile}`] : []),
   ],
-  { cwd: root, stdio: ['inherit', 'pipe', 'pipe'] },
+  { cwd: root, stdio: 'inherit' },
 );
-child.stdout.on('data', watch(process.stdout));
-child.stderr.on('data', watch(process.stderr));
-child.on('error', (error) => {
-  console.error(`could not start the fuzzer: ${error.message}`);
+const elapsed = (performance.now() - started) / 1000;
+if (result.status === 0 && elapsed < seconds) {
+  // A clean fuzzing loop stops only when -max_total_time runs out, so exit 0
+  // any sooner means the fuzzer gave up before or during startup (a bad
+  // option, a target that failed to load) and Jazzer.js still exited 0.
+  // Reporting that as success would show a green nightly run that fuzzed
+  // nothing. Wall time, not the output, because the output can be cut short.
+  console.error(
+    `${target}: the fuzzer exited 0 after ${elapsed.toFixed(1)} s of a ${seconds} s budget, so it did not fuzz; treating it as a failure`,
+  );
   process.exit(1);
-});
-child.on('close', (status) => {
-  if (status === 0 && !finished) {
-    // Exit 0 without the closing line means the fuzzer stopped before or
-    // during startup (a bad option, a target that failed to load). Reporting
-    // that as success would show a green nightly run that fuzzed nothing.
-    console.error(
-      `${target}: the fuzzer exited 0 without finishing a run (no "Done N runs" line); treating it as a failure`,
-    );
-    process.exit(1);
-  }
-  process.exit(status ?? 1);
-});
+}
+process.exit(result.status ?? 1);
