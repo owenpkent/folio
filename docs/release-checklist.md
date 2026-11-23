@@ -28,7 +28,8 @@ issue or defer the release.
       As of 0.8.1 the expected set is five, all Linux-only and blocked upstream:
       `glib` and `proc-macro-error` (Tauri's GTK 3 stack, #58), and `zbus_names`,
       `zvariant`, `zvariant_derive` (`tauri-plugin-single-instance`'s `zbus` 5;
-      they clear once tauri-apps/plugins-workspace#3722 ships `zbus` 6). Check
+      they clear once the plugin ships on `zbus` 6; status and options in
+      [SECURITY-EXCEPTIONS.md](SECURITY-EXCEPTIONS.md)). Check
       first whether `cargo update -p <crate>` already clears a warning (0.8.1's
       `tokio` one did)
 - [ ] `npm run build` — clean production build, no warnings worth investigating
