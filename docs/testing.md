@@ -141,7 +141,9 @@ node fuzz/make-seeds.mjs    # regenerate the committed seeds
 
 `fuzz/build.mjs` bundles the targets with esbuild to `out/fuzz/*.cjs` (the package is ESM, Jazzer.js instruments CommonJS; the `@/` alias mirrors `vite.config.ts`). The evolved corpus is `fuzz/.corpus/<name>/` and crashing inputs land in `fuzz/crashes/<name>/`; both are untracked. An async target (`export async function fuzz`) runs without `--sync`. On Windows the coverage numbers are weaker than on Linux, and `fuzz:merge` may keep nothing; merge on Linux.
 
-The nightly [fuzz workflow](../.github/workflows/fuzz.yml) runs each target for ten minutes, caches the evolved corpus, and on a crash uploads the input and opens (or comments on) a GitHub issue titled `Fuzz crash: <target>`. It is separate from the `fuzz` job in `ci.yml`, which runs the fast-check tests. Before a release, check there is no open `Fuzz crash:` issue. A fixed crash gets a regression test next to the code.
+A dictionary accepts only `\\`, `\"` and `\xHH` as escapes, so a literal backslash is written `\\`. libFuzzer stops at a line it cannot parse and Jazzer.js still exits 0, which would read as a clean run that fuzzed nothing. Two checks stop that: `fuzz/dict.test.mjs` validates every dictionary in the normal `npm test` (the only check a pull request gets, since the nightly workflow does not run on one), and `fuzz/run.mjs` refuses a bad dictionary and fails any run that exits 0 without libFuzzer's closing `Done N runs` line.
+
+The nightly [fuzz workflow](../.github/workflows/fuzz.yml) runs each target for ten minutes, caches the evolved corpus, and on a crash uploads the input and opens (or comments on) a GitHub issue titled `Fuzz crash: <target>`. A target that fails without a crashing input (it did not build, or the fuzzer never started) gets the same issue, because it is not being fuzzed until that is fixed. It is separate from the `fuzz` job in `ci.yml`, which runs the fast-check tests. Before a release, check there is no open `Fuzz crash:` issue. A fixed crash gets a regression test next to the code.
 
 ## Corpus robustness harness (opt-in)
 

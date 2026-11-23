@@ -4,11 +4,13 @@
 // The time budget also comes from FUZZ_SECONDS (default 60). The evolved corpus
 // lives in fuzz/.corpus/<target>/ (untracked) and is seeded from the committed
 // fuzz/corpus/<target>/; crashing inputs land in fuzz/crashes/<target>/.
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { dictErrors } from './dict.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -101,7 +103,29 @@ if (existsSync(seeds)) {
 // the mutator splice in keywords and magic numbers it would take far longer to
 // invent byte by byte. Optional: a target without one runs as before.
 const dictFile = path.join(root, 'fuzz/dict', `${target}.dict`);
-const result = spawnSync(
+const hasDict = existsSync(dictFile);
+if (hasDict) {
+  // libFuzzer gives up on a dictionary it cannot parse, and the process still
+  // exits 0. Refuse it here, with the lines named.
+  const errors = dictErrors(readFileSync(dictFile, 'utf8'));
+  if (errors.length > 0) {
+    console.error(`invalid libFuzzer dictionary ${path.relative(root, dictFile)}:`);
+    for (const { line, text } of errors) console.error(`  line ${line}: ${text}`);
+    process.exit(2);
+  }
+}
+
+// Output is passed through as it arrives and also watched for libFuzzer's
+// closing "Done N runs" line, which it prints only after a fuzzing loop that
+// ran to its time budget.
+let tail = '';
+let finished = false;
+const watch = (stream) => (chunk) => {
+  stream.write(chunk);
+  tail = (tail + chunk.toString('latin1')).slice(-4096);
+  if (/Done \d+ runs in \d+ second/.test(tail)) finished = true;
+};
+const child = spawn(
   process.execPath,
   [
     jazzer,
@@ -116,8 +140,25 @@ const result = spawnSync(
     `-max_total_time=${seconds}`,
     '-rss_limit_mb=2048',
     `-artifact_prefix=${crashes}${path.sep}`,
-    ...(existsSync(dictFile) ? [`-dict=${dictFile}`] : []),
+    ...(hasDict ? [`-dict=${dictFile}`] : []),
   ],
-  { cwd: root, stdio: 'inherit' },
+  { cwd: root, stdio: ['inherit', 'pipe', 'pipe'] },
 );
-process.exit(result.status ?? 1);
+child.stdout.on('data', watch(process.stdout));
+child.stderr.on('data', watch(process.stderr));
+child.on('error', (error) => {
+  console.error(`could not start the fuzzer: ${error.message}`);
+  process.exit(1);
+});
+child.on('close', (status) => {
+  if (status === 0 && !finished) {
+    // Exit 0 without the closing line means the fuzzer stopped before or
+    // during startup (a bad option, a target that failed to load). Reporting
+    // that as success would show a green nightly run that fuzzed nothing.
+    console.error(
+      `${target}: the fuzzer exited 0 without finishing a run (no "Done N runs" line); treating it as a failure`,
+    );
+    process.exit(1);
+  }
+  process.exit(status ?? 1);
+});

@@ -73,12 +73,15 @@ jobs:
           path: fuzz/.corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
 
+      # The whole fuzz/crashes folder, which in this job holds only this target's
+      # subfolder, so the artifact's files are <target>/fuzz.log, <target>/crash-*.
+      # The report job relies on that layout.
       - name: Upload crashing input
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-crash-${{ matrix.target }}
-          path: fuzz/crashes/${{ matrix.target }}
+          path: fuzz/crashes
           if-no-files-found: ignore
 
   # Kept apart from the job that runs the fuzzer so that job never holds a token
@@ -96,32 +99,57 @@ jobs:
       GH_REPO: ${{ github.repository }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
+      # merge-multiple, because without it the action's layout depends on how
+      # many artifacts match: several each get a folder named after the
+      # artifact, but a single one is unpacked straight into `path`. Merged,
+      # the result is crashes/<target>/ whether one target failed or all five.
       - name: Download crash artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: fuzz-crash-*
           path: crashes
+          merge-multiple: true
 
       - name: Open or update issues
         run: |
           shopt -s nullglob
-          for dir in crashes/fuzz-crash-*; do
-            target="${dir#crashes/fuzz-crash-}"
+          # Anything directly in crashes/ means the layout above did not hold.
+          # Stop loudly: carrying on would skip a crash without a word.
+          for entry in crashes/*; do
+            if [ ! -d "$entry" ]; then
+              echo "::error::unexpected file $entry: expected crashes/<target>/ folders only"
+              exit 1
+            fi
+          done
+          reported=0
+          for dir in crashes/*/; do
+            dir="${dir%/}"
+            target="${dir##*/}"
+            if [[ ! "$target" =~ ^[a-z0-9-]+$ ]] || [ ! -f "$dir/fuzz.log" ]; then
+              echo "::error::unexpected artifact folder $dir: expected crashes/<target>/fuzz.log"
+              exit 1
+            fi
             inputs=("$dir"/crash-* "$dir"/oom-* "$dir"/timeout-* "$dir"/slow-unit-*)
-            # No input file means the target failed some other way (build or
-            # install); the failed job in the run says why, so there is no issue.
-            [ ${#inputs[@]} -gt 0 ] || continue
             title="Fuzz crash: $target"
-            first="${inputs[0]}"
             {
-              echo "The nightly fuzz run found an input that makes the \`$target\` target fail."
-              echo
-              echo "Run: $RUN_URL (artifact \`fuzz-crash-$target\`, file \`$(basename "$first")\`)"
-              echo
-              echo "Input ($(wc -c < "$first") bytes, base64; large inputs are in the artifact only):"
-              echo '```'
-              if [ "$(wc -c < "$first")" -le 4000 ]; then base64 -w 76 "$first"; else echo "(see artifact)"; fi
-              echo '```'
+              if [ ${#inputs[@]} -gt 0 ]; then
+                first="${inputs[0]}"
+                echo "The nightly fuzz run found an input that makes the \`$target\` target fail."
+                echo
+                echo "Run: $RUN_URL (artifact \`fuzz-crash-$target\`, file \`$(basename "$first")\`)"
+                echo
+                echo "Input ($(wc -c < "$first") bytes, base64; large inputs are in the artifact only):"
+                echo '```'
+                if [ "$(wc -c < "$first")" -le 4000 ]; then base64 -w 76 "$first"; else echo "(see artifact)"; fi
+                echo '```'
+              else
+                # Failed without leaving an input: the target did not build, or
+                # the fuzzer never started. Until that is fixed the target is
+                # not being fuzzed at all, so it is reported like a crash.
+                echo "The nightly fuzz run failed for the \`$target\` target without a crashing input, so the target did not build or the fuzzer never started. It is not being fuzzed until this is fixed."
+                echo
+                echo "Run: $RUN_URL (artifact \`fuzz-crash-$target\`)"
+              fi
               echo
               echo "End of the fuzzer log:"
               echo '```'
@@ -135,4 +163,10 @@ jobs:
             else
               gh issue create --title "$title" --body-file body.md
             fi
+            reported=$((reported + 1))
           done
+          if [ "$reported" -eq 0 ]; then
+            # The fuzz job failed before any target wrote a log (checkout or
+            # install). The failed job says why; there is nothing to file.
+            echo "::warning::the fuzz job failed but no target uploaded a log; see the failed job in this run"
+          fi
