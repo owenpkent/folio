@@ -89,6 +89,21 @@ If upstream declines or stalls, option 2 is the fallback.
   `cargo tree -i zvariant --target all` comes back empty), or when Folio starts
   shipping a Linux build.
 
+## cargo audit: chrono unmaintained (RUSTSEC-2026-0543)
+
+- **Finding:** `chrono` 0.4.45 is flagged *unmaintained*, an informational
+  warning with no patched version.
+- **Decided:** 2026-11-23, for 0.9.0. Carry the warning.
+- **Path into Folio:** none that is compiled. The only crate in the lockfile
+  that lists `chrono` is `serde_with` 3.21.0 (through `tauri-utils`), where it
+  is an optional dependency behind `serde_with`'s `chrono` feature. That
+  feature is not enabled on any target: `cargo tree -i chrono --target all -e
+  all` prints nothing. `cargo audit` reports it because it reads every
+  lockfile entry, built or not.
+- **Revisit when:** `cargo tree -i chrono --target all -e all` prints a path,
+  meaning something has turned the feature on, or a `chrono` advisory with
+  an actual vulnerability appears.
+
 ## How to add an exception
 
 Document the finding (rule ID + score), the date the decision was

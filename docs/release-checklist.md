@@ -25,11 +25,13 @@ issue or defer the release.
       standing warning count is unmaintained/unsound advisories on transitive crates,
       most of them Tauri's Linux GTK stack, which Windows builds never compile. Treat a
       *new* warning as worth reading and any actual vulnerability as blocking.
-      As of 0.8.1 the expected set is five, all Linux-only and blocked upstream:
-      `glib` and `proc-macro-error` (Tauri's GTK 3 stack, #58), and `zbus_names`,
-      `zvariant`, `zvariant_derive` (`tauri-plugin-single-instance`'s `zbus` 5;
-      they clear once the plugin ships on `zbus` 6; status and options in
-      [SECURITY-EXCEPTIONS.md](SECURITY-EXCEPTIONS.md)). Check
+      As of 0.9.0 the expected set is six, none of them compiled into the
+      Windows build: `glib` and `proc-macro-error` (Tauri's GTK 3 stack, #58),
+      `zbus_names`, `zvariant`, `zvariant_derive` (`tauri-plugin-single-instance`'s
+      `zbus` 5; they clear once the plugin ships on `zbus` 6), and `chrono`
+      (an optional dependency of `serde_with` whose feature is off, so it is in
+      the lockfile but never built). Status and options in
+      [SECURITY-EXCEPTIONS.md](SECURITY-EXCEPTIONS.md). Check
       first whether `cargo update -p <crate>` already clears a warning (0.8.1's
       `tokio` one did)
 - [ ] `npm run build` — clean production build, no warnings worth investigating
