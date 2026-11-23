@@ -23,10 +23,11 @@ The real need was resuming reading, not editing the outline.
 - `folio.readingPositions` in localStorage maps a document's content hash to `{ page, scale, fitMode, at, id?, path? }`.
   - `id` is `sha256("id:" + first /ID)` and `path` is `sha256("path:" + normalised path)`. Both are fallback keys for a file changed by another app.
   - It holds at most 200 entries, and the oldest is dropped first.
-  - Page 1 at the default zoom deletes the entry, so the map stays small.
+  - Page 1 at the default zoom deletes the document's own entry, so the map stays small. It never deletes another entry, even one that shares an `id` or `path`: filled copies of one template share an `/ID`, and each has its own place.
+  - If another entry does share an `id` or `path`, the own entry is kept as a reset marker (page 1, default zoom) instead of deleted. A lookup that lands on a marker resumes nothing, and because the marker is newer it also stops the fallback keys from resuming the other entry.
   - Everything read back is validated, because localStorage is not a trust boundary.
 - `folio.lastDocument` holds one note `{ path, name, page }` for the Continue button. Its path is checked with the same `isResumablePath` rule as resume-after-update: an absolute local `.pdf` path, never UNC.
-- Saving in Folio changes the file's hash, so after a successful save the position is also recorded under the hash of the bytes that were written.
+- Saving in Folio changes the file's hash, so after a successful save the position is also recorded under the hash of the bytes that were written. The position is captured with the exported bytes, under the mutation lock, because the write can finish after another document has been opened. The rest of the session is recorded under the new hash only if the saved document is still the open one.
 
 ## How viewers key "last position"
 
