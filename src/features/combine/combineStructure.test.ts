@@ -16,10 +16,12 @@ import { describe, expect, it } from 'vitest';
 import { combinePdfs } from './combineDocuments';
 
 /**
- * Structure-preservation probes for combinePdfs. Each `it.fails` documents a
- * confirmed gap (the assertion describes the desired behaviour and currently
- * fails); flip to `it` when the gap is fixed. The plain `it` cases pin what
- * does survive today.
+ * Structure-preservation tests for combinePdfs: what of each input's
+ * document structure reaches the combined file (metadata, form fields, links,
+ * named destinations, page labels, bookmarks), read back with pdf-lib. How a
+ * reader resolves the same output is in the *.pdfjs.test.ts files beside this.
+ * A gap found later goes in as an `it.fails` that states the wanted
+ * behaviour, and is flipped to `it` when it is fixed.
  */
 
 async function build(tag: string): Promise<Uint8Array> {
