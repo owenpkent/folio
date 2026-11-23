@@ -201,7 +201,15 @@ function children(node: Node | undefined): Node[] {
 }
 
 function parse(bytes: Uint8Array): Node {
-  const result = asn1js.fromBER(ab(bytes));
+  let result: ReturnType<typeof asn1js.fromBER>;
+  try {
+    result = asn1js.fromBER(ab(bytes));
+  } catch {
+    // asn1js reports most bad input through `offset`, but throws its own Error
+    // for some (a GeneralizedTime that is not a date: "Wrong input string for
+    // conversion"). Same answer either way.
+    throw new Error('Not a valid PKCS#12 file');
+  }
   if (result.offset === -1) throw new Error('Not a valid PKCS#12 file');
   return result.result as Node;
 }
@@ -264,6 +272,23 @@ const PRF_BY_OID: Record<string, Prf> = {
   [OID.hmacSha512]: 'SHA-512',
 };
 
+/**
+ * Every password candidate failed. Reported as a PKCS#12 error like the rest of
+ * this file's rejections, never as the cipher's own: WebCrypto's is an
+ * OperationError that names neither the file nor the cause. Reachable when the
+ * container has no MAC (so nothing caught a wrong password earlier) or the
+ * ciphertext is damaged.
+ */
+function undecryptable(cause: unknown): Error {
+  // A cast, not the `{ cause }` constructor option: the project's ES2021 `lib`
+  // predates its type (see errorWithCause in combineDocuments.ts).
+  const error = new Error(
+    'PKCS#12 contents could not be decrypted. Invalid password or damaged file?',
+  ) as Error & { cause?: unknown };
+  error.cause = cause;
+  return error;
+}
+
 /** Decrypt data protected by a PKCS#12 PBE or PBES2 AlgorithmIdentifier. */
 async function decryptWith(
   algorithm: Node,
@@ -286,7 +311,7 @@ async function decryptWith(
         lastError = err;
       }
     }
-    throw lastError;
+    throw undecryptable(lastError);
   }
 
   if (oid === OID.pbes2) {
@@ -307,15 +332,18 @@ async function decryptWith(
     const iv = octetsOf(encParts[1]);
     let lastError: unknown;
     for (const pw of pbes2PasswordCandidates(password)) {
-      const base = await crypto.subtle.importKey('raw', ab(pw), 'PBKDF2', false, ['deriveKey']);
-      const aesKey = await crypto.subtle.deriveKey(
-        { name: 'PBKDF2', salt: ab(salt), iterations, hash: prf },
-        base,
-        { name: 'AES-CBC', length: keyLength * 8 },
-        false,
-        ['decrypt'],
-      );
+      // Key derivation is inside the try as well: the salt, the iteration count
+      // and the IV all come from the file, and WebCrypto rejects bad ones (zero
+      // iterations, a short IV) with the same unnamed OperationError.
       try {
+        const base = await crypto.subtle.importKey('raw', ab(pw), 'PBKDF2', false, ['deriveKey']);
+        const aesKey = await crypto.subtle.deriveKey(
+          { name: 'PBKDF2', salt: ab(salt), iterations, hash: prf },
+          base,
+          { name: 'AES-CBC', length: keyLength * 8 },
+          false,
+          ['decrypt'],
+        );
         return new Uint8Array(
           await crypto.subtle.decrypt({ name: 'AES-CBC', iv: ab(iv) }, aesKey, ab(data)),
         );
@@ -323,7 +351,7 @@ async function decryptWith(
         lastError = err;
       }
     }
-    throw lastError;
+    throw undecryptable(lastError);
   }
 
   throw new Error('Unsupported PKCS#12 encryption algorithm (only 3DES and AES are supported)');
