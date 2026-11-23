@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-23
+
 ### Added
 
 - **Pick up where you left off.** Reopening a document takes you back to the
@@ -44,6 +46,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   with no integrity check could surface a raw error from the cryptography
   library. It now gets the same PKCS#12 error as any other bad file. The import
   was refused either way, so the error is all that changed.
+- Rust dependencies: `url` 2.5.9 (RUSTSEC-2026-0592, a stack overflow in
+  `Url::origin()` on nested `blob:` URLs) and `cookie` 0.18.3
+  (RUSTSEC-2026-0594, medium: private cookie nonces can repeat in processes
+  that fork). Both arrive through Tauri; neither path is one Folio exercises,
+  but both are cleared. `rustix` 1.1.6 clears an unsoundness warning
+  (RUSTSEC-2026-0486) on a Linux-only path.
 
 ## [0.8.3] - 2026-11-09
 
@@ -1269,7 +1277,8 @@ Prepared but never published; everything below first shipped in 0.8.1.
   a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
   cargo-deny policy.
 
-[Unreleased]: https://github.com/owenpkent/folio/compare/v0.8.3...HEAD
+[Unreleased]: https://github.com/owenpkent/folio/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/owenpkent/folio/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/owenpkent/folio/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/owenpkent/folio/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/owenpkent/folio/compare/v0.7.0...v0.8.1
