@@ -1,4 +1,12 @@
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFString } from 'pdf-lib';
+import {
+  PDFArray,
+  PDFDict,
+  PDFDocument,
+  PDFHexString,
+  PDFName,
+  PDFNumber,
+  PDFString,
+} from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 
 import { combinePdfs } from './combineDocuments';
@@ -39,8 +47,10 @@ async function build(tag: string): Promise<Uint8Array> {
   });
   p1.node.set(PDFName.of('Annots'), ctx.obj([ctx.register(link)]));
 
-  // Named destination + a GoTo link that uses the name.
-  const dests = ctx.obj({ [`dest_${tag}`]: [p2.ref, PDFName.of('Fit')] });
+  // Named destination + a GoTo link that uses the name. /Names /Dests is a
+  // name tree, so the pairs sit in a /Names array. A plain dictionary keyed by
+  // the name is not one, and no reader resolves it.
+  const dests = ctx.obj({ Names: [PDFString.of(`dest_${tag}`), [p2.ref, PDFName.of('Fit')]] });
   doc.catalog.set(PDFName.of('Names'), ctx.obj({ Dests: dests }));
   const namedLink = ctx.obj({
     Type: 'Annot',
@@ -62,6 +72,34 @@ async function build(tag: string): Promise<Uint8Array> {
   tf.setText(`value ${tag}`);
   tf.addToPage(p1, { x: 10, y: 200, width: 100, height: 20 });
   return doc.save();
+}
+
+/**
+ * The page a named destination points at (as a ref string), found by walking
+ * the catalog's /Names /Dests name tree: /Names pairs, and /Kids below them.
+ */
+function namedDestination(doc: PDFDocument, name: string): string | undefined {
+  const walk = (node: PDFDict | undefined): string | undefined => {
+    if (!node) return undefined;
+    const pairs = node.lookupMaybe(PDFName.of('Names'), PDFArray);
+    for (let i = 0; pairs && i + 1 < pairs.size(); i += 2) {
+      const key = pairs.lookup(i);
+      const isName = key instanceof PDFString || key instanceof PDFHexString;
+      if (!isName || key.decodeText() !== name) continue;
+      // The value is the destination array, or a dictionary holding it in /D.
+      const value = pairs.lookup(i + 1);
+      const dest = value instanceof PDFDict ? value.lookupMaybe(PDFName.of('D'), PDFArray) : value;
+      return dest instanceof PDFArray ? dest.get(0)?.toString() : undefined;
+    }
+    const kids = node.lookupMaybe(PDFName.of('Kids'), PDFArray);
+    for (let i = 0; kids && i < kids.size(); i++) {
+      const found = walk(kids.lookupMaybe(i, PDFDict));
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const names = doc.catalog.lookupMaybe(PDFName.of('Names'), PDFDict);
+  return walk(names?.lookupMaybe(PDFName.of('Dests'), PDFDict));
 }
 
 async function combined() {
@@ -97,7 +135,17 @@ describe('combinePdfs structure', () => {
   // GAP: /Names /Dests (and /Dests) are never copied, so GoTo-by-name links dangle.
   it.fails('preserves named destinations', async () => {
     const out = await combined();
-    expect(out.catalog.lookupMaybe(PDFName.of('Names'), PDFDict)).toBeDefined();
+    const pageRefs = out.getPages().map((p) => p.ref.toString());
+    expect(namedDestination(out, 'dest_A')).toBe(pageRefs[1]);
+    expect(namedDestination(out, 'dest_B')).toBe(pageRefs[3]);
+  });
+
+  // Guards the fixture: if the name did not resolve in the input, the gap test
+  // above would be failing for the wrong reason (it once did).
+  it('builds inputs whose named destination resolves to their second page', async () => {
+    const input = await PDFDocument.load(await build('A'), { updateMetadata: false });
+    expect(namedDestination(input, 'dest_A')).toBe(input.getPage(1).ref.toString());
+    expect(namedDestination(input, 'dest_B')).toBeUndefined();
   });
 
   // GAP: /PageLabels are never copied.

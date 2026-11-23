@@ -9,10 +9,10 @@ Items marked **(unverified)** are claims the author could not confirm from the c
 After a user applies a redaction and saves, the covered content must be gone from the file, not hidden. Concretely, the saved file must not let a reader recover it by:
 
 1. **Text extraction or copy.** Neither PDF.js nor any other extractor returns the redacted glyphs, including from hidden text layers and OCR layers under the region.
-2. **Image extraction.** The pixels under the region are not present in any image object reachable from the saved file, in the original resolution or any other copy.
+2. **Image extraction.** The pixels under the region are not present in any image object reachable from the saved file, in the original resolution or any other copy. That includes copies no operator draws: an image still listed in a page's `/Resources`, and the page's embedded thumbnail (`/Thumb`).
 3. **Revision history.** The saved file holds no earlier revision of the document. A file that ends with an incremental update still contains the pre-redaction bytes.
 4. **Orphaned objects.** Content streams, images, and annotations that nothing references any more are not serialized.
-5. **Metadata and side channels.** Annotation contents, form field values, `/Info`, XMP, and structure-tree text (`/Alt`, `/ActualText`) that restate the redacted words are removed.
+5. **Metadata and side channels.** Annotation contents, form field values, `/Info`, XMP, and replacement text (`/Alt`, `/ActualText`, `/E`) that restate the redacted words are removed, whether that text sits in the structure tree or in a marked-content property list inside the content stream.
 
 The attacker is anyone who receives the saved file and runs a parser, a text extractor, or a hex editor over it. Folio does not defend against the original, unredacted file that the user still has, or against what a recipient already saw.
 
@@ -50,9 +50,12 @@ Character codes are split by font type: one byte for simple fonts; for Type0 fon
 
 Modes: render modes 3 (invisible) and 7 (clip) are treated as text like any other, so an OCR layer under a region is cut. Text drawn with a zero-size or degenerate box counts as a hit when its origin is inside a region.
 
+Marked content: a `BDC` operator can carry replacement text in its property list, as an inline dictionary (`/Span << /ActualText (...) >> BDC`) or by name through the `/Properties` resources. That text restates the glyphs it wraps, and nothing needs the glyphs to read it. When any glyph inside a marked-content sequence is removed, `/ActualText`, `/Alt` and `/E` are removed from that sequence's property list. An inline dictionary is rewritten in the stream. A named one is cloned to a new `/Properties` name on the redacting page, never edited where other pages share it. Removing the glyphs alone leaves the words in the file while PDF.js text extraction returns nothing, so the verifier checks this case directly (see Verification).
+
 ### Images
 
-- **Image XObject fully inside a region:** drop the `Do` operator. If no other page or form references the XObject, it falls out of the file in the sweep.
+- **Image XObject fully inside a region:** drop the `Do` operator, and remove the image's entry from the `/Resources` that named it. Dropping the operator is not enough: the sweep keeps everything reachable from the page, and a resource entry is reachable whether or not anything draws it, so the pixels would stay in the file. The entry goes when no remaining operator in a stream that uses those resources draws that name. A redacted page gets its own `/Resources` for this, copied first if the dictionary is inherited from `/Pages` or shared with other pages, so pruning cannot take a resource away from a page that was not redacted. If another page or form still draws the image it stays, which is correct: it was redacted here, not there. **(unverified: a shared resource dictionary can list the image for a page that never draws it, so finding every dictionary that names it needs a document-wide scan; phase 0 sizes that.)**
+- **Page thumbnails (`/Thumb`):** an embedded thumbnail is a small picture of the whole page as it was before redaction. It is deleted from every redacted page and not regenerated (viewers draw their own). Nothing draws it, so no operator-level check sees it. `/PieceInfo`, an application's private data that can hold its own copy of page content, is removed from redacted pages as well **(unverified: how often it holds page content)**.
 - **Partly covered, lossless filters (Flate, LZW, ASCII85, ASCIIHex, RunLength):** decode, set the covered pixels to zero (or to the paint-nothing bit for image masks), re-encode as Flate, and register the result as a **new** XObject. The original is never edited because other pages may draw it. Pixel coverage is decided by mapping each pixel centre through the CTM into user space.
 - **Partly covered, DCT, JPX, JBIG2, CCITT:** v1 removes the whole image (fail closed). Phase 3 can decode JPEG through `createImageBitmap` and a canvas, blank pixels, and re-encode as Flate (lossless, larger) or JPEG at high quality. Folio already decodes and embeds PNG/JPEG in `imageedit`, but has no pixel-level decode of PDF image data.
 - **Soft masks and masks** (`/SMask`, `/Mask`) are cleared the same way, or dropped with the image. A leftover mask can leak the shape of the image.
@@ -101,10 +104,10 @@ Apply returns bytes only after a verifier passes. It is independent of the rewri
 
 1. Re-parse the saved bytes with a fresh `PDFDocument.load` (reachability) and PDF.js (rendering and text).
 2. **Text:** for each redacted page, call `getTextContent` and assert that no item's box overlaps a region and that none of the original redacted strings appears in the page text. PDF.js text items are per run, not per glyph, so this is a coarse check **(unverified: per-glyph boxes may need `getOperatorList`)**.
-3. **Operators:** re-run the interpreter in verify mode over the final streams (including forms) and count glyphs and inline images still overlapping a region. Anything above zero fails.
-4. **Bytes:** for every redacted string of three or more characters, search the decoded and raw bytes of all objects, and the metadata, for the Latin-1 and UTF-16BE forms. Compressed streams are inflated first. A hit fails.
+3. **Operators:** re-run the interpreter in verify mode over the final streams (including forms) and count glyphs and inline images still overlapping a region. Anything above zero fails. So does a marked-content sequence that lost a glyph and still carries `/ActualText`, `/Alt` or `/E`.
+4. **Bytes:** for every redacted string of three or more characters, search the decoded and raw bytes of all objects, and the metadata, for the Latin-1 and UTF-16BE forms. Compressed streams are inflated first. A hit fails. Shorter strings are not searched, because one or two characters match by chance everywhere. This check therefore cannot stand in for the structural ones: a two-character `/ActualText` is caught by check 3, not here.
 5. **Pixels:** rasterize each redacted page with PDF.js and assert that, outside the overlay text, the pixels inside each region equal the fill color.
-6. **Objects:** assert that no object from before the sweep that held redacted content is still in the context.
+6. **Objects:** assert that no object from before the sweep that held redacted content is still in the context. That list includes every image that was dropped or cleared (what matters is that it is reachable, not whether an operator draws it) and each redacted page's original `/Thumb`. Also assert that a redacted page's `/Resources` names no XObject its final content does not draw, and that the page has no `/Thumb`.
 
 Failure rolls back to the pre-apply bytes with an error that says which check failed.
 
@@ -126,6 +129,9 @@ Fixtures are tiny PDFs built with pdf-lib in test setup, plus a few hand-written
 | Inline image under a region | `BI..EI` removed |
 | Flate RGB image, region over a corner | New XObject with cleared corner; original XObject not referenced |
 | JPEG (DCT) image, partly covered | Whole image removed; report says so; JPEG bytes absent from the file |
+| Image fully under a region and drawn nowhere else | `Do` gone and the entry gone from the page's `/Resources`; the image's pixels are not in the file |
+| The same, with `/Resources` shared by a second page that never draws the image | Redacted page gets its own pruned `/Resources`; the other page still renders; the image is not in the file |
+| Page with a `/Thumb` | Thumbnail removed; its pixels are not in the file |
 | Image with `/SMask` | Mask cleared or dropped with the image |
 | Annotation with an appearance stream over the region | Annotation, `/AP`, and `/Contents` gone |
 | Text field under the region with `/V` set | Field, `/V`, `/DV`, and AP removed from `/AcroForm /Fields` |
@@ -133,6 +139,9 @@ Fixtures are tiny PDFs built with pdf-lib in test setup, plus a few hand-written
 | Signed document | Redaction refused with a reason; bytes unchanged |
 | Encrypted document | Redact tool disabled with a reason |
 | Structure tree with `/Alt` and `/ActualText` on a redacted span | Both removed |
+| `/ActualText` on an inline `BDC` property list around redacted glyphs | Key removed from the stream; PDF.js text and a search of the decoded stream both find nothing |
+| The same through a named `/Properties` entry shared with another page | Redacting page uses a cloned entry without the key; the other page's entry is unchanged |
+| Two-character redacted string under `/ActualText` | Caught by the operator check; the byte search (three or more characters) would miss it |
 | Rotated page (`/Rotate 90`, 270) and a non-zero `/MediaBox` origin | Marks land on the right glyphs |
 | File with an incremental update that changed the page content | Old content stream bytes absent from the output |
 | Redacted text that previously sat in a deleted object (orphan) | Absent from the output; this is the sweep test |
@@ -145,10 +154,10 @@ Rough sizes are for one developer, in days of focused work.
 
 | Phase | Scope | Size |
 | --- | --- | --- |
-| 0. Spikes | Confirm `PDFDocument.load` + `save` drops superseded revisions on an incremental file; confirm `saveDocument()` output shape; decide per-glyph width source (pdf-lib font dicts vs PDF.js) | 2 days |
-| 1. Text core | Glyph-level interpreter (state, widths, Type0 codes), `TJ` rewrite, whole-operator fallback, form cloning, full trailer sweep, verifier (operators and bytes) | 8 to 10 days |
+| 0. Spikes | Confirm `PDFDocument.load` + `save` drops superseded revisions on an incremental file; confirm `saveDocument()` output shape; decide per-glyph width source (pdf-lib font dicts vs PDF.js); size the document-wide scan for resource dictionaries that name a dropped image | 2 days |
+| 1. Text core | Glyph-level interpreter (state, widths, Type0 codes), `TJ` rewrite, whole-operator fallback, marked-content property cleanup, form cloning, full trailer sweep, verifier (operators and bytes) | 8 to 10 days |
 | 2. Marking UI | Redact tool, mark store, apply dialog, save-as-new-file flow, text selection to marks, keyboard support | 5 days |
-| 3. Images, vectors | Flate clear, whole-image drop, inline images, clip-out of paths and shadings, pixel verifier | 5 days |
+| 3. Images, vectors | Flate clear, whole-image drop with resource pruning, thumbnail removal, inline images, clip-out of paths and shadings, pixel verifier | 5 days |
 | 4. Annotations, fields, tags, metadata | Annotation and field removal, structure tree cleanup, metadata scrub | 4 days |
 | 5. Search and redact | Patterns, review list, hit-to-glyph mapping | 3 days |
 | 6. Hardening | Test matrix above, fuzzing the interpreter (as `contentStream.fuzz.test.ts` does), docs and manual test steps | 4 days |
@@ -160,7 +169,7 @@ About 30 to 35 days to v1.
 
 Reusable: the tokenizer and splice helpers in `src/features/textedit/contentStream.ts` (`parseContentStreams`, `spliceOperatorBytes`, `removeOperatorBytes`, `spliceRun`; it tracks CTM, `Tm`, font and size and descends into forms); `decodePageContentStreams`, `mergeStreams` and the form clone-and-redirect code in `textedit/mutate.ts`; image placement in `imageedit/mutate.ts` (`onImageOp`); `pageops/gc.ts` and `verifyResult`; `core/pdf/pageGeometry.ts`; `withDocumentMutation` and `reloadEditedBytes`; `assignFreshDocumentId`.
 
-Missing: per-glyph layout (the interpreter emits one run per show operator, with no code splitting, no width tables, and no `Tc`/`Tw`/`Tz`/`Ts` modelling, and it refuses rotated text); redaction's opposite rule for forms invoked more than once; path bounding boxes and clip-out generation; pixel decode and encode of PDF image data; a trailer-rooted sweep that is not page-scoped; the verifier; the marks store and UI; and annotation, field, tag and metadata removal.
+Missing: per-glyph layout (the interpreter emits one run per show operator, with no code splitting, no width tables, and no `Tc`/`Tw`/`Tz`/`Ts` modelling, and it refuses rotated text); redaction's opposite rule for forms invoked more than once; path bounding boxes and clip-out generation; pixel decode and encode of PDF image data; a trailer-rooted sweep that is not page-scoped; resource pruning after a dropped image, thumbnail removal, and rewriting of marked-content property lists; the verifier; the marks store and UI; and annotation, field, tag and metadata removal.
 
 ## Lessons from pdfcraft
 
