@@ -88,7 +88,7 @@ Change document content, reorganize pages, make scans searchable, and redact.
 | Edit existing content | Edit text runs already in the PDF and move, resize, replace, or delete embedded images | In progress (text runs done, including Form XObjects invoked once per page; a form invoked more than once is still refused; embedded images move/resize/replace/delete done, except rotated/skewed images, replace only, and images inside a Form XObject, not yet editable) |
 | OCR | Recognize text in scanned pages and add a searchable text layer | Done (English via tesseract.js; invisible baked layer + on-screen selection) |
 | Page operations | Insert, delete, reorder, rotate, split, and merge pages | In progress (delete, reorder, and rotate done, in the thumbnail sidebar and a page organizer, with undo; deleting sweeps the page's content out of the file rather than only unlinking it. Merging whole PDFs into one document is done. Insert and split planned) |
-| Redaction | True redaction that removes underlying content, not just a black box | Planned |
+| Redaction | True redaction that removes underlying content, not just a black box | Planned (designed, not built: [docs/redaction.md](docs/redaction.md)) |
 | Accessibility | Editing operations keyboard-driven; OCR output feeds search and screen readers | In progress (OCR text feeds search; more languages planned; moving, resizing, and deleting any placed overlay is keyboard-driven, but choosing *which* text run or embedded image to edit still needs a pointer) |
 
 **Milestone: edit, reorganize, and redact.** A user can edit content, restructure pages, run OCR to make a scan searchable, and redact sensitive content so it is actually gone.

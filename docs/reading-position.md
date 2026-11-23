@@ -1,6 +1,6 @@
 # Reading position: pick up where you left off
 
-Status: in progress on branch `feat/bookmarks`, 2026-11-23.
+Status: merged 2026-11-23 (#171). Not in a release yet.
 
 Folio remembers where you were in each document (the page, and the zoom and
 fit mode) and puts you back there when you reopen it. The start screen offers

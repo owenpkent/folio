@@ -29,12 +29,23 @@ New here? Start with **[Getting started](getting-started.md)**, then
 | [Architecture](architecture.md) | The command registry, the `PdfEngine` abstraction, the layer stack, and the rules that are easy to break by accident. |
 | [Writing plugins](plugins.md) | The plugin host, contribution points, and the public API surface. |
 
+### Design notes
+
+One feature each: why it works the way it does, or how it is going to.
+
+| Document | What it covers |
+| --- | --- |
+| [Reading position](reading-position.md) | How reopening a document returns to the page and zoom it was left at: what is stored, how a file is recognised after it changes, and what other viewers do. |
+| [Redaction](redaction.md) | The design for true redaction, which is not built yet: the guarantee, the removal rules, the fail-closed verifier, and the order of work. |
+| [Bookmarks](bookmarks.md) | A design for editable outline bookmarks. Deferred. |
+| [Bookmarks research](bookmarks-research.md) | The notes behind that design, each claim marked by where it came from. |
+
 ### Contributing
 
 | Document | What it covers |
 | --- | --- |
 | [Contributing guide](../CONTRIBUTING.md) | Branching, Conventional Commits, and review expectations. |
-| [Testing](testing.md) | What is covered, how to run it, and which behaviours are pinned on purpose. |
+| [Testing](testing.md) | What is covered, how to run it, which behaviours are pinned on purpose, and how the parsers of untrusted files are fuzzed. |
 | [Releasing](releasing.md) | Signed installers and the auto-updater. |
 | [Release checklist](release-checklist.md) | The step-by-step for cutting a release. |
 
