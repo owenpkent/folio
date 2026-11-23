@@ -28,6 +28,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that, so other PDF readers showed plain 1, 2, 3. Each page now keeps the
   number it had in its own file, and a file with no numbering of its own
   starts again at 1. Folio itself does not show these numbers yet.
+- **Combined PDFs keep their bookmarks.** Combine dropped every file's
+  bookmarks, so the combined file had an empty bookmark panel. Each file's
+  bookmarks now follow the previous file's, in order, and each one still jumps
+  to its own page. Nothing is added: no file names are written into the
+  combined PDF. A bookmark that ran a script or opened something outside the
+  document is kept as a plain entry that does nothing.
 
 ### Security
 

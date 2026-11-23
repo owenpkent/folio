@@ -124,6 +124,11 @@ const PAGES_PER_YIELD = 8;
  * Page labels (such as i, ii, iii for front matter) are carried too, so every
  * page keeps the label it had in its own file; an input without labels
  * restarts at 1 (see {@link writePageLabels}).
+ * The document outline (bookmarks) of every input is carried too: the
+ * combined top level is each input's top-level items, in input order, with
+ * nothing added between them. An input without bookmarks contributes none, and
+ * when no input has any the combined file has no outline (see
+ * {@link writeOutlines}).
  *
  * An input this function has to parse itself is validated with
  * {@link looksLikePdf} first; one that arrives already parsed (the modal's
@@ -165,6 +170,9 @@ export async function combinePdfs(
   // Per input, and only written once the loop is done: whether any input has
   // labels decides whether the unlabelled ones need an explicit restart.
   const pageLabels: InputPageLabels[] = [];
+  // Per input too, and joined at one level once the loop is done (see
+  // writeOutlines): the top-level items of every input, in input order.
+  const outlines: OutlineNode[] = [];
 
   for (let i = 0; i < inputs.length; i++) {
     if (options.isCancelled?.()) throw new CombineCancelledError();
@@ -227,13 +235,15 @@ export async function combinePdfs(
       const form = mergeAcroForm(out, src, copier, usedFieldNames);
       if (form.merged) formsMerged = true;
       if (form.degraded) formsDegraded = true;
-      const renames = mergeNamedDestinations(
-        src,
-        copier,
-        new Set(srcPages.map((page) => page.ref.toString())),
-        destinations,
-        out.context,
-      );
+      const pageRefs = new Set(srcPages.map((page) => page.ref.toString()));
+      const renames = mergeNamedDestinations(src, copier, pageRefs, destinations, out.context);
+      // Right after the destinations: a bookmark that jumps by name has to
+      // follow the same renames this input's links just got.
+      // A loop, not a spread: an outline can hold tens of thousands of
+      // top-level items, and a spread passes each one as a call argument.
+      for (const node of collectOutline(src, pageRefs, copier, renames, out.context)) {
+        outlines.push(node);
+      }
       // Every input, not only one that had renames: a link to a name this
       // input never defined has to be dealt with too (see DestinationRenames).
       const firstPage = pagesCopied - srcPages.length;
@@ -259,6 +269,7 @@ export async function combinePdfs(
 
   writeNamedDestinations(out, destinations);
   writePageLabels(out, pageLabels);
+  writeOutlines(out, outlines);
   if (firstSrc) copyMetadata(out, firstSrc);
 
   // Checked here and again below, either side of save(). On a large output
@@ -1252,6 +1263,227 @@ function writePageLabels(out: PDFDocument, inputs: InputPageLabels[]): void {
     tree = context.obj({ Kids: kids });
   }
   out.catalog.set(PDFName.of('PageLabels'), tree);
+}
+
+/** Ceilings on the walk over an untrusted input's outline (see {@link collectOutline}). */
+const MAX_OUTLINE_DEPTH = 32;
+const MAX_OUTLINE_ITEMS_PER_INPUT = 50_000;
+
+/** An outline item as the merged file will have it, with every value already validated. */
+interface OutlineNode {
+  title: string;
+  /** An explicit destination array, or a name or string naming one; none when unresolved. */
+  target?: PDFObject;
+  color?: [number, number, number];
+  /** Bit 1 italic, bit 2 bold (PDF 12.3.3); zero when neither. */
+  flags: number;
+  /** Whether the item showed its children in its own file. */
+  open: boolean;
+  children: OutlineNode[];
+}
+
+/** What one outline walk has seen: items already visited (cycles) and the running total (cap). */
+interface OutlineWalk {
+  visited: Set<PDFDict>;
+  count: number;
+}
+
+/** `/C` as three numbers in 0..1, or undefined for any other shape. */
+function outlineColor(value: PDFObject | undefined): [number, number, number] | undefined {
+  if (!(value instanceof PDFArray) || value.size() !== 3) return undefined;
+  const parts: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    const part = value.lookup(i);
+    if (!(part instanceof PDFNumber)) return undefined;
+    const number = part.asNumber();
+    if (!(number >= 0 && number <= 1)) return undefined;
+    parts.push(number);
+  }
+  return [parts[0], parts[1], parts[2]];
+}
+
+/**
+ * Where a bookmark jumps, rebuilt for the merged file: an explicit destination
+ * goes through {@link sanitizedDestination}, and a name or string follows the
+ * renames its input's links got (see {@link renamedTarget}), so a bookmark to a
+ * destination that was renamed still lands in its own file and one to a name
+ * its file never defined stays unresolved.
+ */
+function outlineTarget(
+  value: PDFObject | undefined,
+  pageRefs: Set<string>,
+  copier: PDFObjectCopier,
+  renames: DestinationRenames,
+  context: PDFContext,
+): PDFObject | undefined {
+  if (value instanceof PDFArray || value instanceof PDFDict) {
+    return sanitizedDestination(value, pageRefs, copier, context);
+  }
+  if (value instanceof PDFName || value instanceof PDFString || value instanceof PDFHexString) {
+    return renamedTarget(value, renames);
+  }
+  return undefined;
+}
+
+/**
+ * One item's own values, validated. The item is kept whatever is wrong with
+ * it: a bad title becomes empty and an unusable target is left out. Its action
+ * is read only when it is a `/GoTo`; every other kind (URI, GoToR, Launch,
+ * JavaScript, Named, anything else) is dropped, because actions out of an
+ * untrusted file are not carried into the combined one.
+ */
+function sanitizedOutlineItem(
+  item: PDFDict,
+  pageRefs: Set<string>,
+  copier: PDFObjectCopier,
+  renames: DestinationRenames,
+  context: PDFContext,
+): OutlineNode {
+  const title = item.lookup(PDFName.of('Title'));
+  let destination = item.lookup(PDFName.of('Dest'));
+  if (destination === undefined || destination === PDFNull) {
+    const action = dictOf(item.lookup(PDFName.of('A')));
+    destination =
+      action && action.lookup(PDFName.of('S')) === PDFName.of('GoTo')
+        ? action.lookup(PDFName.of('D'))
+        : undefined;
+  }
+  const count = item.lookup(PDFName.of('Count'));
+  return {
+    title:
+      title instanceof PDFString || title instanceof PDFHexString
+        ? destinationText(stringBytes(title))
+        : '',
+    target: outlineTarget(destination, pageRefs, copier, renames, context),
+    color: outlineColor(item.lookup(PDFName.of('C'))),
+    flags: (integerOf(item.lookup(PDFName.of('F'))) ?? 0) & 3,
+    open: count instanceof PDFNumber && count.asNumber() > 0,
+    children: [],
+  };
+}
+
+/** The siblings starting at `first`, each with its subtree, bounded by depth, cycles and total. */
+function collectOutlineLevel(
+  first: PDFDict | undefined,
+  depth: number,
+  walk: OutlineWalk,
+  pageRefs: Set<string>,
+  copier: PDFObjectCopier,
+  renames: DestinationRenames,
+  context: PDFContext,
+): OutlineNode[] {
+  const nodes: OutlineNode[] = [];
+  let item = first;
+  while (item && !walk.visited.has(item) && walk.count < MAX_OUTLINE_ITEMS_PER_INPUT) {
+    walk.visited.add(item);
+    walk.count++;
+    const node = sanitizedOutlineItem(item, pageRefs, copier, renames, context);
+    if (depth + 1 < MAX_OUTLINE_DEPTH) {
+      const child = dictOf(item.lookup(PDFName.of('First')));
+      node.children = collectOutlineLevel(
+        child,
+        depth + 1,
+        walk,
+        pageRefs,
+        copier,
+        renames,
+        context,
+      );
+    }
+    nodes.push(node);
+    item = dictOf(item.lookup(PDFName.of('Next')));
+  }
+  return nodes;
+}
+
+/**
+ * Read one input's outline (the catalog's `/Outlines`: items linked by
+ * `/First` and `/Next`) into a plain tree. The source objects are never
+ * copied: the copier follows every reference with no limit, and an item's
+ * `/Parent`, `/Prev` and `/Next` lead to the whole tree (a hostile file
+ * overflowed the stack that way). Every value is rebuilt from validated
+ * scalars instead, and a malformed outline costs this input its bookmarks and
+ * nothing else. Past a cap the walk stops and keeps what it has.
+ */
+function collectOutline(
+  src: PDFDocument,
+  pageRefs: Set<string>,
+  copier: PDFObjectCopier,
+  renames: DestinationRenames,
+  context: PDFContext,
+): OutlineNode[] {
+  const root = dictOf(src.catalog.lookup(PDFName.of('Outlines')));
+  const first = dictOf(root?.lookup(PDFName.of('First')));
+  const walk: OutlineWalk = { visited: new Set(), count: 0 };
+  return collectOutlineLevel(first, 0, walk, pageRefs, copier, renames, context);
+}
+
+/** What writing one level produced: its ends, and how many items it shows when expanded. */
+interface WrittenOutlineLevel {
+  first: PDFRef;
+  last: PDFRef;
+  visible: number;
+}
+
+/**
+ * Write `nodes` as one sibling list under `parent`, with `/Prev`, `/Next`,
+ * `/First`, `/Last` and `/Count` set the way PDF 12.3.3 defines them: an open
+ * item's `/Count` is how many descendants show beneath it, a closed item's is
+ * that number negated, and an item with no children has none.
+ */
+function writeOutlineLevel(
+  nodes: OutlineNode[],
+  parent: PDFRef,
+  context: PDFContext,
+): WrittenOutlineLevel | undefined {
+  if (nodes.length === 0) return undefined;
+  const dicts: PDFDict[] = [];
+  const refs: PDFRef[] = [];
+  let visible = 0;
+  for (const node of nodes) {
+    const dict = context.obj({});
+    const ref = context.register(dict);
+    dict.set(PDFName.of('Title'), hexFromBytes(destinationBytes(node.title)));
+    dict.set(PDFName.of('Parent'), parent);
+    if (node.target) dict.set(PDFName.of('Dest'), node.target);
+    if (node.color) dict.set(PDFName.of('C'), context.obj(node.color));
+    if (node.flags !== 0) dict.set(PDFName.of('F'), PDFNumber.of(node.flags));
+    const children = writeOutlineLevel(node.children, ref, context);
+    visible += 1;
+    if (children) {
+      dict.set(PDFName.of('First'), children.first);
+      dict.set(PDFName.of('Last'), children.last);
+      dict.set(PDFName.of('Count'), PDFNumber.of(node.open ? children.visible : -children.visible));
+      if (node.open) visible += children.visible;
+    }
+    dicts.push(dict);
+    refs.push(ref);
+  }
+  for (let i = 0; i < dicts.length; i++) {
+    if (i > 0) dicts[i].set(PDFName.of('Prev'), refs[i - 1]);
+    if (i + 1 < dicts.length) dicts[i].set(PDFName.of('Next'), refs[i + 1]);
+  }
+  return { first: refs[0], last: refs[refs.length - 1], visible };
+}
+
+/**
+ * Write the merged outline into `out`'s catalog. `nodes` is every input's
+ * top-level items in input order, so the combined top level is those items
+ * side by side: nothing is invented, no wrapper item and no file name. With no
+ * items at all there is no `/Outlines`, and a viewer shows no bookmark panel
+ * as before.
+ */
+function writeOutlines(out: PDFDocument, nodes: OutlineNode[]): void {
+  if (nodes.length === 0) return;
+  const context = out.context;
+  const root = context.obj({ Type: 'Outlines' });
+  const rootRef = context.register(root);
+  const level = writeOutlineLevel(nodes, rootRef, context);
+  if (!level) return;
+  root.set(PDFName.of('First'), level.first);
+  root.set(PDFName.of('Last'), level.last);
+  root.set(PDFName.of('Count'), PDFNumber.of(level.visible));
+  out.catalog.set(PDFName.of('Outlines'), rootRef);
 }
 
 export interface StagedPdf {

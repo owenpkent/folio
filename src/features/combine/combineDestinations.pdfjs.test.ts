@@ -1,5 +1,15 @@
 // @vitest-environment node
-import { PDFDocument, PDFHexString, PDFName, type PDFObject, PDFString } from 'pdf-lib';
+import {
+  type PDFContext,
+  type PDFDict,
+  PDFDocument,
+  PDFHexString,
+  PDFName,
+  PDFNumber,
+  type PDFObject,
+  type PDFRef,
+  PDFString,
+} from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 
 import { combinePdfs } from './combineDocuments';
@@ -200,6 +210,187 @@ describe('named destinations, as PDF.js resolves them', () => {
     expect(await combinedTargets(await input(undefined, utf16()), await defining())).toEqual([
       null,
       3,
+    ]);
+  });
+});
+
+/** A bookmark to build: its title, where it jumps (given the input's two page refs), and its children. */
+interface Bookmark {
+  title: string;
+  dest: (pages: [PDFRef, PDFRef]) => PDFObject | PDFObject[];
+  bold?: boolean;
+  italic?: boolean;
+  open?: boolean;
+  kids?: Bookmark[];
+}
+
+/** Register `marks` as a linked sibling list under `parent`, returning its first and last ref. */
+function linkBookmarks(
+  ctx: PDFContext,
+  marks: Bookmark[],
+  parent: PDFRef,
+  pages: [PDFRef, PDFRef],
+): [PDFRef, PDFRef] {
+  const dicts = marks.map((mark) => {
+    const dict = ctx.obj({ Title: PDFString.of(mark.title) });
+    const dest = mark.dest(pages);
+    dict.set(PDFName.of('Dest'), Array.isArray(dest) ? ctx.obj(dest) : dest);
+    const flags = (mark.italic ? 1 : 0) | (mark.bold ? 2 : 0);
+    if (flags) dict.set(PDFName.of('F'), PDFNumber.of(flags));
+    return dict;
+  });
+  const refs = dicts.map((dict) => ctx.register(dict));
+  marks.forEach((mark, i) => {
+    dicts[i].set(PDFName.of('Parent'), parent);
+    if (i > 0) dicts[i].set(PDFName.of('Prev'), refs[i - 1]);
+    if (i + 1 < marks.length) dicts[i].set(PDFName.of('Next'), refs[i + 1]);
+    const kids = mark.kids ?? [];
+    if (kids.length === 0) return;
+    const [first, last] = linkBookmarks(ctx, kids, refs[i], pages);
+    dicts[i].set(PDFName.of('First'), first);
+    dicts[i].set(PDFName.of('Last'), last);
+    dicts[i].set(PDFName.of('Count'), PDFNumber.of(mark.open ? kids.length : -kids.length));
+  });
+  return [refs[0], refs[refs.length - 1]];
+}
+
+/**
+ * A two-page input with `marks` as its outline. `key` names its second page in
+ * the name tree, for a bookmark that jumps by name.
+ */
+async function bookmarked(marks: Bookmark[], key?: PDFObject): Promise<Uint8Array> {
+  const doc = await PDFDocument.create({ updateMetadata: false });
+  const pages: [PDFRef, PDFRef] = [doc.addPage([300, 300]).ref, doc.addPage([300, 300]).ref];
+  const ctx = doc.context;
+  if (key) {
+    const names = ctx.obj({ Names: [key, [pages[1], PDFName.of('Fit')]] });
+    doc.catalog.set(PDFName.of('Names'), ctx.obj({ Dests: names }));
+  }
+  const root: PDFDict = ctx.obj({ Type: 'Outlines' });
+  const rootRef = ctx.register(root);
+  const [first, last] = linkBookmarks(ctx, marks, rootRef, pages);
+  root.set(PDFName.of('First'), first);
+  root.set(PDFName.of('Last'), last);
+  root.set(PDFName.of('Count'), PDFNumber.of(marks.length));
+  doc.catalog.set(PDFName.of('Outlines'), rootRef);
+  return doc.save();
+}
+
+const toPage = (index: 0 | 1) => (pages: [PDFRef, PDFRef]) => [pages[index], PDFName.of('Fit')];
+
+interface ResolvedBookmark {
+  title: string;
+  /** The 0-based page the bookmark lands on, or null when it resolves to nothing. */
+  page: number | null;
+  bold: boolean;
+  italic: boolean;
+  items: ResolvedBookmark[];
+}
+
+/** The outline of `bytes` as PDF.js reads it, each item followed the way the viewer does. */
+async function outlineTargets(bytes: Uint8Array): Promise<ResolvedBookmark[]> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const task = pdfjs.getDocument({ data: bytes.slice(), useSystemFonts: true });
+  const pdf = await task.promise;
+  try {
+    const resolve = async (
+      items: Awaited<ReturnType<typeof pdf.getOutline>>,
+    ): Promise<ResolvedBookmark[]> => {
+      const resolved: ResolvedBookmark[] = [];
+      for (const item of items ?? []) {
+        const dest: unknown =
+          typeof item.dest === 'string' ? await pdf.getDestination(item.dest) : item.dest;
+        resolved.push({
+          title: item.title,
+          page: Array.isArray(dest) ? await pdf.getPageIndex(dest[0]) : null,
+          bold: item.bold,
+          italic: item.italic,
+          items: await resolve(item.items),
+        });
+      }
+      return resolved;
+    };
+    return await resolve(await pdf.getOutline());
+  } finally {
+    await task.destroy();
+  }
+}
+
+async function combinedOutline(...inputs: Uint8Array[]): Promise<ResolvedBookmark[]> {
+  const { bytes } = await combinePdfs(
+    inputs.map((data, index) => ({ name: `in${index}.pdf`, bytes: data })),
+  );
+  return outlineTargets(bytes);
+}
+
+/** Titles and landing pages, which is all most of these cases are about. */
+function landings(items: ResolvedBookmark[]): Array<[string, number | null]> {
+  return items.map((item) => [item.title, item.page]);
+}
+
+describe('bookmarks, as PDF.js resolves them', () => {
+  it('jumps each bookmark to a page of its own file', async () => {
+    const make = (tag: string) =>
+      bookmarked([
+        { title: `${tag} first`, dest: toPage(0) },
+        { title: `${tag} second`, dest: toPage(1) },
+      ]);
+    expect(landings(await outlineTargets(await make('A')))).toEqual([
+      ['A first', 0],
+      ['A second', 1],
+    ]);
+    expect(landings(await combinedOutline(await make('A'), await make('B')))).toEqual([
+      ['A first', 0],
+      ['A second', 1],
+      ['B first', 2],
+      ['B second', 3],
+    ]);
+  });
+
+  it('brings nested items and bold and italic through', async () => {
+    const a = await bookmarked([
+      {
+        title: 'Part',
+        dest: toPage(0),
+        open: true,
+        bold: true,
+        kids: [{ title: 'Chapter', dest: toPage(1), italic: true }],
+      },
+    ]);
+    const b = await bookmarked([{ title: 'Other', dest: toPage(1), bold: true, italic: true }]);
+    const out = await combinedOutline(a, b);
+    expect(out.map((item) => [item.title, item.bold, item.italic])).toEqual([
+      ['Part', true, false],
+      ['Other', true, true],
+    ]);
+    expect(out[0].items.map((item) => [item.title, item.page, item.bold, item.italic])).toEqual([
+      ['Chapter', 1, false, true],
+    ]);
+    expect(out[1].page).toBe(3);
+  });
+
+  // The later file's name is renamed on the way in, and its bookmark has to go
+  // with it, or it would land in the first file.
+  it('lets a bookmark that jumps by name land in its own file when both define the name', async () => {
+    const make = () => bookmarked([{ title: 'by name', dest: () => ascii() }], ascii());
+    expect(landings(await outlineTargets(await make()))).toEqual([['by name', 1]]);
+    expect(landings(await combinedOutline(await make(), await make()))).toEqual([
+      ['by name', 1],
+      ['by name', 3],
+    ]);
+  });
+
+  it('keeps a bookmark to a name its file never defines unresolved', async () => {
+    const dangling = () => bookmarked([{ title: 'dangling', dest: () => ascii() }]);
+    const defining = () => bookmarked([{ title: 'defining', dest: () => ascii() }], ascii());
+    expect(landings(await outlineTargets(await dangling()))).toEqual([['dangling', null]]);
+    expect(landings(await combinedOutline(await dangling(), await defining()))).toEqual([
+      ['dangling', null],
+      ['defining', 3],
+    ]);
+    expect(landings(await combinedOutline(await defining(), await dangling()))).toEqual([
+      ['defining', 1],
+      ['dangling', null],
     ]);
   });
 });
