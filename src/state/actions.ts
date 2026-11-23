@@ -22,6 +22,14 @@ import { useOcrStore } from '@/features/ocr';
 // in UI modules this low-level orchestration module has no business importing.
 import { usePageOpsStore } from '@/features/pageops/store';
 import { usePlacementStore } from '@/features/placement/store';
+import {
+  findPosition,
+  positionKeys,
+  setReadingPosition,
+  type PositionKeys,
+  startReadingPosition,
+  stopReadingPosition,
+} from '@/features/readingPosition';
 import { useImageEditStore } from '@/features/imageedit/store';
 // Store only, not the feature barrel: that also exports the banner component.
 import { useLegacySidecarStore } from '@/features/sidecar/legacyStore';
@@ -101,16 +109,27 @@ export async function openDroppedPdfs(sources: BytesDocumentSource[]): Promise<v
  * a caller cannot tell them from success by looking at the store afterwards:
  * on a refusal it still holds the previously open document.
  */
-export async function loadSource(source: DocumentSource): Promise<boolean> {
+export async function loadSource(source: DocumentSource, options?: LoadOptions): Promise<boolean> {
   return withDocumentMutation(
     { owner: 'document', scope: 'pages' },
-    () => loadSourceHoldingLock(source),
+    () => loadSourceHoldingLock(source, options),
     () => {
       pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
       announce(DOCUMENT_MUTATION_BUSY_TITLE, true);
       return false;
     },
   );
+}
+
+export interface LoadOptions {
+  /**
+   * Open at this page. It wins over the remembered reading position: a caller
+   * that names a page (the post-update resume) knows better than the last
+   * scroll, which that resume is itself reproducing.
+   */
+  page?: number;
+  /** The open was not asked for by the reader, so no "Resumed" toast. */
+  silent?: boolean;
 }
 
 /**
@@ -126,7 +145,13 @@ export async function loadSource(source: DocumentSource): Promise<boolean> {
  * the new document while the page op went on to reload the OLD one's bytes and
  * remap the OLD one's sidecar over them.
  */
-export async function loadSourceHoldingLock(source: DocumentSource): Promise<boolean> {
+export async function loadSourceHoldingLock(
+  source: DocumentSource,
+  options: LoadOptions = {},
+): Promise<boolean> {
+  // First, so the outgoing document's last page is written under its own key
+  // rather than lost, or filed under the new document's once that is loaded.
+  stopReadingPosition();
   const engine = getEngine();
   const doc = useDocumentStore.getState();
   const viewer = useViewerStore.getState();
@@ -156,6 +181,12 @@ export async function loadSourceHoldingLock(source: DocumentSource): Promise<boo
     resetPageSizes();
     viewer.reset();
     viewer.setNumPages(info.numPages);
+    const keys = await positionKeys(
+      info.fingerprint,
+      legacyKey,
+      source.kind === 'bytes' ? (source.path ?? null) : null,
+    );
+    const resumedAt = restoreReadingPosition(keys, info.numPages, options);
     useAnnotationStore.getState().loadForDocument(info.fingerprint);
     useSignatureStore.getState().loadForDocument(info.fingerprint);
     useEditStore.getState().loadForDocument(info.fingerprint);
@@ -185,7 +216,26 @@ export async function loadSourceHoldingLock(source: DocumentSource): Promise<boo
       numPages: info.numPages,
       fingerprint: info.fingerprint,
     });
-    announce(`Opened ${info.name}, ${info.numPages} page${info.numPages === 1 ? '' : 's'}`);
+    announce(
+      `Opened ${info.name}, ${info.numPages} page${info.numPages === 1 ? '' : 's'}` +
+        (resumedAt ? `, resumed at page ${resumedAt}` : ''),
+    );
+    if (resumedAt && !options.silent) {
+      const opened = info.fingerprint;
+      pushToast(`Resumed at page ${resumedAt}`, 'info', {
+        label: 'Start over',
+        // The toast outlives a document switch by several seconds; do not jump
+        // whatever is open by then.
+        onClick: () => {
+          if (useDocumentStore.getState().info?.fingerprint === opened) {
+            useViewerStore.getState().goToPage(1);
+          }
+        },
+      });
+    }
+    // After the restore, never before: viewer.reset() above briefly puts the
+    // viewer on page 1, and recording that would erase the page just read back.
+    startReadingPosition(keys);
     return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to open document';
@@ -193,6 +243,40 @@ export async function loadSourceHoldingLock(source: DocumentSource): Promise<boo
     announce(`Could not open document: ${message}`, true);
     return false;
   }
+}
+
+/**
+ * Jump to the page an explicit request or the reader's last visit names, and
+ * return the page only when it was the remembered one (the caller announces
+ * and toasts that case; an explicit page needs neither).
+ */
+function restoreReadingPosition(
+  keys: PositionKeys,
+  numPages: number,
+  { page }: LoadOptions,
+): number | null {
+  const viewer = useViewerStore.getState();
+  const usable = findPosition(keys, numPages);
+  if (usable) {
+    // Found by an alias: file it under this exact hash now, so the next open
+    // matches directly instead of depending on the alias still holding.
+    if (usable.via !== 'hash') setReadingPosition(keys, usable);
+    // Straight into the store, not setScale: that would flip the fit mode to
+    // custom, and the fit modes derive their own scale from the window. Before
+    // goToPage so the page is laid out at the zoom it was left at.
+    useViewerStore.setState(
+      usable.fitMode === 'custom'
+        ? { scale: usable.scale, fitMode: 'custom' }
+        : { fitMode: usable.fitMode },
+    );
+  }
+  if (page !== undefined) {
+    if (page > 1) viewer.goToPage(page);
+    return null;
+  }
+  if (!usable || usable.page <= 1) return null;
+  viewer.goToPage(usable.page);
+  return usable.page;
 }
 
 /**
@@ -210,6 +294,8 @@ export async function closeDocument(): Promise<void> {
   return withDocumentMutation(
     { owner: 'document', scope: 'pages' },
     async () => {
+      // Before the reset below, which would put the viewer back on page 1.
+      stopReadingPosition();
       await getEngine().closeDocument();
       resetPageSizes();
       useDocumentStore.getState().reset();

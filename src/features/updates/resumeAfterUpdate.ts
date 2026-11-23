@@ -35,7 +35,7 @@ interface ResumeNote {
  * reopen itself after an update; opening it by hand is unaffected, since that
  * path never comes through here.
  */
-function isResumablePath(path: string): boolean {
+export function isResumablePath(path: string): boolean {
   if (!path.toLowerCase().endsWith('.pdf')) return false;
   // \\server\share and //server/share.
   if (/^[\\/]{2}/.test(path)) return false;

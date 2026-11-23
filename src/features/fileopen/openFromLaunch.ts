@@ -1,20 +1,21 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
-import { announce } from '@/a11y/announcer';
 import { pushToast } from '@/components/common';
 import { isTauri, readPath } from '@/core/document/openDocument';
 import { takeResumeDocument } from '@/features/updates';
 import { loadSource } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
-import { useViewerStore } from '@/state/viewerStore';
 
 /**
  * Read a PDF path from disk and load it into the viewer.
  *
  * @param page Scroll here once loaded. Only the post-update resume passes it;
- *   an OS-handed file has no page to return to. Applied after `loadSource`
- *   because `goToPage` clamps to the page count, which is not known until then.
+ *   an OS-handed file has no page to return to, so it gets the remembered
+ *   reading position instead. `loadSource` applies it after the page count is
+ *   known, because `goToPage` clamps to it.
+ * @returns Whether a document is now open, so a caller offering a file (the
+ *   start screen's Continue) can tell when to stop offering it.
  * @param silent Log a failure instead of toasting it. A file the OS handed
  *   over was asked for a moment ago, so an error about it belongs on screen.
  *   The post-update resume was not asked for by anyone: greeting the reader
@@ -22,25 +23,27 @@ import { useViewerStore } from '@/state/viewerStore';
  *   a share, or a drive that is not plugged in, or was synced away since -- is
  *   noise about a convenience that simply did not happen.
  */
-async function openPath(
+export async function openPath(
   path: string,
   { page, silent = false }: { page?: number; silent?: boolean } = {},
-): Promise<void> {
+): Promise<boolean> {
   try {
     const source = await readPath(path);
-    await loadSource(source);
+    // The page and silence go to loadSource, which announces once and lets an
+    // explicit page win over the remembered reading position.
+    await loadSource(source, { page, silent });
     // Resolving is not the same as loading: loadSource catches its own
     // failures, records them on the document store, and returns normally. On a
     // file whose bytes read fine but whose PDF structure does not parse, going
     // on from here would jump a zero-page document to page 7 and announce
     // "Opened statement.pdf" over the viewer's own failure message.
-    if (useDocumentStore.getState().status !== 'ready') return;
-    if (page && page > 1) useViewerStore.getState().goToPage(page);
-    announce(`Opened ${source.name}`);
+    if (useDocumentStore.getState().status !== 'ready') return false;
+    return true;
   } catch (error) {
     const messageText = error instanceof Error ? error.message : String(error);
     if (silent) console.warn('[fileopen] could not reopen', path, messageText);
     else pushToast(`Could not open the PDF: ${messageText}`, 'error');
+    return false;
   }
 }
 

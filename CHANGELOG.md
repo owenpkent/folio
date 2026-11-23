@@ -6,6 +6,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Pick up where you left off.** Reopening a document takes you back to the
+  page you were on, at the zoom you left it at. A short notice says where you
+  resumed, with a **Start over** button. The start screen has a **Continue**
+  button for the last document you had open. The page is still found after
+  you save the file in Folio, and usually after another program re-saves it.
+  Folio keeps no readable list of the files you've opened. The only file
+  location it stores is the last document's, for the Continue button.
+
 ## [0.8.3] - 2026-11-09
 
 ### Fixed

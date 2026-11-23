@@ -15,6 +15,11 @@ import { hasPdfHeader, MIN_PDF_BYTES } from '@/core/pdf/pdfHeader';
 import { stampAnnotations, useAnnotationStore } from '@/features/annotations';
 import { stampEdits, useEditStore } from '@/features/editing';
 import { confirmIncompleteOcr, stampOcrLayer, useOcrStore } from '@/features/ocr';
+import {
+  capturePositionForSave,
+  recordPositionForBytes,
+  type SavedPositionContext,
+} from '@/features/readingPosition';
 import { useSignatureStore, type Signature } from '@/features/signatures';
 import {
   documentMutationBlocked,
@@ -131,13 +136,19 @@ export async function saveDocumentInPlace(): Promise<void> {
     return;
   }
 
-  const bytes = await exportUnderLock();
-  if (!bytes) return;
+  const exported = await exportUnderLock();
+  if (!exported) return;
+  const { bytes, position } = exported;
 
   try {
     await writeDocument(sourcePath, bytes);
     pushToast('Saved', 'success');
     announce(`Saved ${info.name}`);
+    // The write changed the file's hash, so without this the next open would
+    // not find where the reader was.
+    // `position` is from the export: another document may be the open one
+    // by the time the write returns.
+    await recordPositionForBytes(bytes, sourcePath, position, { follow: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Write failed';
     announce(`Could not save the document: ${message}`, true);
@@ -150,8 +161,8 @@ async function saveDocumentToFile(): Promise<void> {
   const { info, status } = useDocumentStore.getState();
   if (status !== 'ready' || !info) return;
 
-  const bytes = await exportUnderLock();
-  if (!bytes) return;
+  const exported = await exportUnderLock();
+  if (!exported) return;
 
   const base = info.name.replace(/\.pdf$/i, '');
   const suffix =
@@ -161,7 +172,7 @@ async function saveDocumentToFile(): Promise<void> {
         ? 'edited'
         : 'filled';
   // Deliberately outside the lock: see exportUnderLock.
-  await saveBytes(bytes, `${base} (${suffix}).pdf`);
+  await saveBytes(exported.bytes, `${base} (${suffix}).pdf`, exported.position);
 }
 
 /**
@@ -180,15 +191,28 @@ async function saveDocumentToFile(): Promise<void> {
  * in-place editors, combine, OCR, Open, and Close for as long as the user took
  * to pick a folder.
  */
-async function exportUnderLock(): Promise<Uint8Array | null> {
+async function exportUnderLock(): Promise<{
+  bytes: Uint8Array;
+  position: SavedPositionContext;
+} | null> {
   // Before the lock, not inside it: a question is a human-scale wait, and the
   // same rule that keeps the native file dialog outside the lock applies here.
   if (!(await confirmIncompleteOcr('save'))) return null;
 
-  return withDocumentMutation({ owner: 'export', scope: 'content' }, exportForSave, () => {
-    pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
-    return null;
-  });
+  return withDocumentMutation(
+    { owner: 'export', scope: 'content' },
+    async () => {
+      const bytes = await exportForSave();
+      // Inside the lock, with the bytes: what happens to them next can take as
+      // long as a file dialog, and the reading position recorded at the end
+      // must be this document's (see capturePositionForSave).
+      return bytes ? { bytes, position: capturePositionForSave() } : null;
+    },
+    () => {
+      pushToast(DOCUMENT_MUTATION_BUSY_TITLE, 'info');
+      return null;
+    },
+  );
 }
 
 /**
@@ -265,7 +289,13 @@ async function exportForSave(): Promise<Uint8Array | null> {
 }
 
 /** Save raw PDF bytes via a native dialog (desktop) or a download (browser). */
-export async function saveBytes(bytes: Uint8Array, suggested: string): Promise<boolean> {
+export async function saveBytes(
+  bytes: Uint8Array,
+  suggested: string,
+  // Callers that export under the lock pass what they captured there. The
+  // default is read when this is called, so at least before the dialog below.
+  position: SavedPositionContext = capturePositionForSave(),
+): Promise<boolean> {
   // Repeated from exportForSave because this is the last gate before a write
   // and not every caller comes through there: the signing flow hands over
   // bytes that went out to @signpdf and back.
@@ -287,10 +317,12 @@ export async function saveBytes(bytes: Uint8Array, suggested: string): Promise<b
       await writeDocument(path, bytes);
       pushToast('Saved', 'success');
       announce(`Saved ${suggested}`);
+      await recordPositionForBytes(bytes, path, position);
       return true;
     }
     downloadBytes(bytes, suggested);
     announce(`Downloaded ${suggested}`);
+    await recordPositionForBytes(bytes, null, position);
     return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Write failed';

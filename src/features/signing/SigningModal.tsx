@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { announce } from '@/a11y/announcer';
 import { Button, Modal } from '@/components/common';
 import { exportDocument, saveBytes } from '@/features/export';
+import { capturePositionForSave } from '@/features/readingPosition';
 import { confirmIncompleteOcr } from '@/features/ocr';
 import {
   DOCUMENT_MUTATION_BUSY_TITLE,
@@ -126,15 +127,18 @@ export function SigningModal() {
       // exportUnderLock), while signPdf works from a private copy and saveBytes
       // opens a native dialog the user may sit on indefinitely. Holding the
       // lock across that froze every other feature for the duration.
-      const prepared = await withDocumentMutation<Uint8Array | null>(
+      const exported = await withDocumentMutation(
         { owner: 'export', scope: 'content' },
-        exportDocument,
+        // The reading position is captured with the bytes, under the lock:
+        // signing and the save dialog below can outlast this document.
+        async () => ({ bytes: await exportDocument(), position: capturePositionForSave() }),
         () => null,
       );
-      if (!prepared) {
+      if (!exported) {
         announce(DOCUMENT_MUTATION_BUSY_TITLE, true);
         return;
       }
+      const { bytes: prepared, position } = exported;
 
       const signed = await (
         await import('./sign')
@@ -144,7 +148,7 @@ export function SigningModal() {
         name: identities.find((i) => i.id === selectedId)?.summary.commonName,
       });
       const suggested = `${info.name.replace(/\.pdf$/i, '')} (signed).pdf`;
-      if (await saveBytes(signed, suggested)) close();
+      if (await saveBytes(signed, suggested, position)) close();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Signing failed';
       announce(`Could not sign the document: ${message}`, true);
