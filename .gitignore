@@ -50,6 +50,10 @@ e2e/fixtures/
 __pycache__/
 *.pyc
 
+# PR review scratch: detached review worktrees, probes and posted-review payloads
+# (.review-<date>/ at the repo root; never part of Folio)
+/.review-*/
+
 # Robustness corpus cache (scripts/corpus; PDFs of mixed license, never committed)
 /.corpus/
 
