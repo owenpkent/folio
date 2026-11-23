@@ -176,13 +176,51 @@ describe('alias lookup', () => {
     expect(stored().entries[fp(1)].path).toBeUndefined();
   });
 
-  it('page 1 at the default fit also removes the older copies of the same document', () => {
+  it('page 1 at the default fit stops an older copy being resumed through an alias', () => {
+    const now = vi.spyOn(Date, 'now');
+    now.mockReturnValue(1);
     setReadingPosition(keys(1, ID, PATH), at(40));
     setReadingPosition(keys(2, fp(0xcc), fp(0xdd)), at(5));
+    now.mockReturnValue(2);
     setReadingPosition(keys(3, ID, PATH), at(1));
-    expect(pageOf(1)).toBeNull();
-    expect(pageOf(3)).toBeNull();
+    // Not this copy, and not a later re-save or replacement found by an alias:
+    // the newest thing known about that id and that path is "back at the top".
+    expect(findPosition(keys(3, ID, PATH), 100)).toBeNull();
+    expect(findPosition(keys(9, ID, null), 100)).toBeNull();
+    expect(findPosition(keys(9, fp(0xff), PATH), 100)).toBeNull();
     expect(pageOf(2)).toBe(5);
+  });
+
+  // Independently filled copies of one template: different bytes, different
+  // paths, the same trailer /ID. Each has its own place.
+  it('page 1 at the default fit leaves another document that shares the trailer id alone', () => {
+    const PATH_A = fp(0xb1);
+    const PATH_B = fp(0xb2);
+    setReadingPosition(keys(1, ID, PATH_A), at(40));
+    setReadingPosition(keys(2, ID, PATH_B), at(7));
+    setReadingPosition(keys(2, ID, PATH_B), at(1));
+    expect(findPosition(keys(1, ID, PATH_A), 100)).toMatchObject({ page: 40, via: 'hash' });
+    expect(findPosition(keys(2, ID, PATH_B), 100)).toBeNull();
+  });
+
+  it('page 1 at the default fit leaves an entry that shares only the path alone', () => {
+    setReadingPosition(keys(1, ID, PATH), at(40));
+    setReadingPosition(keys(2, OTHER_ID, PATH), at(1));
+    expect(findPosition(keys(1, ID, PATH), 100)).toMatchObject({ page: 40, via: 'hash' });
+    expect(findPosition(keys(2, OTHER_ID, PATH), 100)).toBeNull();
+  });
+
+  it('deletes the entry outright when no other shares an alias', () => {
+    setReadingPosition(keys(1, ID, PATH), at(40));
+    setReadingPosition(keys(1, ID, PATH), at(1));
+    expect(stored().entries).toEqual({});
+  });
+
+  it('resumes again once the reader moves on from a reset', () => {
+    setReadingPosition(keys(1, ID, PATH), at(40));
+    setReadingPosition(keys(2, ID, PATH), at(1));
+    setReadingPosition(keys(2, ID, PATH), at(12));
+    expect(findPosition(keys(2, ID, PATH), 100)).toMatchObject({ page: 12, via: 'hash' });
   });
 });
 

@@ -48,8 +48,15 @@ vi.mock('@/core/pdf/reopenPageCount', async () => {
 import { useConfirmStore, useToastStore } from '@/components/common';
 import { useEditStore } from '@/features/editing';
 import { useOcrStore } from '@/features/ocr';
+import { contentKey } from '@/core/document/contentKey';
+import {
+  findPosition,
+  startReadingPosition,
+  stopReadingPosition,
+} from '@/features/readingPosition';
 import { useSignatureStore } from '@/features/signatures';
 import { useDocumentStore } from '@/state/documentStore';
+import { useViewerStore } from '@/state/viewerStore';
 
 import { exportDocument, saveBytes, saveDocumentInPlace } from './saveDocument';
 
@@ -206,6 +213,57 @@ describe('saveDocumentInPlace', () => {
     await saveDocumentInPlace();
     expect(invoke).not.toHaveBeenCalled();
     expect(saveDialog).not.toHaveBeenCalled();
+  });
+});
+
+describe('the reading position of a save that outlives its document', () => {
+  const keysFor = (fingerprint: string) => ({ fingerprint, idKey: null, pathKey: null });
+  const A = 'a'.repeat(64);
+  const B = 'b'.repeat(64);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    stopReadingPosition();
+    useDocumentStore.getState().reset();
+    useViewerStore.getState().reset();
+  });
+  afterEach(() => {
+    stopReadingPosition();
+    setTauri(false);
+  });
+
+  it('is the page it was exported at when another document is open before the write returns', async () => {
+    setTauri(true);
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/docs/report.pdf' });
+    startReadingPosition(keysFor(A));
+    useViewerStore.setState({ currentPage: 14 });
+
+    let finishWrite: () => void = () => undefined;
+    invoke.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWrite = () => resolve();
+        }),
+    );
+    const saving = saveDocumentInPlace();
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalled());
+
+    // Another document opens while the native write is still in flight.
+    stopReadingPosition();
+    useViewerStore.setState({ currentPage: 8 });
+    startReadingPosition(keysFor(B));
+
+    finishWrite();
+    await saving;
+
+    // B is read on to page 25, then closed.
+    useViewerStore.setState({ currentPage: 25 });
+    stopReadingPosition();
+
+    const saved = (await contentKey({ kind: 'bytes', data: exported }))!;
+    expect(findPosition(keysFor(saved), 100)?.page).toBe(14);
+    expect(findPosition(keysFor(B), 100)?.page).toBe(25);
   });
 });
 

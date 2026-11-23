@@ -5,6 +5,7 @@ import { contentKey } from '@/core/document/contentKey';
 import { announce } from '@/a11y/announcer';
 import { pushToast } from '@/components/common/toastStore';
 import {
+  capturePositionForSave,
   findPosition,
   readLastDocument,
   recordPositionForBytes,
@@ -215,14 +216,16 @@ describe('recording the position', () => {
   it('files the position under the written bytes after a save', async () => {
     await open('a');
     scrollTo(14);
-    await recordPositionForBytes(pdf('a, edited'));
+    await recordPositionForBytes(pdf('a, edited'), null, capturePositionForSave());
     expect(await pageOf('a, edited')).toBe(14);
   });
 
   it('keeps recording under the saved file after a save in place', async () => {
     await open('a');
     scrollTo(14);
-    await recordPositionForBytes(pdf('a, saved'), null, { follow: true });
+    await recordPositionForBytes(pdf('a, saved'), null, capturePositionForSave(), {
+      follow: true,
+    });
     scrollTo(60);
     await closeDocument();
     // Not the save-time snapshot: the file on disk is now 'a, saved', and the
@@ -233,11 +236,69 @@ describe('recording the position', () => {
   it('leaves recording on the open file after saving a copy', async () => {
     await open('a');
     scrollTo(14);
-    await recordPositionForBytes(pdf('a, copy'));
+    await recordPositionForBytes(pdf('a, copy'), null, capturePositionForSave());
     scrollTo(60);
     await closeDocument();
     expect(await pageOf('a, copy')).toBe(14);
     expect(await pageOf('a')).toBe(60);
+  });
+
+  // A save outlives its export: the native write and the hashing are awaited
+  // with the lock released, so another document can be the open one before
+  // they finish. `saved` is what the export captures while it holds the lock.
+  it('files a save that finishes after a switch under the saved document, not the open one', async () => {
+    await open('a');
+    scrollTo(14);
+    const saved = capturePositionForSave();
+    await open('b');
+    scrollTo(8);
+    await recordPositionForBytes(pdf('a, saved'), null, saved, { follow: true });
+    scrollTo(25);
+    await closeDocument();
+    // A's written file is at A's page, not at the page B was on or went to.
+    expect(await pageOf('a, saved')).toBe(14);
+    expect(await pageOf('a')).toBe(14);
+    // And B went on being recorded as B: following the save would have filed
+    // the rest of its session under A's hash.
+    expect(await pageOf('b')).toBe(25);
+  });
+
+  it('files a copy that is written after a switch at the saved document page', async () => {
+    await open('a');
+    scrollTo(14);
+    const saved = capturePositionForSave();
+    await open('b');
+    scrollTo(31);
+    await recordPositionForBytes(pdf('a, copy'), null, saved);
+    await closeDocument();
+    expect(await pageOf('a, copy')).toBe(14);
+    expect(await pageOf('b')).toBe(31);
+  });
+
+  it('files the page the reader has reached when the saved document is still open', async () => {
+    await open('a');
+    scrollTo(14);
+    const saved = capturePositionForSave();
+    // Read on while the write is in flight.
+    scrollTo(20);
+    await recordPositionForBytes(pdf('a, saved'), null, saved, { follow: true });
+    expect(await pageOf('a, saved')).toBe(20);
+  });
+
+  it('does not let a returned-to document inherit a save from its earlier session', async () => {
+    await open('a');
+    scrollTo(14);
+    const saved = capturePositionForSave();
+    await closeDocument();
+    await open('a');
+    scrollTo(40);
+    await recordPositionForBytes(pdf('a, saved'), null, saved, { follow: true });
+    scrollTo(50);
+    await closeDocument();
+    // The same file reopened is a new session: its bytes are whatever was on
+    // disk when it was read, so it keeps recording under its own hash.
+    expect(await pageOf('a, saved')).toBe(14);
+    expect(await pageOf('a')).toBe(50);
   });
 });
 
@@ -295,7 +356,7 @@ describe('finding a document whose bytes changed', () => {
     await open('a', undefined, path);
     scrollTo(30);
     await closeDocument();
-    await recordPositionForBytes(pdf('a, saved'), path);
+    await recordPositionForBytes(pdf('a, saved'), path, capturePositionForSave());
 
     const raw = localStorage.getItem(POSITIONS)!;
     expect(raw).toBeTruthy();

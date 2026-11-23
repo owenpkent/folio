@@ -131,20 +131,39 @@ export function findPosition(keys: PositionKeys, numPages: number): FoundPositio
     [keys.pathKey ? newest((e) => e.path === keys.pathKey) : undefined, 'path'],
   ];
   for (const [entry, via] of found) {
-    if (entry) return { page: entry.page, scale: entry.scale, fitMode: entry.fitMode, via };
+    if (!entry) continue;
+    // A reset marker (see setReadingPosition) settles it: the reader went back
+    // to the top, so there is nothing to resume, and the older entries further
+    // down this list must not be tried in its place.
+    if (isReset(entry)) return null;
+    return { page: entry.page, scale: entry.scale, fitMode: entry.fitMode, via };
   }
   return null;
 }
 
+/** The top of the document at the default fit: nothing to resume. */
+function isReset(position: ReadingPosition): boolean {
+  return position.page === 1 && position.fitMode === DEFAULT_FIT_MODE;
+}
+
 /**
  * Remember a position under the content hash, with the aliases it can later
- * be found by. The top of the document at the default fit deletes the entry
- * instead: there is nothing to resume, and it keeps the list small. The top at
- * any other zoom is still worth keeping, since the zoom is the point.
+ * be found by. The top of the document at the default fit is not a position
+ * worth keeping: there is nothing to resume. The top at any other zoom is,
+ * since the zoom is the point.
  *
- * Deleting also takes the entries that share an alias. They are older copies
- * of this same document, and left behind they would resume a page the reader
- * has since scrolled away from.
+ * Going back to the top deletes this document's own entry and no other. An
+ * entry that shares an alias may be an older copy of this document, but it may
+ * as well be a different one: independently filled copies of one template
+ * share a trailer /ID, and each has its own place. Deleting it would erase
+ * another file's exact position.
+ *
+ * Those entries would still be found by the alias fallback and resume a page
+ * the reader has since left, so when any exist this document's entry is kept
+ * as a reset marker instead of deleted: page 1 at the default fit, newer than
+ * they are. findPosition treats that as "nothing to resume" and stops there.
+ * With no such entry there is nothing to shadow, and deleting keeps the list
+ * small.
  */
 export function setReadingPosition(keys: PositionKeys, position: ReadingPosition): void {
   const { fingerprint, idKey, pathKey } = keys;
@@ -152,23 +171,25 @@ export function setReadingPosition(keys: PositionKeys, position: ReadingPosition
   if (!isContentKey(fingerprint) || !Number.isInteger(page) || page < 1) return;
   if (!Number.isFinite(scale) || !FIT_MODES.includes(fitMode)) return;
   const entries = read();
-  if (page === 1 && fitMode === DEFAULT_FIT_MODE) {
-    let removed = entries.delete(fingerprint);
-    for (const [key, entry] of [...entries]) {
-      const sameId = idKey !== null && entry.id === idKey;
-      const samePath = pathKey !== null && entry.path === pathKey;
-      if (sameId || samePath) removed = entries.delete(key) || removed;
-    }
-    if (!removed) return;
+  const next: Entry = {
+    page,
+    scale: clampScale(scale),
+    fitMode,
+    at: Date.now(),
+    id: alias(idKey),
+    path: alias(pathKey),
+  };
+  if (isReset(position)) {
+    const shadowsAnother = [...entries].some(
+      ([key, entry]) =>
+        key !== fingerprint &&
+        ((next.id !== undefined && entry.id === next.id) ||
+          (next.path !== undefined && entry.path === next.path)),
+    );
+    if (shadowsAnother) entries.set(fingerprint, next);
+    else if (!entries.delete(fingerprint)) return;
   } else {
-    entries.set(fingerprint, {
-      page,
-      scale: clampScale(scale),
-      fitMode,
-      at: Date.now(),
-      id: alias(idKey),
-      path: alias(pathKey),
-    });
+    entries.set(fingerprint, next);
   }
   write(entries);
 }
