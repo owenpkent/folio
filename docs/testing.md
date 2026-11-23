@@ -119,6 +119,30 @@ unstructured `fc.uint8Array()` would spend every iteration on the not-found path
 and prove nothing. Build the shape and fuzz the parts an attacker controls: the
 offsets, the lengths, the spacing, what follows the end.
 
+## Coverage-guided fuzzing (Jazzer.js)
+
+Beside the fast-check property tests, the parsers that read data the user did not write are fuzzed coverage-first with [Jazzer.js](https://github.com/CodeIntelligenceTesting/jazzer.js) (libFuzzer, in process). Targets are `fuzz/targets/<name>.fuzz.ts`, seeded from `fuzz/corpus/<name>/` and optionally given a dictionary in `fuzz/dict/<name>.dict`:
+
+| Target | Function under test |
+| --- | --- |
+| `p12` | `readPkcs12` (the first input byte picks the passphrase, the rest is the .p12) |
+| `signatures` | `detectSignatures` over arbitrary bytes |
+| `content-stream` | `parseContentStreams` with a form resolver, then `spliceRun` and `spliceOperatorBytes` on what it finds |
+| `addresses` | `findAddresses` and `addressAt` (regex backtracking shows up as a timeout) |
+| `combine-pdf` | `stagePdf`, the combine dialog's header sniff and pdf-lib parse |
+
+Each target catches only the errors the code throws on purpose (see `fuzz/targets/expected.ts`). Anything else, a hang past the 10 second per-input timeout, or an out-of-memory is a finding.
+
+```bash
+npm run fuzz -- p12 60      # one target for 60 seconds (default 60, or FUZZ_SECONDS)
+npm run fuzz:merge -- p12   # minimize a corpus into fuzz/.corpus-min/p12/
+node fuzz/make-seeds.mjs    # regenerate the committed seeds
+```
+
+`fuzz/build.mjs` bundles the targets with esbuild to `out/fuzz/*.cjs` (the package is ESM, Jazzer.js instruments CommonJS; the `@/` alias mirrors `vite.config.ts`). The evolved corpus is `fuzz/.corpus/<name>/` and crashing inputs land in `fuzz/crashes/<name>/`; both are untracked. An async target (`export async function fuzz`) runs without `--sync`. On Windows the coverage numbers are weaker than on Linux, and `fuzz:merge` may keep nothing; merge on Linux.
+
+The nightly [fuzz workflow](../.github/workflows/fuzz.yml) runs each target for ten minutes, caches the evolved corpus, and on a crash uploads the input and opens (or comments on) a GitHub issue titled `Fuzz crash: <target>`. It is separate from the `fuzz` job in `ci.yml`, which runs the fast-check tests. Before a release, check there is no open `Fuzz crash:` issue. A fixed crash gets a regression test next to the code.
+
 ## Corpus robustness harness (opt-in)
 
 `npm run test:corpus` round-trips a folder of real-world PDFs through Folio's

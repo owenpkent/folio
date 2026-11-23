@@ -1,0 +1,20 @@
+q
+1 0 0 1 72 700 cm
+BT
+/F1 12 Tf
+14 TL
+0 0 Td
+(Hello, world) Tj
+T*
+[(Kern) -120 (ing)] TJ
+(next line) '
+1 2 (spaced) "
+ET
+Q
+q
+/Fm0 Do
+Q
+BT
+/F1 10 Tf
+(in form) Tj
+ET

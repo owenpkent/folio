@@ -52,3 +52,9 @@ __pycache__/
 
 # Robustness corpus cache (scripts/corpus; PDFs of mixed license, never committed)
 /.corpus/
+
+# Jazzer.js fuzzing: bundles, evolved corpus, crashing inputs (seeds in fuzz/corpus are tracked)
+out/
+fuzz/.corpus/
+fuzz/.corpus-min/
+fuzz/crashes/

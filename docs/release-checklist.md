@@ -40,6 +40,7 @@ issue or defer the release.
       the vulnerable code: dismiss it on GitHub as "Vulnerable code is not actually
       used", keep the evidence in CONTRIBUTING's known-accepted list, and name it
       in the CHANGELOG. `glib` (#58) is the current case.
+- [ ] No open `Fuzz crash:` issue (the nightly [fuzz workflow](../.github/workflows/fuzz.yml) files one per failing target; see [Fuzzing](testing.md#coverage-guided-fuzzing-jazzerjs)). A fixed crash has a regression test.
 - [ ] Working tree clean (`git status`), `main` is the branch being released
 
 ---
