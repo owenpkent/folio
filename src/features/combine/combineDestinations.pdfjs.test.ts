@@ -26,7 +26,12 @@ async function input(key?: PDFObject, link?: PDFObject, action = false): Promise
   const first = doc.addPage([300, 300]);
   const second = doc.addPage([300, 300]);
   const ctx = doc.context;
-  if (key) {
+  if (key instanceof PDFName) {
+    // A name object is a key of the older catalog /Dests dictionary.
+    const dests = ctx.obj({});
+    dests.set(key, ctx.obj([second.ref, PDFName.of('Fit')]));
+    doc.catalog.set(PDFName.of('Dests'), dests);
+  } else if (key) {
     const names = ctx.obj({ Names: [key, [second.ref, PDFName.of('Fit')]] });
     doc.catalog.set(PDFName.of('Names'), ctx.obj({ Dests: names }));
   }
@@ -35,6 +40,26 @@ async function input(key?: PDFObject, link?: PDFObject, action = false): Promise
     const annot = ctx.obj({ Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30], ...target });
     first.node.set(PDFName.of('Annots'), ctx.obj([ctx.register(annot)]));
   }
+  return doc.save();
+}
+
+/**
+ * An input with several destinations in one name tree. For N keys it has 2N
+ * pages: page i carries the link that asks for key i, and page N + i is where
+ * key i points. Keys are given in byte order, as a name tree requires.
+ */
+async function inputWithKeys(keys: PDFObject[]): Promise<Uint8Array> {
+  const doc = await PDFDocument.create({ updateMetadata: false });
+  const pages = Array.from({ length: keys.length * 2 }, () => doc.addPage([300, 300]));
+  const ctx = doc.context;
+  const names = ctx.obj([]);
+  keys.forEach((key, i) => {
+    names.push(key);
+    names.push(ctx.obj([pages[keys.length + i].ref, PDFName.of('Fit')]));
+    const annot = ctx.obj({ Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30], Dest: key });
+    pages[i].node.set(PDFName.of('Annots'), ctx.obj([ctx.register(annot)]));
+  });
+  doc.catalog.set(PDFName.of('Names'), ctx.obj({ Dests: { Names: names } }));
   return doc.save();
 }
 
@@ -128,6 +153,38 @@ describe('named destinations, as PDF.js resolves them', () => {
     expect(await linkTargets(one)).toEqual([1]);
     expect(await combinedTargets(one, await input())).toEqual([1]);
     expect(await combinedTargets(await input(), one)).toEqual([3]);
+  });
+
+  // A name object and a string are one name to the reader when they decode
+  // alike: the legacy key /x#80 and the tree key <7880> are both "x" followed
+  // by a bullet. Each file's link has to stay in its own file.
+  it('treats a legacy name and a string that decode alike as a clash', async () => {
+    const legacy = () => input(PDFName.of('x#80'), PDFName.of('x#80'));
+    const tree = () => input(PDFHexString.of('7880'), PDFHexString.of('7880'));
+    expect(await linkTargets(await legacy())).toEqual([1]);
+    expect(await linkTargets(await tree())).toEqual([1]);
+    expect(await combinedTargets(await legacy(), await tree())).toEqual([1, 3]);
+    expect(await combinedTargets(await tree(), await legacy())).toEqual([1, 3]);
+    expect(await combinedTargets(await legacy(), await legacy())).toEqual([1, 3]);
+  });
+
+  // Two keys of ONE file that decode alike are still two destinations. The
+  // name tree orders and tells them apart by their bytes, so neither is a
+  // duplicate of the other, and each link keeps the target its own key had.
+  it.each([
+    ['a PDFDocEncoding and a UTF-16 spelling', '7880', 'FEFF00782022'],
+    // pdf-lib decodes the undefined byte AD as U+FFFD; PDF.js keeps it.
+    ['a byte PDF.js and pdf-lib decode differently', '78AD', 'FEFF0078FFFD'],
+  ])('keeps both destinations of one file under %s', async (_case, first, second) => {
+    const one = await inputWithKeys([PDFHexString.of(first), PDFHexString.of(second)]);
+    expect(await combinedTargets(one, await input())).toEqual([2, 3]);
+    expect(await combinedTargets(await input(), one)).toEqual([4, 5]);
+  });
+
+  it('follows a link whose name is 200,000 bytes long', async () => {
+    const long = () => PDFString.of('a'.repeat(200_000));
+    const one = await input(long(), long());
+    expect(await combinedTargets(one, await input())).toEqual([1]);
   });
 
   // A file split out of a larger one keeps links to names it no longer

@@ -268,7 +268,10 @@ describe('combinePdfs structure', () => {
     expect(namedDestination(out, 'intro')).toBe(out.getPages()[3].ref.toString());
   });
 
-  it('carries the older catalog /Dests dictionary and renames on collision', async () => {
+  // The older table is read, and its entries join the one name tree that is
+  // written: a single table and a single namespace. The links that used a name
+  // object become strings, which is what finds an entry of a name tree.
+  it('moves the older catalog /Dests dictionary into the name tree, renaming on collision', async () => {
     const make = () =>
       buildNamed((ctx, pages) => ({
         dests: ctx.obj({ intro: [pages[1].ref, PDFName.of('Fit')] }),
@@ -276,12 +279,57 @@ describe('combinePdfs structure', () => {
       }));
     const out = await combineAll(await make(), await make());
     const pageRefs = out.getPages().map((p) => p.ref.toString());
-    const dests = out.catalog.lookup(PDFName.of('Dests'), PDFDict);
-    const target = (name: string) => dests.lookup(PDFName.of(name), PDFArray).get(0)?.toString();
-    expect(target('intro')).toBe(pageRefs[1]);
-    expect(target('intro~2')).toBe(pageRefs[3]);
-    expect(textOf(linkOf(out, 0).lookup(PDFName.of('Dest')))).toBe('intro');
-    expect(textOf(linkOf(out, 2).lookup(PDFName.of('Dest')))).toBe('intro~2');
+    expect(out.catalog.has(PDFName.of('Dests'))).toBe(false);
+    expect(namedDestination(out, 'intro')).toBe(pageRefs[1]);
+    expect(namedDestination(out, 'intro~2')).toBe(pageRefs[3]);
+    for (const [pageIndex, name] of [
+      [0, 'intro'],
+      [2, 'intro~2'],
+    ] as const) {
+      const dest = linkOf(out, pageIndex).lookup(PDFName.of('Dest'));
+      expect(dest).toBeInstanceOf(PDFHexString);
+      expect(textOf(dest)).toBe(name);
+    }
+  });
+
+  // Two keys of one file that decode to the same text are still two
+  // destinations: by the name tree's own rules they are different keys. Each
+  // keeps its target, under a name of its own, and each link follows its key.
+  it('keeps two keys of one input that decode to the same text', async () => {
+    const a = await buildNamed((ctx, pages) => ({
+      names: ctx.obj({
+        Names: [
+          PDFHexString.of('7880'),
+          [pages[0].ref, PDFName.of('Fit')],
+          PDFHexString.of('FEFF00782022'),
+          [pages[1].ref, PDFName.of('Fit')],
+        ],
+      }),
+      link: { Dest: PDFHexString.of('FEFF00782022') },
+    }));
+    const out = await combineAll(a, await buildNamed(() => ({})));
+    const pageRefs = out.getPages().map((p) => p.ref.toString());
+    const bullet = 'x\u2022';
+    expect(namedDestination(out, bullet)).toBe(pageRefs[0]);
+    expect(namedDestination(out, `${bullet}~2`)).toBe(pageRefs[1]);
+    expect(textOf(linkOf(out, 0).lookup(PDFName.of('Dest')))).toBe(`${bullet}~2`);
+  });
+
+  // pdf-lib's decoders pass every character as a call argument. A name is as
+  // long as its file allows, and one of 200,000 bytes overflowed the stack
+  // and failed the whole combine.
+  it('combines a file whose destination name is 200,000 bytes long', async () => {
+    const long = 'a'.repeat(200_000);
+    const a = await buildNamed((ctx, pages) => ({
+      names: ctx.obj({ Names: [PDFString.of(long), [pages[1].ref, PDFName.of('Fit')]] }),
+      link: { Dest: PDFString.of(long) },
+    }));
+    const out = await combineAll(a, await buildNamed(() => ({})));
+    expect(out.getPageCount()).toBe(4);
+    const dest = linkOf(out, 0).lookup(PDFName.of('Dest'));
+    expect(dest).toBeInstanceOf(PDFHexString);
+    // asString, not decodeText: pdf-lib's decoder is the one that overflows.
+    expect((dest as PDFHexString).asString()).toBe('61'.repeat(200_000));
   });
 
   it('drops a destination that does not point at one of the input pages', async () => {
@@ -484,8 +532,9 @@ describe('combinePdfs structure', () => {
     expect(textOf(linkOf(out, 2).lookup(PDFName.of('Dest')))).toBe('intro~2');
   });
 
-  // PDFName.of reads #xx in its argument as an escape, so a name that really
-  // contains "#41" has to be escaped on the way back out or it becomes "A".
+  // PDFName.of reads #xx in its argument as an escape, so the fixture escapes
+  // the # itself. The name's own bytes are what is read, so it comes through
+  // as "a#41" and not as "aA".
   it('keeps a literal # in an old-style destination name', async () => {
     const hash = PDFName.of('a#2341');
     expect(hash.decodeText()).toBe('a#41');
@@ -496,13 +545,10 @@ describe('combinePdfs structure', () => {
         return { dests, link: { Dest: hash } };
       });
     const out = await combineAll(await make(), await make());
-    const dests = out.catalog.lookup(PDFName.of('Dests'), PDFDict);
-    expect(
-      dests
-        .keys()
-        .map((key) => key.decodeText())
-        .sort(),
-    ).toEqual(['a#41', 'a#41~2']);
+    const pageRefs = out.getPages().map((p) => p.ref.toString());
+    expect(namedDestination(out, 'a#41')).toBe(pageRefs[1]);
+    expect(namedDestination(out, 'a#41~2')).toBe(pageRefs[3]);
+    expect(namedDestination(out, 'aA')).toBeUndefined();
     expect(textOf(linkOf(out, 0).lookup(PDFName.of('Dest')))).toBe('a#41');
     expect(textOf(linkOf(out, 2).lookup(PDFName.of('Dest')))).toBe('a#41~2');
   });
