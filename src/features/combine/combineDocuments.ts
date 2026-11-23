@@ -1369,8 +1369,14 @@ function sanitizedOutlineItem(
   };
 }
 
-/** Ceilings on the search for the page a structure element is on (see {@link structElementDestination}). */
-const MAX_STRUCT_ELEMENTS_SEARCHED = 10_000;
+/**
+ * Ceilings on the search for the page a structure element is on (see
+ * {@link structElementDestination}). The budget counts `/K` entries read, not
+ * elements found: elements can share one child array, and a cap on distinct
+ * elements alone let a 75 KB file make each of 6,000 elements re-read the
+ * same 6,000-entry array, 36 million lookups in the renderer.
+ */
+const MAX_STRUCT_ENTRIES_EXAMINED = 20_000;
 const MAX_STRUCT_PARENT_DEPTH = 40;
 
 /** A structure element's `/Pg`, when it is one of this input's pages. */
@@ -1389,8 +1395,9 @@ function pageOf(element: PDFDict, pageRefs: Set<string>): PDFRef | undefined {
  * breadth first, including marked-content references); failing that the
  * nearest ancestor's (`/P`, stopping at the structure tree root). The place on
  * the page is the top left of the element's `/BBox` attribute when it has
- * one. Bounded, unlike a structure tree: a visited set, a cap on elements
- * searched and a cap on ancestors. The page has to be one of this input's,
+ * one. Bounded, unlike a structure tree: visited sets for elements and for
+ * child arrays (one array shared by many elements is read once), a budget of
+ * entries read that is checked entry by entry, and a cap on ancestors. The page has to be one of this input's,
  * and only that page reference goes through the copier.
  */
 function structElementDestination(
@@ -1405,18 +1412,30 @@ function structElementDestination(
 
   let page = pageOf(element, pageRefs);
   const visited = new Set<PDFDict>([element]);
+  const expanded = new Set<PDFArray>();
   const queue: PDFDict[] = [element];
-  for (let next = 0; !page && next < queue.length; next++) {
+  let budget = MAX_STRUCT_ENTRIES_EXAMINED;
+  // One child, read lazily: the budget is spent before its lookup, never after.
+  const visit = (kid: PDFObject | undefined): boolean => {
+    const child = dictOf(kid);
+    if (!child || visited.has(child)) return false;
+    visited.add(child);
+    page = pageOf(child, pageRefs);
+    if (!page) queue.push(child);
+    return page !== undefined;
+  };
+  for (let next = 0; !page && next < queue.length && budget > 0; next++) {
     const kids = queue[next].lookup(PDFName.of('K'));
-    const list = kids instanceof PDFArray ? kids.asArray().map((_, i) => kids.lookup(i)) : [kids];
-    for (const kid of list) {
-      const child = dictOf(kid);
-      if (!child || visited.has(child)) continue;
-      if (visited.size >= MAX_STRUCT_ELEMENTS_SEARCHED) break;
-      visited.add(child);
-      page = pageOf(child, pageRefs);
-      if (page) break;
-      queue.push(child);
+    if (!(kids instanceof PDFArray)) {
+      budget--;
+      visit(kids);
+      continue;
+    }
+    if (expanded.has(kids)) continue;
+    expanded.add(kids);
+    for (let i = 0; i < kids.size() && budget > 0; i++) {
+      budget--;
+      if (visit(kids.lookup(i))) break;
     }
   }
   let current = element;

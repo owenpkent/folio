@@ -1,5 +1,6 @@
 // @vitest-environment node
 import {
+  PDFArray,
   type PDFContext,
   type PDFDict,
   PDFDocument,
@@ -10,7 +11,7 @@ import {
   type PDFRef,
   PDFString,
 } from 'pdf-lib';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { combinePdfs } from './combineDocuments';
 
@@ -495,6 +496,49 @@ describe('bookmarks, as PDF.js resolves them', () => {
     } finally {
       await task.destroy();
     }
+  });
+
+  // Every child shares the element's own child array, and no element names a
+  // page, so the search has to give up. One that tracks elements but not
+  // arrays re-reads that array once per child before it does: quadratic, and
+  // 6,000 children took eight seconds in the renderer.
+  it('reads a child array that many elements share only once', async () => {
+    const shared = await taggedBookmark((ctx, _pages, root) => {
+      const se = ctx.obj({ Type: 'StructElem', S: 'Sect', P: root });
+      const seRef = ctx.register(se);
+      const kids = ctx.obj([]);
+      const kidsRef = ctx.register(kids);
+      for (let i = 0; i < 6000; i++) {
+        kids.push(ctx.register(ctx.obj({ Type: 'StructElem', S: 'P', P: seRef, K: kidsRef })));
+      }
+      se.set(PDFName.of('K'), kidsRef);
+      return seRef;
+    });
+    // Counted, not timed: array entries read during the combine. Read once,
+    // the shared array costs about 6,000; read per child, 36 million. The
+    // counter throws at its limit rather than recording every call, so a
+    // regression fails at once instead of running for seconds.
+    const LIMIT = 50_000;
+    let reads = 0;
+    const original = PDFArray.prototype.lookup;
+    const counted = vi.spyOn(PDFArray.prototype, 'lookup').mockImplementation(function (
+      this: PDFArray,
+      ...args: Parameters<PDFArray['lookup']>
+    ) {
+      if (++reads > LIMIT) throw new Error(`more than ${LIMIT} array lookups`);
+      return original.apply(this, args);
+    } as PDFArray['lookup']);
+    let bytes: Uint8Array;
+    try {
+      ({ bytes } = await combinePdfs([
+        { name: 'a.pdf', bytes: await input() },
+        { name: 'b.pdf', bytes: shared },
+      ]));
+    } finally {
+      counted.mockRestore();
+    }
+    expect(reads).toBeLessThan(LIMIT);
+    expect(landings(await outlineTargets(bytes))).toEqual([['tagged', null]]);
   });
 
   it('does not hang on a structure element that is its own child', async () => {
