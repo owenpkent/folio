@@ -6,9 +6,11 @@ import {
   PDFHexString,
   PDFName,
   PDFNumber,
+  type PDFObject,
   PDFObjectCopier,
   PDFPage,
   PDFPageLeaf,
+  PDFRef,
   PDFString,
 } from 'pdf-lib';
 
@@ -112,7 +114,10 @@ const PAGES_PER_YIELD = 8;
  * subject, keywords, creator, producer) is carried forward from the first
  * input, and each input's AcroForm fields, if any, are merged in
  * (best-effort; see {@link CombineResult.formsMerged} and
- * {@link CombineResult.formsDegraded}).
+ * {@link CombineResult.formsDegraded}). Every input's named destinations are
+ * carried over too, so links that jump by name still resolve (see
+ * {@link mergeNamedDestinations}); a name two inputs share is kept for the
+ * first and the later one is renamed, along with the links that use it.
  *
  * An input this function has to parse itself is validated with
  * {@link looksLikePdf} first; one that arrives already parsed (the modal's
@@ -149,6 +154,12 @@ export async function combinePdfs(
   // Shared across every input, not reset per file: a top-level field name
   // from input 3 has to be checked against inputs 1 and 2 as well.
   const usedFieldNames = new Set<string>();
+  // Likewise shared: a destination name from input 3 is checked against 1 and 2.
+  const destinations: MergedDestinations = {
+    strings: new Map(),
+    names: new Map(),
+    used: new Set(),
+  };
 
   for (let i = 0; i < inputs.length; i++) {
     if (options.isCancelled?.()) throw new CombineCancelledError();
@@ -203,6 +214,19 @@ export async function combinePdfs(
       const form = mergeAcroForm(out, src, copier, usedFieldNames);
       if (form.merged) formsMerged = true;
       if (form.degraded) formsDegraded = true;
+      const renames = mergeNamedDestinations(
+        src,
+        copier,
+        new Set(srcPages.map((page) => page.ref.toString())),
+        destinations,
+      );
+      if (renames.strings.size > 0 || renames.names.size > 0) {
+        const firstPage = pagesCopied - srcPages.length;
+        rewriteDestinationReferences(
+          out.getPages().slice(firstPage, firstPage + srcPages.length),
+          renames,
+        );
+      }
     } catch (error) {
       // Not wrapped with namedError below: a cancellation is not a failure of
       // this input, and namedError would bury CombineCancelledError's
@@ -219,6 +243,7 @@ export async function combinePdfs(
     await yieldToUi();
   }
 
+  writeNamedDestinations(out, destinations);
   if (firstSrc) copyMetadata(out, firstSrc);
 
   // Checked here and again below, either side of save(). On a large output
@@ -432,6 +457,320 @@ function mergeDefaultAppearance(outDict: PDFDict, srcDict: PDFDict, copier: PDFO
   if (outDict.has(PDFName.of('DA'))) return;
   const da = srcDict.lookupMaybe(PDFName.of('DA'), PDFString, PDFHexString);
   if (da) outDict.set(PDFName.of('DA'), copier.copy(da));
+}
+
+/**
+ * Ceilings on the walks over an untrusted input's destinations. A name tree
+ * is attacker-shaped (a kid can point back at an ancestor, a node can nest
+ * without end, a table can hold millions of pairs), so every walk is bounded
+ * rather than trusted to terminate.
+ */
+const MAX_NAMED_DESTINATIONS_PER_INPUT = 100_000;
+const MAX_NAME_TREE_DEPTH = 32;
+const MAX_ACTION_CHAIN_DEPTH = 16;
+/** PDF 7.9.6 leaves no size; 64 keeps each node small and is what readers expect. */
+const NAME_TREE_LEAF_SIZE = 64;
+
+/**
+ * Named destinations merged so far. Keys are identities: the raw bytes of a
+ * string key (one char per byte), or the decoded text of a name key. `used`
+ * holds both kinds, so one namespace covers them.
+ */
+interface MergedDestinations {
+  strings: Map<string, PDFArray>;
+  names: Map<string, PDFArray>;
+  used: Set<string>;
+}
+
+/** Original identity to new identity, for the names one input had to rename. */
+interface DestinationRenames {
+  strings: Map<string, string>;
+  names: Map<string, string>;
+}
+
+/**
+ * Typed reads for the destination walks. `lookupMaybe` returns undefined for a
+ * missing entry but throws for one of another type. That suits the AcroForm
+ * merge, which depends on what it reads, and is wrong here: carrying
+ * destinations over is best-effort, and a malformed table should cost that
+ * input its named links, not fail a combine that worked before this existed.
+ */
+function dictOf(value: PDFObject | undefined): PDFDict | undefined {
+  return value instanceof PDFDict ? value : undefined;
+}
+
+function arrayOf(value: PDFObject | undefined): PDFArray | undefined {
+  return value instanceof PDFArray ? value : undefined;
+}
+
+/**
+ * A name object for already-decoded text. `PDFName.of` reads `#xx` in its
+ * argument as an escape, so a literal `#` is escaped first; otherwise a
+ * destination called `a#41` would be written back as `aA` and its links,
+ * which still say `a#41`, would dangle.
+ */
+function nameFromText(text: string): PDFName {
+  return PDFName.of(text.replace(/#/g, '#23'));
+}
+
+/** Bytes to a string with one char per byte, so JS string order is byte order. */
+function bytesToIdentity(bytes: Uint8Array): string {
+  let text = '';
+  for (const byte of bytes) text += String.fromCharCode(byte);
+  return text;
+}
+
+/** The inverse of {@link bytesToIdentity}; identities only hold chars 0-255. */
+function identityToHex(identity: string): PDFHexString {
+  let hex = '';
+  for (let i = 0; i < identity.length; i++) {
+    hex += (identity.charCodeAt(i) & 0xff).toString(16).padStart(2, '0');
+  }
+  return PDFHexString.of(hex);
+}
+
+/**
+ * The destination array a name-tree or /Dests value stands for: the array
+ * itself, or the `/D` of a dictionary wrapping it. Undefined for anything
+ * else, and for an array that does not lead with one of this input's pages.
+ * A destination aimed anywhere else was already dangling, and copying an
+ * arbitrary object graph through the copier on its behalf is not acceptable.
+ */
+function validDestination(
+  value: PDFObject | undefined,
+  pageRefs: Set<string>,
+): PDFArray | undefined {
+  const array = value instanceof PDFDict ? value.lookup(PDFName.of('D')) : value;
+  if (!(array instanceof PDFArray)) return undefined;
+  const target = array.get(0);
+  return target instanceof PDFRef && pageRefs.has(target.toString()) ? array : undefined;
+}
+
+interface CollectedDestinations {
+  strings: Map<string, PDFArray>;
+  names: Map<string, PDFArray>;
+}
+
+/**
+ * Read one input's named destinations from both places they live: the
+ * `/Names` `/Dests` name tree (string keys) and the older catalog `/Dests`
+ * dictionary (name keys). The first definition of an identity wins. The walk
+ * is bounded by depth, by a visited set of node refs (cycles) and by a cap on
+ * pairs examined.
+ */
+function collectNamedDestinations(src: PDFDocument, pageRefs: Set<string>): CollectedDestinations {
+  const found: CollectedDestinations = { strings: new Map(), names: new Map() };
+  let examined = 0;
+
+  const dests = dictOf(src.catalog.lookup(PDFName.of('Dests')));
+  if (dests) {
+    for (const [key, value] of dests.entries()) {
+      if (++examined > MAX_NAMED_DESTINATIONS_PER_INPUT) break;
+      const array = validDestination(
+        value instanceof PDFRef ? src.context.lookup(value) : value,
+        pageRefs,
+      );
+      const id = key.decodeText();
+      if (array && !found.names.has(id)) found.names.set(id, array);
+    }
+  }
+
+  const root = dictOf(dictOf(src.catalog.lookup(PDFName.of('Names')))?.lookup(PDFName.of('Dests')));
+  if (!root) return found;
+  const visited = new Set<PDFDict>();
+  const stack: Array<{ node: PDFDict; depth: number }> = [{ node: root, depth: 0 }];
+  while (stack.length > 0) {
+    const entry = stack.pop();
+    if (!entry || visited.has(entry.node)) continue;
+    visited.add(entry.node);
+    const pairs = arrayOf(entry.node.lookup(PDFName.of('Names')));
+    for (let i = 0; pairs && i + 1 < pairs.size(); i += 2) {
+      if (++examined > MAX_NAMED_DESTINATIONS_PER_INPUT) return found;
+      const key = pairs.lookup(i);
+      if (!(key instanceof PDFString || key instanceof PDFHexString)) continue;
+      const array = validDestination(pairs.lookup(i + 1), pageRefs);
+      const id = bytesToIdentity(key.asBytes());
+      if (array && !found.strings.has(id)) found.strings.set(id, array);
+    }
+    const kids = arrayOf(entry.node.lookup(PDFName.of('Kids')));
+    if (!kids || entry.depth >= MAX_NAME_TREE_DEPTH) continue;
+    for (let i = kids.size() - 1; i >= 0; i--) {
+      const kid = dictOf(kids.lookup(i));
+      if (kid) stack.push({ node: kid, depth: entry.depth + 1 });
+    }
+  }
+  return found;
+}
+
+/**
+ * Carry one input's named destinations into `merged`, using the copier that
+ * just copied its pages so each destination's page ref lands on the
+ * already-copied page. Names stay unique across inputs: a name an earlier
+ * input already owns is renamed for this (later) input by appending `~2`,
+ * `~3`, and so on, which needs no escaping in a name or a string. Returns the
+ * renames, so the links that use them can follow.
+ *
+ * Only destinations are carried. Nothing else under an input's `/Names`
+ * (embedded files, JavaScript, and so on) is copied: each is its own feature
+ * with its own risks and none is what a dangling link needs.
+ */
+function mergeNamedDestinations(
+  src: PDFDocument,
+  copier: PDFObjectCopier,
+  pageRefs: Set<string>,
+  merged: MergedDestinations,
+): DestinationRenames {
+  const found = collectNamedDestinations(src, pageRefs);
+  const renames: DestinationRenames = { strings: new Map(), names: new Map() };
+  // This input's own identities, so a renamed entry cannot land on a sibling.
+  const taken = new Set<string>([...found.strings.keys(), ...found.names.keys()]);
+  const placed: string[] = [];
+
+  const place = (
+    from: Map<string, PDFArray>,
+    into: Map<string, PDFArray>,
+    renamed: Map<string, string>,
+  ): void => {
+    for (const [id, array] of from) {
+      let finalId = id;
+      if (merged.used.has(id)) {
+        for (let n = 2; ; n++) {
+          const candidate = `${id}~${n}`;
+          if (!merged.used.has(candidate) && !taken.has(candidate)) {
+            finalId = candidate;
+            break;
+          }
+        }
+        renamed.set(id, finalId);
+        taken.add(finalId);
+      }
+      into.set(finalId, copier.copy(array));
+      placed.push(finalId);
+    }
+  };
+  place(found.strings, merged.strings, renames.strings);
+  place(found.names, merged.names, renames.names);
+  // Added after both kinds are placed: a name and a string of the same text in
+  // one input are separate destinations and must not rename each other.
+  for (const id of placed) merged.used.add(id);
+  return renames;
+}
+
+/** The replacement for a destination reference naming a renamed destination. */
+function renamedTarget(
+  value: PDFObject | undefined,
+  renames: DestinationRenames,
+): PDFObject | undefined {
+  if (value instanceof PDFName) {
+    const next = renames.names.get(value.decodeText());
+    return next === undefined ? undefined : nameFromText(next);
+  }
+  if (value instanceof PDFString || value instanceof PDFHexString) {
+    const next = renames.strings.get(bytesToIdentity(value.asBytes()));
+    return next === undefined ? undefined : identityToHex(next);
+  }
+  return undefined;
+}
+
+/**
+ * Point a `/GoTo` action (and the actions chained after it through `/Next`) at
+ * a renamed destination. Depth-capped, with a visited set, since `/Next` is
+ * attacker-shaped and can loop.
+ */
+function rewriteAction(
+  action: PDFDict,
+  renames: DestinationRenames,
+  depth: number,
+  visited: Set<PDFDict>,
+): void {
+  if (depth > MAX_ACTION_CHAIN_DEPTH || visited.has(action)) return;
+  visited.add(action);
+  // PDFName instances are interned, so identity is equality.
+  if (action.lookup(PDFName.of('S')) === PDFName.of('GoTo')) {
+    const next = renamedTarget(action.lookup(PDFName.of('D')), renames);
+    if (next) action.set(PDFName.of('D'), next);
+  }
+  const chained = action.lookup(PDFName.of('Next'));
+  if (chained instanceof PDFDict) {
+    rewriteAction(chained, renames, depth + 1, visited);
+  } else if (chained instanceof PDFArray) {
+    for (let i = 0; i < chained.size(); i++) {
+      const item = dictOf(chained.lookup(i));
+      if (item) rewriteAction(item, renames, depth + 1, visited);
+    }
+  }
+}
+
+/**
+ * Update the links on `pages` (this input's copied pages) that name a
+ * destination which had to be renamed: an annotation's `/Dest`, its `/A`
+ * action chain and its `/AA` additional actions. Only run for an input that
+ * had renames, and only over its own pages, so another input's links, which
+ * name their own destinations, are never touched.
+ */
+function rewriteDestinationReferences(pages: PDFPage[], renames: DestinationRenames): void {
+  const visited = new Set<PDFDict>();
+  for (const page of pages) {
+    const annots = arrayOf(page.node.lookup(PDFName.of('Annots')));
+    for (let i = 0; annots && i < annots.size(); i++) {
+      const annot = dictOf(annots.lookup(i));
+      if (!annot) continue;
+      const dest = renamedTarget(annot.lookup(PDFName.of('Dest')), renames);
+      if (dest) annot.set(PDFName.of('Dest'), dest);
+      const action = dictOf(annot.lookup(PDFName.of('A')));
+      if (action) rewriteAction(action, renames, 0, visited);
+      const additional = dictOf(annot.lookup(PDFName.of('AA')));
+      if (!additional) continue;
+      for (const [key] of additional.entries()) {
+        const extra = dictOf(additional.lookup(key));
+        if (extra) rewriteAction(extra, renames, 0, visited);
+      }
+    }
+  }
+}
+
+/**
+ * Write the merged destinations into `out`'s catalog: string keys as a
+ * `/Names` `/Dests` name tree, name keys as a `/Dests` dictionary. Per PDF
+ * 7.9.6 the tree's keys are sorted by raw byte order; up to
+ * {@link NAME_TREE_LEAF_SIZE} entries sit in the root's `/Names`, and more go
+ * in leaf kids, each with `/Limits`, so no node grows without bound.
+ */
+function writeNamedDestinations(out: PDFDocument, merged: MergedDestinations): void {
+  const context = out.context;
+  if (merged.strings.size > 0) {
+    const entries = [...merged.strings].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    const leaf = (chunk: Array<[string, PDFArray]>): PDFDict => {
+      const names = PDFArray.withContext(context);
+      for (const [id, array] of chunk) {
+        names.push(identityToHex(id));
+        names.push(array);
+      }
+      return context.obj({ Names: names });
+    };
+    let tree: PDFDict;
+    if (entries.length <= NAME_TREE_LEAF_SIZE) {
+      tree = leaf(entries);
+    } else {
+      const kids = PDFArray.withContext(context);
+      for (let i = 0; i < entries.length; i += NAME_TREE_LEAF_SIZE) {
+        const chunk = entries.slice(i, i + NAME_TREE_LEAF_SIZE);
+        const kid = leaf(chunk);
+        kid.set(
+          PDFName.of('Limits'),
+          context.obj([identityToHex(chunk[0][0]), identityToHex(chunk[chunk.length - 1][0])]),
+        );
+        kids.push(context.register(kid));
+      }
+      tree = context.obj({ Kids: kids });
+    }
+    out.catalog.set(PDFName.of('Names'), context.obj({ Dests: tree }));
+  }
+  if (merged.names.size > 0) {
+    const dests = context.obj({});
+    for (const [id, array] of merged.names) dests.set(nameFromText(id), array);
+    out.catalog.set(PDFName.of('Dests'), dests);
+  }
 }
 
 export interface StagedPdf {

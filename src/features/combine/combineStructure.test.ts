@@ -5,7 +5,10 @@ import {
   PDFHexString,
   PDFName,
   PDFNumber,
+  type PDFObject,
+  type PDFPage,
   PDFString,
+  type PDFContext,
 } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 
@@ -112,6 +115,53 @@ async function combined() {
   return PDFDocument.load(bytes, { updateMetadata: false });
 }
 
+/** What a named-destination fixture installs: a name tree root, a /Dests dict, a link. */
+interface NamedSetup {
+  names?: PDFObject;
+  dests?: PDFObject;
+  link?: Record<string, unknown>;
+}
+
+/**
+ * A two-page input with whatever named destinations `setup` describes, plus
+ * (when it gives one) a link annotation on page 1 carrying the given entries.
+ */
+async function buildNamed(
+  setup: (ctx: PDFContext, pages: [PDFPage, PDFPage]) => NamedSetup,
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.create({ updateMetadata: false });
+  const pages: [PDFPage, PDFPage] = [doc.addPage([300, 300]), doc.addPage([300, 300])];
+  const ctx = doc.context;
+  const { names, dests, link } = setup(ctx, pages);
+  if (names) doc.catalog.set(PDFName.of('Names'), ctx.obj({ Dests: names }));
+  if (dests) doc.catalog.set(PDFName.of('Dests'), dests);
+  if (link) {
+    const annot = ctx.obj({ Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30], ...link });
+    pages[0].node.set(PDFName.of('Annots'), ctx.obj([ctx.register(annot)]));
+  }
+  return doc.save();
+}
+
+async function combineAll(...inputs: Uint8Array[]): Promise<PDFDocument> {
+  const { bytes } = await combinePdfs(
+    inputs.map((data, i) => ({ name: `in${i}.pdf`, bytes: data })),
+  );
+  return PDFDocument.load(bytes, { updateMetadata: false });
+}
+
+/** The first annotation on an output page. */
+function linkOf(doc: PDFDocument, pageIndex: number): PDFDict {
+  return doc.getPage(pageIndex).node.lookup(PDFName.of('Annots'), PDFArray).lookup(0, PDFDict);
+}
+
+/** Decoded text of a name, string or hex string; empty for anything else. */
+function textOf(value: unknown): string {
+  if (value instanceof PDFName || value instanceof PDFString || value instanceof PDFHexString) {
+    return value.decodeText();
+  }
+  return '';
+}
+
 describe('combinePdfs structure', () => {
   it('keeps only the first input metadata (documented behaviour)', async () => {
     const out = await combined();
@@ -132,8 +182,7 @@ describe('combinePdfs structure', () => {
     expect(out.catalog.lookupMaybe(PDFName.of('Outlines'), PDFDict)).toBeDefined();
   });
 
-  // GAP: /Names /Dests (and /Dests) are never copied, so GoTo-by-name links dangle.
-  it.fails('preserves named destinations', async () => {
+  it('preserves named destinations', async () => {
     const out = await combined();
     const pageRefs = out.getPages().map((p) => p.ref.toString());
     expect(namedDestination(out, 'dest_A')).toBe(pageRefs[1]);
@@ -152,6 +201,200 @@ describe('combinePdfs structure', () => {
   it.fails('preserves page labels', async () => {
     const out = await combined();
     expect(out.catalog.lookupMaybe(PDFName.of('PageLabels'), PDFDict)).toBeDefined();
+  });
+
+  it('renames a colliding named destination and the later input link that uses it', async () => {
+    const a = await buildNamed((ctx, pages) => ({
+      names: ctx.obj({ Names: [PDFString.of('intro'), [pages[1].ref, PDFName.of('Fit')]] }),
+      link: { A: { S: 'GoTo', D: PDFString.of('intro') } },
+    }));
+    const b = await buildNamed((ctx, pages) => ({
+      names: ctx.obj({ Names: [PDFString.of('intro'), [pages[1].ref, PDFName.of('Fit')]] }),
+      link: { A: { S: 'GoTo', D: PDFString.of('intro') } },
+    }));
+    const out = await combineAll(a, b);
+    const pageRefs = out.getPages().map((p) => p.ref.toString());
+    expect(namedDestination(out, 'intro')).toBe(pageRefs[1]);
+    expect(namedDestination(out, 'intro~2')).toBe(pageRefs[3]);
+    const first = linkOf(out, 0).lookup(PDFName.of('A'), PDFDict);
+    const second = linkOf(out, 2).lookup(PDFName.of('A'), PDFDict);
+    expect(textOf(first.lookup(PDFName.of('D')))).toBe('intro');
+    expect(textOf(second.lookup(PDFName.of('D')))).toBe('intro~2');
+  });
+
+  it('carries the older catalog /Dests dictionary and renames on collision', async () => {
+    const make = () =>
+      buildNamed((ctx, pages) => ({
+        dests: ctx.obj({ intro: [pages[1].ref, PDFName.of('Fit')] }),
+        link: { Dest: PDFName.of('intro') },
+      }));
+    const out = await combineAll(await make(), await make());
+    const pageRefs = out.getPages().map((p) => p.ref.toString());
+    const dests = out.catalog.lookup(PDFName.of('Dests'), PDFDict);
+    const target = (name: string) => dests.lookup(PDFName.of(name), PDFArray).get(0)?.toString();
+    expect(target('intro')).toBe(pageRefs[1]);
+    expect(target('intro~2')).toBe(pageRefs[3]);
+    expect(textOf(linkOf(out, 0).lookup(PDFName.of('Dest')))).toBe('intro');
+    expect(textOf(linkOf(out, 2).lookup(PDFName.of('Dest')))).toBe('intro~2');
+  });
+
+  it('drops a destination that does not point at one of the input pages', async () => {
+    const a = await buildNamed((ctx, pages) => {
+      const notAPage = ctx.register(ctx.obj({ Type: 'Whatever' }));
+      return {
+        names: ctx.obj({
+          Names: [
+            PDFString.of('bad'),
+            [notAPage, PDFName.of('Fit')],
+            PDFString.of('good'),
+            [pages[1].ref, PDFName.of('Fit')],
+          ],
+        }),
+      };
+    });
+    const out = await combineAll(a, await build('B'));
+    const pageRefs = out.getPages().map((p) => p.ref.toString());
+    expect(namedDestination(out, 'bad')).toBeUndefined();
+    expect(namedDestination(out, 'good')).toBe(pageRefs[1]);
+  });
+
+  it('reads a name tree that is two levels of /Kids', async () => {
+    const a = await buildNamed((ctx, pages) => {
+      const leaf = ctx.register(
+        ctx.obj({ Names: [PDFString.of('deep'), [pages[1].ref, PDFName.of('Fit')]] }),
+      );
+      const mid = ctx.register(ctx.obj({ Kids: [leaf] }));
+      return { names: ctx.obj({ Kids: [mid] }) };
+    });
+    const out = await combineAll(a, await build('B'));
+    expect(namedDestination(out, 'deep')).toBe(out.getPages()[1].ref.toString());
+  });
+
+  it('splits more than 64 destinations into sorted leaves with limits', async () => {
+    const keys = Array.from({ length: 70 }, (_, i) => `k${String(i).padStart(3, '0')}`);
+    const a = await buildNamed((ctx, pages) => {
+      const flat = PDFArray.withContext(ctx);
+      // Reverse order in the input, so the output sort is what is being tested.
+      for (const key of [...keys].reverse()) {
+        flat.push(PDFString.of(key));
+        flat.push(ctx.obj([pages[1].ref, PDFName.of('Fit')]));
+      }
+      return { names: ctx.obj({ Names: flat }) };
+    });
+    const out = await combineAll(a, await buildNamed(() => ({})));
+    const root = out.catalog
+      .lookup(PDFName.of('Names'), PDFDict)
+      .lookup(PDFName.of('Dests'), PDFDict);
+    expect(root.has(PDFName.of('Names'))).toBe(false);
+    const kids = root.lookup(PDFName.of('Kids'), PDFArray);
+    expect(kids.size()).toBe(2);
+    const seen: string[] = [];
+    for (let i = 0; i < kids.size(); i++) {
+      const kid = kids.lookup(i, PDFDict);
+      const limits = kid.lookup(PDFName.of('Limits'), PDFArray);
+      const pairs = kid.lookup(PDFName.of('Names'), PDFArray);
+      const names: string[] = [];
+      for (let j = 0; j < pairs.size(); j += 2) names.push(textOf(pairs.lookup(j)));
+      expect(textOf(limits.lookup(0))).toBe(names[0]);
+      expect(textOf(limits.lookup(1))).toBe(names[names.length - 1]);
+      seen.push(...names);
+    }
+    expect(seen).toEqual(keys.slice());
+    const pageRefs = out.getPages().map((p) => p.ref.toString());
+    for (const key of keys) expect(namedDestination(out, key)).toBe(pageRefs[1]);
+  });
+
+  it('does not hang on a name tree whose kid refers back to the root', async () => {
+    const a = await buildNamed((ctx, pages) => {
+      const root = ctx.obj({ Names: [PDFString.of('loop'), [pages[1].ref, PDFName.of('Fit')]] });
+      const rootRef = ctx.register(root);
+      root.set(PDFName.of('Kids'), ctx.obj([rootRef]));
+      return { names: rootRef };
+    });
+    const out = await combineAll(a, await build('B'));
+    expect(namedDestination(out, 'loop')).toBe(out.getPages()[1].ref.toString());
+  });
+
+  // Carrying destinations is best-effort. Before it existed these files
+  // combined fine, so a table that is not the shape the spec gives it costs
+  // the input its named links and nothing else.
+  it('ignores malformed destination tables instead of failing the combine', async () => {
+    const n = PDFName.of;
+    const malformed = async (mutate: (doc: PDFDocument, page2: PDFPage) => void) => {
+      const doc = await PDFDocument.create({ updateMetadata: false });
+      doc.addPage([300, 300]);
+      const page2 = doc.addPage([300, 300]);
+      mutate(doc, page2);
+      return doc.save();
+    };
+    const out = await combineAll(
+      // /Names and the older /Dests are numbers.
+      await malformed((doc) => {
+        doc.catalog.set(n('Names'), PDFNumber.of(3));
+        doc.catalog.set(n('Dests'), PDFNumber.of(4));
+      }),
+      // /Names /Dests is an array.
+      await malformed((doc) => doc.catalog.set(n('Names'), doc.context.obj({ Dests: [1, 2] }))),
+      // A node whose /Names is a dictionary and whose /Kids holds a number,
+      // next to one good leaf with a trailing key that has no value.
+      await malformed((doc, page2) => {
+        const good = doc.context.obj({
+          Names: [PDFString.of('ok'), [page2.ref, n('Fit')], PDFString.of('odd')],
+        });
+        doc.catalog.set(n('Names'), doc.context.obj({ Dests: { Names: {}, Kids: [7, good] } }));
+      }),
+      // A key that is not a string, a value that is a number, a /D that is not an array.
+      await malformed((doc, page2) => {
+        const names = [
+          5,
+          [page2.ref, n('Fit')],
+          PDFString.of('num'),
+          9,
+          PDFString.of('dict'),
+          { D: 9 },
+        ];
+        doc.catalog.set(n('Names'), doc.context.obj({ Dests: { Names: names } }));
+      }),
+    );
+    expect(out.getPageCount()).toBe(8);
+    expect(namedDestination(out, 'ok')).toBe(out.getPages()[5].ref.toString());
+    expect(namedDestination(out, 'odd')).toBeUndefined();
+    expect(namedDestination(out, 'num')).toBeUndefined();
+    expect(namedDestination(out, 'dict')).toBeUndefined();
+  });
+
+  it('renames a link whose action entries are the wrong type', async () => {
+    const make = () =>
+      buildNamed((ctx, pages) => ({
+        names: ctx.obj({ Names: [PDFString.of('intro'), [pages[1].ref, PDFName.of('Fit')]] }),
+        link: { Dest: PDFString.of('intro'), A: PDFNumber.of(1), AA: PDFNumber.of(2) },
+      }));
+    const out = await combineAll(await make(), await make());
+    expect(textOf(linkOf(out, 0).lookup(PDFName.of('Dest')))).toBe('intro');
+    expect(textOf(linkOf(out, 2).lookup(PDFName.of('Dest')))).toBe('intro~2');
+  });
+
+  // PDFName.of reads #xx in its argument as an escape, so a name that really
+  // contains "#41" has to be escaped on the way back out or it becomes "A".
+  it('keeps a literal # in an old-style destination name', async () => {
+    const hash = PDFName.of('a#2341');
+    expect(hash.decodeText()).toBe('a#41');
+    const make = () =>
+      buildNamed((ctx, pages) => {
+        const dests = ctx.obj({});
+        dests.set(hash, ctx.obj([pages[1].ref, PDFName.of('Fit')]));
+        return { dests, link: { Dest: hash } };
+      });
+    const out = await combineAll(await make(), await make());
+    const dests = out.catalog.lookup(PDFName.of('Dests'), PDFDict);
+    expect(
+      dests
+        .keys()
+        .map((key) => key.decodeText())
+        .sort(),
+    ).toEqual(['a#41', 'a#41~2']);
+    expect(textOf(linkOf(out, 0).lookup(PDFName.of('Dest')))).toBe('a#41');
+    expect(textOf(linkOf(out, 2).lookup(PDFName.of('Dest')))).toBe('a#41~2');
   });
 
   // Link annotations ride along with the page, and the copier follows /Dest
