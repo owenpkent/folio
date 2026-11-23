@@ -16,6 +16,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Folio keeps no readable list of the files you've opened. The only file
   location it stores is the last document's, for the Continue button.
 
+### Security
+
+- **The code that reads files Folio did not write is now fuzzed every night.**
+  That is `.p12` certificate import, signature detection, page content, address
+  detection, and the PDFs added to Combine. A failure opens an issue, and a
+  release waits for it to be fixed. The first run found one: a damaged `.p12`
+  with no integrity check could surface a raw error from the cryptography
+  library. It now gets the same PKCS#12 error as any other bad file. The import
+  was refused either way, so the error is all that changed.
+
 ## [0.8.3] - 2026-11-09
 
 ### Fixed

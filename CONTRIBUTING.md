@@ -111,6 +111,8 @@ Other useful scripts:
 | `npm run typecheck`    | TypeScript type checking                  |
 | `npm run test`         | Vitest unit tests                         |
 | `npm run test:e2e`     | Playwright end-to-end tests               |
+| `npm run test:fuzz`    | Property tests at a high iteration count  |
+| `npm run fuzz -- p12`  | Jazzer.js on one fuzz target (60 seconds) |
 
 ---
 
@@ -246,6 +248,16 @@ a round trip.
   npm run test:e2e
   ```
 
+- **Parsers of untrusted input:** code that reads bytes the user did not write
+  gets a property test (run hard by `npm run test:fuzz`) and a Jazzer.js target
+  under `fuzz/targets/`, which the nightly fuzz workflow runs. The nightly run
+  is not a PR check, so a new dictionary or target is only checked on a pull
+  request by `fuzz/dict.test.mjs` and by running the target yourself.
+
+  ```bash
+  npm run fuzz -- <target> 60
+  ```
+
 - Bug fixes should include a test that fails before the fix and passes after.
 - New features should include unit tests, plus e2e coverage when they touch the
   UI or a full workflow.
@@ -254,7 +266,8 @@ a round trip.
   rather than committing binaries.
 
 See [docs/testing.md](docs/testing.md) for how the unit and e2e suites are
-organized and what is covered. All tests must pass in CI before a PR can merge.
+organized, what is covered, and how fuzzing works. All tests must pass in CI
+before a PR can merge.
 
 ---
 
