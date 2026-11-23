@@ -12,6 +12,18 @@ export function ToastHost() {
       {toasts.map((toast) => (
         <div key={toast.id} className={`folio-toast folio-toast--${toast.kind}`} role="status">
           <span className="folio-toast__message">{toast.message}</span>
+          {toast.action && (
+            <button
+              type="button"
+              className="folio-toast__action"
+              onClick={() => {
+                toast.action?.onClick();
+                dismiss(toast.id);
+              }}
+            >
+              {toast.action.label}
+            </button>
+          )}
           <button
             type="button"
             className="folio-toast__close"

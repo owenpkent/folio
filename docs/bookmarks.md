@@ -1,6 +1,8 @@
 # Bookmarks: prior art and design
 
-Status: proposal, 2026-11-23. Branch `feat/bookmarks`.
+Status: deferred, 2026-11-23. The actual need was resuming reading, which is
+covered by [reading-position.md](reading-position.md). Keep this as the design
+for when outline editing is wanted.
 
 Folio already reads and shows a PDF's outline (Acrobat calls it "bookmarks")
 in the Outline sidebar tab. This note covers making it editable: add, rename,

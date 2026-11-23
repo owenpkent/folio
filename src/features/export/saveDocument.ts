@@ -15,6 +15,7 @@ import { hasPdfHeader, MIN_PDF_BYTES } from '@/core/pdf/pdfHeader';
 import { stampAnnotations, useAnnotationStore } from '@/features/annotations';
 import { stampEdits, useEditStore } from '@/features/editing';
 import { confirmIncompleteOcr, stampOcrLayer, useOcrStore } from '@/features/ocr';
+import { recordPositionForBytes } from '@/features/readingPosition';
 import { useSignatureStore, type Signature } from '@/features/signatures';
 import {
   documentMutationBlocked,
@@ -138,6 +139,9 @@ export async function saveDocumentInPlace(): Promise<void> {
     await writeDocument(sourcePath, bytes);
     pushToast('Saved', 'success');
     announce(`Saved ${info.name}`);
+    // The write changed the file's hash, so without this the next open would
+    // not find where the reader was.
+    await recordPositionForBytes(bytes, sourcePath, { follow: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Write failed';
     announce(`Could not save the document: ${message}`, true);
@@ -287,10 +291,12 @@ export async function saveBytes(bytes: Uint8Array, suggested: string): Promise<b
       await writeDocument(path, bytes);
       pushToast('Saved', 'success');
       announce(`Saved ${suggested}`);
+      await recordPositionForBytes(bytes, path);
       return true;
     }
     downloadBytes(bytes, suggested);
     announce(`Downloaded ${suggested}`);
+    await recordPositionForBytes(bytes);
     return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Write failed';

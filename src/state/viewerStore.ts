@@ -2,7 +2,9 @@ import { create } from 'zustand';
 
 import { isNarrowViewport } from '@/theme/breakpoints';
 
-type FitMode = 'custom' | 'width' | 'page';
+export type FitMode = 'custom' | 'width' | 'page';
+/** Every FitMode, for validating a value read back from storage. */
+export const FIT_MODES: readonly FitMode[] = ['custom', 'width', 'page'];
 type SidebarTab = 'thumbnails' | 'outline' | 'annotations' | (string & {});
 
 interface ViewerState {
@@ -69,13 +71,17 @@ export const AUTO_SCROLL_MIN = 4;
 export const AUTO_SCROLL_MAX = 160;
 const AUTO_SCROLL_DEFAULT = 12;
 
-const clampScale = (s: number): number => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
+export const clampScale = (s: number): number => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
 const clampSpeed = (s: number): number =>
   Math.min(AUTO_SCROLL_MAX, Math.max(AUTO_SCROLL_MIN, Math.round(s)));
 
+/** What a freshly opened document starts at; also what reset() restores. */
+export const DEFAULT_SCALE = 1.2;
+export const DEFAULT_FIT_MODE: FitMode = 'width';
+
 export const useViewerStore = create<ViewerState>((set, get) => ({
-  scale: 1.2,
-  fitMode: 'width',
+  scale: DEFAULT_SCALE,
+  fitMode: DEFAULT_FIT_MODE,
   currentPage: 1,
   numPages: 0,
   // Phone-narrow windows start with the drawer closed: there it overlays the
@@ -135,8 +141,8 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   bumpRenderNonce: () => set((s) => ({ renderNonce: s.renderNonce + 1 })),
   reset: () =>
     set({
-      scale: 1.2,
-      fitMode: 'width',
+      scale: DEFAULT_SCALE,
+      fitMode: DEFAULT_FIT_MODE,
       currentPage: 1,
       numPages: 0,
       searchOpen: false,

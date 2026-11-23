@@ -4,6 +4,8 @@ import { announce } from '@/a11y/announcer';
 import { commandRegistry } from '@/commands';
 import { Button, pushToast } from '@/components/common';
 import { describeUnreadable, isTauri, readFileBatch } from '@/core/document/openDocument';
+import { openPath } from '@/features/fileopen/openFromLaunch';
+import { clearLastDocument, readLastDocument } from '@/features/readingPosition';
 import { openDocumentViaPicker, openDroppedPdfs } from '@/state/actions';
 import { useDocumentStore } from '@/state/documentStore';
 
@@ -16,6 +18,20 @@ import { useDocumentStore } from '@/state/documentStore';
 export function EmptyState() {
   const booting = useDocumentStore((s) => s.booting);
   const [dragging, setDragging] = useState(false);
+  // Read once: the note changes only while a document is open, never under
+  // this screen. Desktop only, because the note is a path to reopen from disk.
+  const [last, setLast] = useState(() => (isTauri() ? readLastDocument() : null));
+
+  const onContinue = async () => {
+    if (!last) return;
+    // openPath reports a failure the way every other open does (a toast), and
+    // the remembered position is applied by the load itself. A file that no
+    // longer opens is not worth offering again.
+    if (!(await openPath(last.path))) {
+      clearLastDocument();
+      setLast(null);
+    }
+  };
 
   const onDrop = async (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -74,7 +90,12 @@ export function EmptyState() {
         <p className="folio-empty__subtitle">A world-class, open-source PDF viewer</p>
         {!booting && (
           <div className="folio-empty__actions">
-            <Button variant="primary" onClick={() => openDocumentViaPicker()}>
+            {last && (
+              <Button variant="primary" className="folio-empty__continue" onClick={onContinue}>
+                Continue: {last.name}, page {last.page}
+              </Button>
+            )}
+            <Button variant={last ? 'ghost' : 'primary'} onClick={() => openDocumentViaPicker()}>
               Open document…
             </Button>
             <p className="folio-empty__hint">

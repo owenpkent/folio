@@ -1288,6 +1288,14 @@ kbd {
   color: var(--folio-text-muted);
   font-size: 0.8125rem;
 }
+.folio-empty__continue {
+  min-width: 320px;
+  max-width: min(90vw, 560px);
+  min-height: 64px;
+  padding: 16px 28px;
+  font-size: 1.125rem;
+  white-space: normal;
+}
 .folio-empty__default {
   margin-top: 4px;
   font-size: 0.8125rem;
@@ -1400,6 +1408,19 @@ kbd {
 }
 .folio-toast__message {
   flex: 1;
+}
+.folio-toast__action {
+  border: 1px solid var(--folio-accent);
+  border-radius: var(--folio-radius-sm);
+  background: transparent;
+  color: var(--folio-accent);
+  cursor: pointer;
+  font: inherit;
+  padding: 4px 10px;
+  min-height: 32px;
+}
+.folio-toast__action:hover {
+  background: var(--folio-surface-hover, var(--folio-surface));
 }
 .folio-toast__close {
   border: none;
