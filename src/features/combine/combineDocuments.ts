@@ -1,14 +1,18 @@
 import {
   PDFArray,
   PDFBool,
+  type PDFContext,
   PDFDict,
   PDFDocument,
   PDFHexString,
   PDFName,
+  PDFNull,
   PDFNumber,
+  type PDFObject,
   PDFObjectCopier,
   PDFPage,
   PDFPageLeaf,
+  PDFRef,
   PDFString,
 } from 'pdf-lib';
 
@@ -112,7 +116,11 @@ const PAGES_PER_YIELD = 8;
  * subject, keywords, creator, producer) is carried forward from the first
  * input, and each input's AcroForm fields, if any, are merged in
  * (best-effort; see {@link CombineResult.formsMerged} and
- * {@link CombineResult.formsDegraded}).
+ * {@link CombineResult.formsDegraded}). Every input's named destinations are
+ * carried over too, so links that jump by name still resolve (see
+ * {@link mergeNamedDestinations}); a name two inputs share is kept for the
+ * first and the later one is renamed, along with the links that use it, and a
+ * link to a name its own file never defined stays unresolved.
  *
  * An input this function has to parse itself is validated with
  * {@link looksLikePdf} first; one that arrives already parsed (the modal's
@@ -149,6 +157,8 @@ export async function combinePdfs(
   // Shared across every input, not reset per file: a top-level field name
   // from input 3 has to be checked against inputs 1 and 2 as well.
   const usedFieldNames = new Set<string>();
+  // Likewise shared: a destination name from input 3 is checked against 1 and 2.
+  const destinations: MergedDestinations = { entries: new Map(), used: new Set() };
 
   for (let i = 0; i < inputs.length; i++) {
     if (options.isCancelled?.()) throw new CombineCancelledError();
@@ -203,6 +213,20 @@ export async function combinePdfs(
       const form = mergeAcroForm(out, src, copier, usedFieldNames);
       if (form.merged) formsMerged = true;
       if (form.degraded) formsDegraded = true;
+      const renames = mergeNamedDestinations(
+        src,
+        copier,
+        new Set(srcPages.map((page) => page.ref.toString())),
+        destinations,
+        out.context,
+      );
+      // Every input, not only one that had renames: a link to a name this
+      // input never defined has to be dealt with too (see DestinationRenames).
+      const firstPage = pagesCopied - srcPages.length;
+      rewriteDestinationReferences(
+        out.getPages().slice(firstPage, firstPage + srcPages.length),
+        renames,
+      );
     } catch (error) {
       // Not wrapped with namedError below: a cancellation is not a failure of
       // this input, and namedError would bury CombineCancelledError's
@@ -219,6 +243,7 @@ export async function combinePdfs(
     await yieldToUi();
   }
 
+  writeNamedDestinations(out, destinations);
   if (firstSrc) copyMetadata(out, firstSrc);
 
   // Checked here and again below, either side of save(). On a large output
@@ -432,6 +457,642 @@ function mergeDefaultAppearance(outDict: PDFDict, srcDict: PDFDict, copier: PDFO
   if (outDict.has(PDFName.of('DA'))) return;
   const da = srcDict.lookupMaybe(PDFName.of('DA'), PDFString, PDFHexString);
   if (da) outDict.set(PDFName.of('DA'), copier.copy(da));
+}
+
+/**
+ * Ceilings on the walks over an untrusted input's destinations. A name tree
+ * is attacker-shaped (a kid can point back at an ancestor, a node can nest
+ * without end, a table can hold millions of pairs), so every walk is bounded
+ * rather than trusted to terminate.
+ */
+const MAX_NAMED_DESTINATIONS_PER_INPUT = 100_000;
+const MAX_NAME_TREE_DEPTH = 32;
+const MAX_ACTION_CHAIN_DEPTH = 16;
+/** PDF 7.9.6 leaves no size; 64 keeps each node small and is what readers expect. */
+const NAME_TREE_LEAF_SIZE = 64;
+
+/**
+ * How named destinations are merged, in one place, because every part of it
+ * was got wrong once.
+ *
+ * A reader finds a destination two ways. A strict one compares the BYTES of a
+ * link's name with the bytes of a key. A lenient one (PDF.js, Folio's own
+ * reader) decodes both and compares the TEXT, so `(intro)` and the UTF-16
+ * spelling of `intro` are one name to it, and so are the name object `/x#80`
+ * and the string `<7880>`. Neither notion is enough alone: by bytes, two
+ * inputs spelling one name two ways are both kept and the reader sends one
+ * file's links into the other; by text, two keys of ONE input that happen to
+ * decode alike are taken for a duplicate and a destination is lost.
+ *
+ * So the two are kept apart:
+ *
+ * - Within an input, a definition is identified by its bytes. Every distinct
+ *   key is kept, and a reference picks its definition the way a reader would:
+ *   the same bytes first, then the same text (see {@link DestinationRenames}).
+ * - In the merged file, a definition is identified by its OUTPUT NAME, a text
+ *   that is unique among all of them. It starts as the definition's decoded
+ *   text, and gets `~2`, `~3`, ... appended when that text is already taken,
+ *   by another input or by another key of the same input.
+ * - Each output name is written in one spelling (see {@link destinationBytes})
+ *   as a key of one name tree, and every reference is rewritten to that same
+ *   spelling. After that, bytes and text agree, and both kinds of reader land
+ *   on the same destination.
+ *
+ * The older catalog `/Dests` dictionary (name-object keys) is read, and its
+ * entries join the same name tree: one table and one namespace, with the
+ * links that used a name object rewritten to the string that now finds it.
+ */
+interface MergedDestinations {
+  /** Output name to destination, for the name tree written at the end. */
+  entries: Map<string, PDFArray>;
+  /** Every output name taken, including those reserved for dangling links. */
+  used: Set<string>;
+}
+
+/**
+ * How one input's references to named destinations resolve, each to the
+ * output name of the definition a reader would have picked in that input.
+ *
+ * `strings` and `names` are exact matches: the raw bytes of a name-tree key,
+ * or of a legacy name key, to its output name. `byText` is the lenient
+ * fallback, by decoded text, with PDF.js's own precedence: the last name-tree
+ * key with that text, and a legacy key only when no tree key has it.
+ *
+ * A reference that matches nothing was dangling in its own file, and has to
+ * stay dangling. Left alone it would start resolving the moment any other
+ * input defines that name: a file split out of a larger one commonly keeps
+ * links to `section.1` with no destination behind them, and the next file's
+ * own `section.1` would capture every one of them. So such a reference is
+ * pointed at an `orphans` name instead, one that is reserved in the shared
+ * namespace and that no input can ever define.
+ */
+interface DestinationRenames {
+  strings: Map<string, string>;
+  names: Map<string, string>;
+  byText: Map<string, string>;
+  orphans: Map<string, string>;
+  /** The namespace shared by every input, where an orphan name is reserved. */
+  used: Set<string>;
+}
+
+/**
+ * Typed reads for the destination walks. `lookupMaybe` returns undefined for a
+ * missing entry but throws for one of another type. That suits the AcroForm
+ * merge, which depends on what it reads, and is wrong here: carrying
+ * destinations over is best-effort, and a malformed table should cost that
+ * input its named links, not fail a combine that worked before this existed.
+ */
+function dictOf(value: PDFObject | undefined): PDFDict | undefined {
+  return value instanceof PDFDict ? value : undefined;
+}
+
+function arrayOf(value: PDFObject | undefined): PDFArray | undefined {
+  return value instanceof PDFArray ? value : undefined;
+}
+
+/**
+ * A hex string holding exactly `bytes`. Hex rather than a literal string, so
+ * nothing in the bytes (a parenthesis, a backslash, a byte above 127) needs
+ * escaping and the value comes back byte-for-byte.
+ */
+function hexFromBytes(bytes: Uint8Array): PDFHexString {
+  let hex = '';
+  for (const byte of bytes) hex += byte.toString(16).padStart(2, '0');
+  return PDFHexString.of(hex);
+}
+
+/**
+ * Bytes as a string, one char per byte, to key a map by exact bytes. A loop,
+ * like every conversion here: a name can be as long as its file allows, and
+ * `String.fromCharCode(...bytes)` passes each byte as a call argument, which
+ * overflowed the stack on a 200,000-byte name and failed the whole combine.
+ */
+function byteKey(bytes: Uint8Array): string {
+  let key = '';
+  for (const byte of bytes) key += String.fromCharCode(byte);
+  return key;
+}
+
+/** Byte order, which is the order PDF 7.9.6 wants a name tree's keys in. */
+function compareBytes(a: Uint8Array, b: Uint8Array): number {
+  const shared = Math.min(a.length, b.length);
+  for (let i = 0; i < shared; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return a.length - b.length;
+}
+
+/**
+ * The bytes a PDF string object stands for, read from how it is written.
+ *
+ * pdf-lib keeps a string as its source text and its own `asBytes()` does not
+ * finish the job: for `<69 6e74726f>` it pairs the characters without first
+ * dropping the white space the syntax allows, and for a literal it keeps the
+ * line break of a backslash-newline continuation. Both are legal spellings of
+ * `intro`, and a key read wrongly is a destination its own links cannot find.
+ * This follows PDF 7.3.4.
+ */
+function stringBytes(value: PDFString | PDFHexString): Uint8Array {
+  const raw = value.asString();
+  if (value instanceof PDFHexString) {
+    // White space may sit anywhere between the digits, and a final lone digit
+    // stands for that digit followed by 0.
+    const digits = raw.replace(/[^0-9a-fA-F]/g, '');
+    const bytes = new Uint8Array(Math.ceil(digits.length / 2));
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = parseInt(digits.slice(i * 2, i * 2 + 2).padEnd(2, '0'), 16);
+    }
+    return bytes;
+  }
+
+  const CR = 0x0d;
+  const LF = 0x0a;
+  const ESCAPES: Record<string, number> = { n: LF, r: CR, t: 0x09, b: 0x08, f: 0x0c };
+  const bytes: number[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const code = raw.charCodeAt(i) & 0xff;
+    if (code === CR) {
+      // A bare line break is one LF however it was written.
+      if (raw.charCodeAt(i + 1) === LF) i++;
+      bytes.push(LF);
+    } else if (code !== 0x5c) {
+      bytes.push(code);
+    } else if (++i < raw.length) {
+      const next = raw[i];
+      if (next in ESCAPES) {
+        bytes.push(ESCAPES[next]);
+      } else if (next >= '0' && next <= '7') {
+        // Up to three octal digits; overflow is dropped, as the spec says.
+        let octal = next;
+        while (octal.length < 3 && raw[i + 1] >= '0' && raw[i + 1] <= '7') octal += raw[++i];
+        bytes.push(parseInt(octal, 8) & 0xff);
+      } else if (next === '\r') {
+        // A backslash before a line break continues the string: neither counts.
+        if (raw[i + 1] === '\n') i++;
+      } else if (next !== '\n') {
+        // `\(`, `\)`, `\\`, and a backslash before anything else, which is ignored.
+        bytes.push(next.charCodeAt(0) & 0xff);
+      }
+    }
+  }
+  return Uint8Array.from(bytes);
+}
+
+/**
+ * PDFDocEncoding where it differs from Latin-1, as PDF.js has it
+ * (`PDFStringTranslateTable`): bytes 0x18 to 0x1F and 0x80 to 0xA0. A byte
+ * with no entry stands for the character of the same number. pdf-lib's own
+ * table is not used: it turns the undefined bytes into U+FFFD where PDF.js
+ * keeps them, so two names PDF.js tells apart would look the same here.
+ */
+const PDF_DOC_ENCODING: Record<number, number> = {
+  0x18: 0x2d8,
+  0x19: 0x2c7,
+  0x1a: 0x2c6,
+  0x1b: 0x2d9,
+  0x1c: 0x2dd,
+  0x1d: 0x2db,
+  0x1e: 0x2da,
+  0x1f: 0x2dc,
+  0x80: 0x2022,
+  0x81: 0x2020,
+  0x82: 0x2021,
+  0x83: 0x2026,
+  0x84: 0x2014,
+  0x85: 0x2013,
+  0x86: 0x192,
+  0x87: 0x2044,
+  0x88: 0x2039,
+  0x89: 0x203a,
+  0x8a: 0x2212,
+  0x8b: 0x2030,
+  0x8c: 0x201e,
+  0x8d: 0x201c,
+  0x8e: 0x201d,
+  0x8f: 0x2018,
+  0x90: 0x2019,
+  0x91: 0x201a,
+  0x92: 0x2122,
+  0x93: 0xfb01,
+  0x94: 0xfb02,
+  0x95: 0x141,
+  0x96: 0x152,
+  0x97: 0x160,
+  0x98: 0x178,
+  0x99: 0x17d,
+  0x9a: 0x131,
+  0x9b: 0x142,
+  0x9c: 0x153,
+  0x9d: 0x161,
+  0x9e: 0x17e,
+  0xa0: 0x20ac,
+};
+
+/** UTF-16 after its two-byte mark, or undefined where a strict decoder would refuse it. */
+function utf16Text(bytes: Uint8Array, bigEndian: boolean): string | undefined {
+  let text = '';
+  // An odd trailing byte is dropped, as PDF.js drops it.
+  for (let i = 2; i + 1 < bytes.length; i += 2) {
+    const unit = bigEndian ? (bytes[i] << 8) | bytes[i + 1] : (bytes[i + 1] << 8) | bytes[i];
+    const high = unit >= 0xd800 && unit <= 0xdbff;
+    const low = unit >= 0xdc00 && unit <= 0xdfff;
+    if (low) return undefined;
+    if (high) {
+      const j = i + 2;
+      if (j + 1 >= bytes.length) return undefined;
+      const next = bigEndian ? (bytes[j] << 8) | bytes[j + 1] : (bytes[j + 1] << 8) | bytes[j];
+      if (next < 0xdc00 || next > 0xdfff) return undefined;
+      text += String.fromCharCode(unit, next);
+      i = j;
+    } else {
+      text += String.fromCharCode(unit);
+    }
+  }
+  return text;
+}
+
+/**
+ * The text a name's bytes stand for, decoded the way PDF.js decodes it
+ * (`stringToPDFString`), since PDF.js is the reader whose idea of "the same
+ * name" has to be matched: UTF-16 after either byte-order mark, UTF-8 after
+ * its own, and PDFDocEncoding otherwise, which is also the fallback when a
+ * marked encoding does not decode. Used for string keys and for the bytes of
+ * a legacy name key alike, as PDF.js uses it for both.
+ *
+ * Written out, with loops: pdf-lib's decoders spread every code point into
+ * one call (see {@link byteKey}).
+ */
+function destinationText(bytes: Uint8Array): string {
+  const [b0, b1, b2] = bytes;
+  let marked: string | undefined;
+  if (b0 === 0xfe && b1 === 0xff) {
+    marked = utf16Text(bytes, true);
+  } else if (b0 === 0xff && b1 === 0xfe) {
+    marked = utf16Text(bytes, false);
+  } else if (b0 === 0xef && b1 === 0xbb && b2 === 0xbf) {
+    try {
+      // Strict UTF-8 without TextDecoder, whose jsdom build rejects a
+      // Uint8Array from another realm. A malformed sequence throws.
+      let escaped = '';
+      for (let i = 3; i < bytes.length; i++)
+        escaped += `%${bytes[i].toString(16).padStart(2, '0')}`;
+      marked = decodeURIComponent(escaped);
+    } catch {
+      // Not UTF-8 after all: PDFDocEncoding, as below.
+    }
+  }
+  if (marked !== undefined) return marked;
+  let text = '';
+  for (const byte of bytes) text += String.fromCharCode(PDF_DOC_ENCODING[byte] ?? byte);
+  return text;
+}
+
+/**
+ * The one spelling an output name is written in, for its key and for every
+ * reference to it: plain bytes when the text is printable ASCII, UTF-16BE
+ * with a byte-order mark otherwise. Both decode back to exactly the text they
+ * were made from, so distinct names stay distinct for a reader that compares
+ * bytes and for one that compares text. Derived from the text, so that a
+ * suffix added to a name is encoded like the rest of it. (ASCII digits
+ * appended to UTF-16 bytes decode as other characters, and `~10` and `~11`
+ * came out as the same one.)
+ */
+function destinationBytes(text: string): Uint8Array {
+  let ascii = true;
+  for (let i = 0; i < text.length && ascii; i++) {
+    const code = text.charCodeAt(i);
+    ascii = code >= 0x20 && code <= 0x7e;
+  }
+  const bytes = new Uint8Array(ascii ? text.length : 2 + text.length * 2);
+  if (ascii) {
+    for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+    return bytes;
+  }
+  bytes[0] = 0xfe;
+  bytes[1] = 0xff;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    bytes[2 + i * 2] = code >> 8;
+    bytes[3 + i * 2] = code & 0xff;
+  }
+  return bytes;
+}
+
+/** The views PDF 12.3.2.2 defines for an explicit destination. */
+const DESTINATION_FITS = new Set(['XYZ', 'Fit', 'FitH', 'FitV', 'FitR', 'FitB', 'FitBH', 'FitBV']);
+/** `/FitR` takes the most: left, bottom, right, top. */
+const MAX_DESTINATION_OPERANDS = 4;
+
+/**
+ * A destination array for the merged file, built from a name-tree or `/Dests`
+ * value: the array itself, or the `/D` of a dictionary wrapping it. Undefined
+ * unless it leads with one of this input's pages, names a view the spec
+ * defines, and carries only numbers or nulls after that.
+ *
+ * Built, never copied. The copier follows every reference it is handed, with
+ * no limit of its own, so copying the source array would walk whatever an
+ * extra element points at: a file with one such destination failed the whole
+ * combine with a stack overflow. Here only the page reference goes through
+ * the copier, and that page is already copied. A destination aimed anywhere
+ * else was dangling to begin with.
+ */
+function sanitizedDestination(
+  value: PDFObject | undefined,
+  pageRefs: Set<string>,
+  copier: PDFObjectCopier,
+  context: PDFContext,
+): PDFArray | undefined {
+  const source = value instanceof PDFDict ? value.lookup(PDFName.of('D')) : value;
+  if (!(source instanceof PDFArray)) return undefined;
+  if (source.size() > 2 + MAX_DESTINATION_OPERANDS) return undefined;
+  const target = source.get(0);
+  if (!(target instanceof PDFRef) || !pageRefs.has(target.toString())) return undefined;
+  // A lone page reference is not valid, but its meaning is plain enough.
+  const fit = source.size() > 1 ? source.lookup(1) : PDFName.of('Fit');
+  if (!(fit instanceof PDFName) || !DESTINATION_FITS.has(fit.decodeText())) return undefined;
+
+  const destination = PDFArray.withContext(context);
+  destination.push(copier.copy(target));
+  destination.push(fit);
+  for (let i = 2; i < source.size(); i++) {
+    // `lookup` resolves one reference and stops: a number behind a reference
+    // is still a number, and anything else is refused without being walked.
+    const operand = source.lookup(i);
+    if (operand instanceof PDFNumber) destination.push(PDFNumber.of(operand.asNumber()));
+    else if (operand === PDFNull) destination.push(PDFNull);
+    else return undefined;
+  }
+  return destination;
+}
+
+/** One definition read from an input, already rebuilt for the merged file. */
+interface CollectedDestination {
+  /** A name-tree key (`string`) or a key of the legacy `/Dests` dictionary (`name`). */
+  kind: 'string' | 'name';
+  /** The key's exact bytes (see {@link byteKey}): what makes it this definition and no other. */
+  bytes: string;
+  /** The key as a lenient reader sees it. */
+  text: string;
+  destination: PDFArray;
+}
+
+/**
+ * Read one input's named destinations from both places they live: the
+ * `/Names` `/Dests` name tree, in tree order, then the older catalog `/Dests`
+ * dictionary. Every key with bytes of its own is a definition of its own, even
+ * when two of them decode to the same text; only a key repeated byte for byte
+ * is a duplicate, and the first is kept. Each destination is returned already
+ * rebuilt for the merged file (see {@link sanitizedDestination}). The walk is
+ * bounded by depth, by a visited set of nodes (cycles) and by a cap on pairs
+ * examined.
+ */
+function collectNamedDestinations(
+  src: PDFDocument,
+  pageRefs: Set<string>,
+  copier: PDFObjectCopier,
+  context: PDFContext,
+): CollectedDestination[] {
+  const found: CollectedDestination[] = [];
+  const seen = { string: new Set<string>(), name: new Set<string>() };
+  let examined = 0;
+  const add = (kind: 'string' | 'name', raw: Uint8Array, value: PDFObject | undefined): void => {
+    const bytes = byteKey(raw);
+    if (seen[kind].has(bytes)) return;
+    const destination = sanitizedDestination(value, pageRefs, copier, context);
+    if (!destination) return;
+    seen[kind].add(bytes);
+    found.push({ kind, bytes, text: destinationText(raw), destination });
+  };
+
+  const root = dictOf(dictOf(src.catalog.lookup(PDFName.of('Names')))?.lookup(PDFName.of('Dests')));
+  const visited = new Set<PDFDict>();
+  const stack: Array<{ node: PDFDict; depth: number }> = root ? [{ node: root, depth: 0 }] : [];
+  walk: while (stack.length > 0) {
+    const entry = stack.pop();
+    if (!entry || visited.has(entry.node)) continue;
+    visited.add(entry.node);
+    const pairs = arrayOf(entry.node.lookup(PDFName.of('Names')));
+    for (let i = 0; pairs && i + 1 < pairs.size(); i += 2) {
+      if (++examined > MAX_NAMED_DESTINATIONS_PER_INPUT) break walk;
+      const key = pairs.lookup(i);
+      if (!(key instanceof PDFString || key instanceof PDFHexString)) continue;
+      add('string', stringBytes(key), pairs.lookup(i + 1));
+    }
+    const kids = arrayOf(entry.node.lookup(PDFName.of('Kids')));
+    if (!kids || entry.depth >= MAX_NAME_TREE_DEPTH) continue;
+    for (let i = kids.size() - 1; i >= 0; i--) {
+      const kid = dictOf(kids.lookup(i));
+      if (kid) stack.push({ node: kid, depth: entry.depth + 1 });
+    }
+  }
+
+  const dests = dictOf(src.catalog.lookup(PDFName.of('Dests')));
+  if (dests) {
+    for (const [key, value] of dests.entries()) {
+      if (++examined > MAX_NAMED_DESTINATIONS_PER_INPUT) break;
+      add('name', key.asBytes(), value instanceof PDFRef ? src.context.lookup(value) : value);
+    }
+  }
+  return found;
+}
+
+/**
+ * Carry one input's named destinations into `merged`, using the copier that
+ * just copied its pages so each destination's page ref lands on the
+ * already-copied page, and return how this input's references resolve (see
+ * {@link MergedDestinations} for the model, {@link DestinationRenames} for
+ * the result).
+ *
+ * Each definition gets an output name: its decoded text, or that text with
+ * `~2`, `~3`, ... appended when the text is already taken, by an earlier
+ * input or by another key of this one that decodes the same.
+ *
+ * Only destinations are carried. Nothing else under an input's `/Names`
+ * (embedded files, JavaScript, and so on) is copied: each is its own feature
+ * with its own risks and none is what a dangling link needs.
+ */
+function mergeNamedDestinations(
+  src: PDFDocument,
+  copier: PDFObjectCopier,
+  pageRefs: Set<string>,
+  merged: MergedDestinations,
+  context: PDFContext,
+): DestinationRenames {
+  const found = collectNamedDestinations(src, pageRefs, copier, context);
+  const renames: DestinationRenames = {
+    strings: new Map(),
+    names: new Map(),
+    byText: new Map(),
+    orphans: new Map(),
+    used: merged.used,
+  };
+  // The texts this input uses itself, so that a suffixed name made for one of
+  // its keys cannot take the name another of its keys has by right.
+  const own = new Set(found.map((definition) => definition.text));
+
+  for (const { kind, bytes, text, destination } of found) {
+    let output = text;
+    for (let n = 2; merged.used.has(output); n++) {
+      const candidate = `${text}~${n}`;
+      if (!own.has(candidate)) output = candidate;
+    }
+    merged.used.add(output);
+    merged.entries.set(output, destination);
+    if (kind === 'string') {
+      renames.strings.set(bytes, output);
+      // PDF.js's decoded table takes the last tree key with a given text.
+      renames.byText.set(text, output);
+    } else {
+      renames.names.set(bytes, output);
+      // ...and a legacy key only where no tree key supplied that text.
+      if (!renames.byText.has(text)) renames.byText.set(text, output);
+    }
+  }
+  return renames;
+}
+
+/**
+ * The replacement for a reference to a named destination: a name object or a
+ * string, on a link or a bookmark. Undefined for anything else.
+ *
+ * The reference resolves the way a reader would resolve it in its own file:
+ * a key with the same bytes, of its own kind and then of the other (a lenient
+ * reader looks in both tables), and failing that a key with the same decoded
+ * text. What it resolves to is that definition's output name. A reference
+ * that resolves to nothing gets a reserved orphan name (see
+ * {@link DestinationRenames}): `~0` appended until it is free, then taken out
+ * of the shared namespace so no later input can define it either.
+ *
+ * Always a string in the output name's one spelling (see
+ * {@link destinationBytes}), whatever the reference was written as, so it
+ * matches its key for a reader that compares bytes.
+ */
+function renamedTarget(
+  value: PDFObject | undefined,
+  renames: DestinationRenames,
+): PDFHexString | undefined {
+  let raw: Uint8Array;
+  let sameKind: Map<string, string>;
+  let otherKind: Map<string, string>;
+  if (value instanceof PDFName) {
+    raw = value.asBytes();
+    [sameKind, otherKind] = [renames.names, renames.strings];
+  } else if (value instanceof PDFString || value instanceof PDFHexString) {
+    raw = stringBytes(value);
+    [sameKind, otherKind] = [renames.strings, renames.names];
+  } else {
+    return undefined;
+  }
+  const bytes = byteKey(raw);
+  let output = sameKind.get(bytes) ?? otherKind.get(bytes);
+  if (output === undefined) {
+    const text = destinationText(raw);
+    output = renames.byText.get(text) ?? renames.orphans.get(text);
+    if (output === undefined) {
+      output = `${text}~0`;
+      while (renames.used.has(output)) output += '~0';
+      renames.used.add(output);
+      renames.orphans.set(text, output);
+    }
+  }
+  return hexFromBytes(destinationBytes(output));
+}
+
+/**
+ * Point a `/GoTo` action (and the actions chained after it through `/Next`) at
+ * the name its destination has in the merged file. Depth-capped, with a
+ * visited set, since `/Next` is attacker-shaped and can loop.
+ */
+function rewriteAction(
+  action: PDFDict,
+  renames: DestinationRenames,
+  depth: number,
+  visited: Set<PDFDict>,
+): void {
+  if (depth > MAX_ACTION_CHAIN_DEPTH || visited.has(action)) return;
+  visited.add(action);
+  // PDFName instances are interned, so identity is equality.
+  if (action.lookup(PDFName.of('S')) === PDFName.of('GoTo')) {
+    const next = renamedTarget(action.lookup(PDFName.of('D')), renames);
+    if (next) action.set(PDFName.of('D'), next);
+  }
+  const chained = action.lookup(PDFName.of('Next'));
+  if (chained instanceof PDFDict) {
+    rewriteAction(chained, renames, depth + 1, visited);
+  } else if (chained instanceof PDFArray) {
+    for (let i = 0; i < chained.size(); i++) {
+      const item = dictOf(chained.lookup(i));
+      if (item) rewriteAction(item, renames, depth + 1, visited);
+    }
+  }
+}
+
+/**
+ * Update the links on `pages` (this input's copied pages) that name a
+ * destination: an annotation's `/Dest`, its `/A` action chain and its `/AA`
+ * additional actions. Each is pointed at its destination's output name, and a
+ * link to a name this input never defined is kept dangling (see
+ * {@link renamedTarget}). Run over each input's own pages only, so another
+ * input's links, which name their own destinations, are never touched.
+ */
+function rewriteDestinationReferences(pages: PDFPage[], renames: DestinationRenames): void {
+  const visited = new Set<PDFDict>();
+  for (const page of pages) {
+    const annots = arrayOf(page.node.lookup(PDFName.of('Annots')));
+    for (let i = 0; annots && i < annots.size(); i++) {
+      const annot = dictOf(annots.lookup(i));
+      if (!annot) continue;
+      const dest = renamedTarget(annot.lookup(PDFName.of('Dest')), renames);
+      if (dest) annot.set(PDFName.of('Dest'), dest);
+      const action = dictOf(annot.lookup(PDFName.of('A')));
+      if (action) rewriteAction(action, renames, 0, visited);
+      const additional = dictOf(annot.lookup(PDFName.of('AA')));
+      if (!additional) continue;
+      for (const [key] of additional.entries()) {
+        const extra = dictOf(additional.lookup(key));
+        if (extra) rewriteAction(extra, renames, 0, visited);
+      }
+    }
+  }
+}
+
+/**
+ * Write the merged destinations into `out`'s catalog as one `/Names` `/Dests`
+ * name tree. Per PDF 7.9.6 its keys are sorted by raw byte order; up to
+ * {@link NAME_TREE_LEAF_SIZE} entries sit in the root's `/Names`, and more go
+ * in leaf kids, each with `/Limits`, so no node grows without bound.
+ */
+function writeNamedDestinations(out: PDFDocument, merged: MergedDestinations): void {
+  if (merged.entries.size === 0) return;
+  const context = out.context;
+  const entries = [...merged.entries]
+    .map(([name, destination]) => ({ key: destinationBytes(name), destination }))
+    .sort((a, b) => compareBytes(a.key, b.key));
+  const leaf = (chunk: typeof entries): PDFDict => {
+    const names = PDFArray.withContext(context);
+    for (const { key, destination } of chunk) {
+      names.push(hexFromBytes(key));
+      names.push(destination);
+    }
+    return context.obj({ Names: names });
+  };
+  let tree: PDFDict;
+  if (entries.length <= NAME_TREE_LEAF_SIZE) {
+    tree = leaf(entries);
+  } else {
+    const kids = PDFArray.withContext(context);
+    for (let i = 0; i < entries.length; i += NAME_TREE_LEAF_SIZE) {
+      const chunk = entries.slice(i, i + NAME_TREE_LEAF_SIZE);
+      const kid = leaf(chunk);
+      kid.set(
+        PDFName.of('Limits'),
+        context.obj([hexFromBytes(chunk[0].key), hexFromBytes(chunk[chunk.length - 1].key)]),
+      );
+      kids.push(context.register(kid));
+    }
+    tree = context.obj({ Kids: kids });
+  }
+  out.catalog.set(PDFName.of('Names'), context.obj({ Dests: tree }));
 }
 
 export interface StagedPdf {

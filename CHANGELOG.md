@@ -16,6 +16,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Folio keeps no readable list of the files you've opened. The only file
   location it stores is the last document's, for the Continue button.
 
+### Fixed
+
+- **Combined PDFs keep the links that jump to a named place.** Some links
+  point at a named spot in the document, not at a page number. Combine copied
+  those links but not the list of names, so they did nothing in the combined
+  file. The names are now carried over from every file. When two files use the
+  same name, the later file's is renamed and its links follow.
+
 ### Security
 
 - **The code that reads files Folio did not write is now fuzzed every night.**
