@@ -7,6 +7,7 @@ import {
   PDFNumber,
   type PDFObject,
   type PDFPage,
+  PDFRef,
   PDFString,
   type PDFContext,
 } from 'pdf-lib';
@@ -15,10 +16,12 @@ import { describe, expect, it } from 'vitest';
 import { combinePdfs } from './combineDocuments';
 
 /**
- * Structure-preservation probes for combinePdfs. Each `it.fails` documents a
- * confirmed gap (the assertion describes the desired behaviour and currently
- * fails); flip to `it` when the gap is fixed. The plain `it` cases pin what
- * does survive today.
+ * Structure-preservation tests for combinePdfs: what of each input's
+ * document structure reaches the combined file (metadata, form fields, links,
+ * named destinations, page labels, bookmarks), read back with pdf-lib. How a
+ * reader resolves the same output is in the *.pdfjs.test.ts files beside this.
+ * A gap found later goes in as an `it.fails` that states the wanted
+ * behaviour, and is flipped to `it` when it is fixed.
  */
 
 async function build(tag: string): Promise<Uint8Array> {
@@ -241,6 +244,154 @@ function linkOf(doc: PDFDocument, pageIndex: number): PDFDict {
   return doc.getPage(pageIndex).node.lookup(PDFName.of('Annots'), PDFArray).lookup(0, PDFDict);
 }
 
+/** One outline item to build: its own entries, whether it shows its children, and the children. */
+interface OutlineSpec {
+  fields: Record<string, unknown>;
+  open?: boolean;
+  kids?: OutlineSpec[];
+}
+
+/**
+ * Register `specs` as one linked sibling list under `parent` (/Parent, /Prev,
+ * /Next, /First, /Last and /Count all set) and return its first and last ref.
+ */
+function linkOutline(ctx: PDFContext, specs: OutlineSpec[], parent: PDFRef): [PDFRef, PDFRef] {
+  const dicts = specs.map((spec) => {
+    const dict = PDFDict.withContext(ctx);
+    // `obj` turns plain literals into PDF objects and passes PDF objects through;
+    // its types only cannot express a record of mixed values, hence the cast.
+    for (const [key, value] of Object.entries(spec.fields)) {
+      dict.set(PDFName.of(key), ctx.obj(value as never) as PDFObject);
+    }
+    return dict;
+  });
+  const refs = dicts.map((dict) => ctx.register(dict));
+  specs.forEach((spec, i) => {
+    dicts[i].set(PDFName.of('Parent'), parent);
+    if (i > 0) dicts[i].set(PDFName.of('Prev'), refs[i - 1]);
+    if (i + 1 < specs.length) dicts[i].set(PDFName.of('Next'), refs[i + 1]);
+    const kids = spec.kids ?? [];
+    if (kids.length > 0) {
+      const [first, last] = linkOutline(ctx, kids, refs[i]);
+      dicts[i].set(PDFName.of('First'), first);
+      dicts[i].set(PDFName.of('Last'), last);
+      dicts[i].set(PDFName.of('Count'), PDFNumber.of(spec.open ? kids.length : -kids.length));
+    }
+  });
+  return [refs[0], refs[refs.length - 1]];
+}
+
+/**
+ * A three-page input. `setup` returns what the catalog's /Outlines should be
+ * (a dictionary to register, or any other object for a malformed one), or
+ * nothing for an input without an outline.
+ */
+async function buildOutlined(
+  setup: (ctx: PDFContext, pages: PDFPage[]) => PDFObject | undefined,
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.create({ updateMetadata: false });
+  const pages = [doc.addPage([300, 300]), doc.addPage([300, 300]), doc.addPage([300, 300])];
+  const outlines = setup(doc.context, pages);
+  if (outlines) doc.catalog.set(PDFName.of('Outlines'), outlines);
+  return doc.save();
+}
+
+/** An input whose bookmarks are `specs(pages)`, under a well-formed root. */
+function buildBookmarked(specs: (pages: PDFPage[]) => OutlineSpec[]): Promise<Uint8Array> {
+  return buildOutlined((ctx, pages) => {
+    const root = ctx.obj({ Type: 'Outlines' });
+    const rootRef = ctx.register(root);
+    const list = specs(pages);
+    const [first, last] = linkOutline(ctx, list, rootRef);
+    root.set(PDFName.of('First'), first);
+    root.set(PDFName.of('Last'), last);
+    root.set(PDFName.of('Count'), PDFNumber.of(list.length));
+    return rootRef;
+  });
+}
+
+/** An explicit destination for a page. */
+function to(page: PDFPage): PDFObject[] {
+  return [page.ref, PDFName.of('Fit')];
+}
+
+/** A bookmark with a title and a target page, and nothing else. */
+function mark(title: string, page: PDFPage, extra: Partial<OutlineSpec> = {}): OutlineSpec {
+  return { fields: { Title: PDFString.of(title), Dest: to(page) }, ...extra };
+}
+
+interface ReadItem {
+  title: string;
+  /** The output page index the item's /Dest points at. */
+  page: number | undefined;
+  count: number | undefined;
+  hasAction: boolean;
+  flags: number | undefined;
+  color: number[] | undefined;
+  children: ReadItem[];
+}
+
+/**
+ * The output's outline as plain data (titles, nesting, target page), reading
+ * only through the /First and /Next chains, plus every way its links disagree
+ * with each other: /Parent, /Prev and /Last of each item, and /Last of the root.
+ */
+function readOutline(doc: PDFDocument): {
+  items: ReadItem[];
+  problems: string[];
+  total: number | undefined;
+} {
+  const problems: string[] = [];
+  const pageRefs = doc.getPages().map((page) => page.ref.toString());
+  const level = (parent: PDFDict, parentRef: PDFRef): ReadItem[] => {
+    const items: ReadItem[] = [];
+    let ref = parent.get(PDFName.of('First'));
+    let previous: PDFRef | undefined;
+    while (ref instanceof PDFRef && items.length < 1000) {
+      const dict = doc.context.lookup(ref, PDFDict);
+      if (dict.get(PDFName.of('Parent'))?.toString() !== parentRef.toString()) {
+        problems.push(`parent of ${ref.toString()}`);
+      }
+      if (dict.get(PDFName.of('Prev'))?.toString() !== previous?.toString()) {
+        problems.push(`prev of ${ref.toString()}`);
+      }
+      const dest = dict.lookup(PDFName.of('Dest'));
+      const count = dict.lookup(PDFName.of('Count'));
+      const flags = dict.lookup(PDFName.of('F'));
+      const color = dict.lookup(PDFName.of('C'));
+      items.push({
+        title: textOf(dict.lookup(PDFName.of('Title'))),
+        page: dest instanceof PDFArray ? pageRefs.indexOf(String(dest.get(0))) : undefined,
+        count: count instanceof PDFNumber ? count.asNumber() : undefined,
+        hasAction: dict.has(PDFName.of('A')),
+        flags: flags instanceof PDFNumber ? flags.asNumber() : undefined,
+        color:
+          color instanceof PDFArray
+            ? color.asArray().map((part) => (part instanceof PDFNumber ? part.asNumber() : NaN))
+            : undefined,
+        children: dict.has(PDFName.of('First')) ? level(dict, ref) : [],
+      });
+      previous = ref;
+      ref = dict.get(PDFName.of('Next'));
+    }
+    if (parent.get(PDFName.of('Last'))?.toString() !== previous?.toString()) {
+      problems.push(`last of ${parentRef.toString()}`);
+    }
+    return items;
+  };
+  const rootRef = doc.catalog.get(PDFName.of('Outlines'));
+  const root = doc.catalog.lookup(PDFName.of('Outlines'));
+  if (!(rootRef instanceof PDFRef) || !(root instanceof PDFDict)) {
+    return { items: [], problems: ['no outline'], total: undefined };
+  }
+  const count = root.lookup(PDFName.of('Count'));
+  return {
+    items: level(root, rootRef),
+    problems,
+    total: count instanceof PDFNumber ? count.asNumber() : undefined,
+  };
+}
+
 /** Decoded text of a name, string or hex string; empty for anything else. */
 function textOf(value: unknown): string {
   if (value instanceof PDFName || value instanceof PDFString || value instanceof PDFHexString) {
@@ -263,10 +414,15 @@ describe('combinePdfs structure', () => {
     expect(fields.map((f) => f.getName()).sort()).toEqual(['name', 'name (2)']);
   });
 
-  // GAP: the merged catalog is built from scratch; nothing copies /Outlines.
-  it.fails('preserves document outlines (bookmarks) of every input', async () => {
+  it('preserves document outlines (bookmarks) of every input', async () => {
     const out = await combined();
-    expect(out.catalog.lookupMaybe(PDFName.of('Outlines'), PDFDict)).toBeDefined();
+    const { items, problems } = readOutline(out);
+    expect(problems).toEqual([]);
+    // Each bookmark points at the second page of its own file.
+    expect(items.map((item) => [item.title, item.page])).toEqual([
+      ['Bookmark A', 1],
+      ['Bookmark B', 3],
+    ]);
   });
 
   it('preserves named destinations', async () => {
@@ -826,5 +982,242 @@ describe('combinePdfs structure', () => {
       }
     }
     expect(found).toBe(true);
+  });
+});
+
+describe('combinePdfs outlines', () => {
+  const good = () => buildBookmarked((pages) => [mark('Good', pages[2])]);
+
+  it('nests children and signs /Count by whether each parent is open', async () => {
+    const a = await buildBookmarked((pages) => [
+      mark('A1', pages[0], {
+        open: true,
+        kids: [
+          mark('A1a', pages[1]),
+          mark('A1b', pages[2], { open: false, kids: [mark('A1b1', pages[2])] }),
+        ],
+      }),
+      mark('A2', pages[1]),
+    ]);
+    const b = await buildBookmarked((pages) => [
+      mark('B1', pages[0], { open: false, kids: [mark('B1a', pages[1]), mark('B1b', pages[2])] }),
+    ]);
+    const { items, problems, total } = readOutline(await combineAll(a, b));
+    expect(problems).toEqual([]);
+    expect(items.map((item) => item.title)).toEqual(['A1', 'A2', 'B1']);
+    const [a1, , b1] = items;
+    expect(a1.count).toBe(2);
+    expect(a1.children.map((item) => [item.title, item.count])).toEqual([
+      ['A1a', undefined],
+      ['A1b', -1],
+    ]);
+    expect(a1.children[1].children.map((item) => item.title)).toEqual(['A1b1']);
+    expect(b1.count).toBe(-2);
+    // A1 (1 + its 2 visible), A2, B1 (closed, so its two children are hidden).
+    expect(total).toBe(5);
+    // The pages are the output's: B starts at page 3.
+    expect(b1.children.map((item) => item.page)).toEqual([4, 5]);
+  });
+
+  it('counts the descendants of an open item whose child is open', async () => {
+    const a = await buildBookmarked((pages) => [
+      mark('Top', pages[0], {
+        open: true,
+        kids: [mark('Mid', pages[1], { open: true, kids: [mark('Leaf', pages[2])] })],
+      }),
+    ]);
+    const { items, total } = readOutline(await combineAll(a, await good()));
+    expect(items[0].count).toBe(2);
+    expect(items[0].children[0].count).toBe(1);
+    expect(total).toBe(4);
+  });
+
+  it('lets an input without an outline contribute nothing and joins the rest', async () => {
+    const none = await buildOutlined(() => undefined);
+    const a = await buildBookmarked((pages) => [mark('A', pages[1])]);
+    const b = await buildBookmarked((pages) => [mark('B', pages[1])]);
+    const { items, problems, total } = readOutline(await combineAll(a, none, b));
+    expect(problems).toEqual([]);
+    expect(items.map((item) => [item.title, item.page])).toEqual([
+      ['A', 1],
+      ['B', 7],
+    ]);
+    expect(total).toBe(2);
+  });
+
+  it('writes no /Outlines when no input has any bookmark', async () => {
+    const none = () => buildOutlined(() => undefined);
+    const empty = () => buildOutlined((ctx) => ctx.obj({ Type: 'Outlines', Count: 0 }));
+    const out = await combineAll(await none(), await empty());
+    expect(out.catalog.has(PDFName.of('Outlines'))).toBe(false);
+  });
+
+  it('keeps a colour and flags only when they are valid', async () => {
+    const entry = (title: string, extra: Record<string, unknown>, page: PDFPage) => ({
+      fields: { Title: PDFString.of(title), Dest: to(page), ...extra },
+    });
+    const a = await buildBookmarked((pages) => [
+      entry('ok', { C: [1, 0, 0.5], F: 3 }, pages[0]),
+      entry('four', { C: [1, 0, 0, 0], F: 4 }, pages[0]),
+      entry('range', { C: [2, 0, 0], F: 1.5 }, pages[0]),
+      entry('text', { C: [1, 0, PDFName.of('x')] }, pages[0]),
+      entry('high', { F: 7 }, pages[0]),
+      entry('negative', { C: [-0.1, 0, 0] }, pages[0]),
+    ]);
+    const { items } = readOutline(await combineAll(a, await good()));
+    expect(items.slice(0, 6).map((item) => [item.title, item.color, item.flags])).toEqual([
+      ['ok', [1, 0, 0.5], 3],
+      ['four', undefined, undefined],
+      ['range', undefined, undefined],
+      ['text', undefined, undefined],
+      ['high', undefined, 3],
+      ['negative', undefined, undefined],
+    ]);
+  });
+
+  it('turns a GoTo action into a /Dest and drops every other action', async () => {
+    const action = (title: string, A: Record<string, unknown>) => ({
+      fields: { Title: PDFString.of(title), A },
+    });
+    const a = await buildBookmarked((pages) => [
+      action('goto', { S: 'GoTo', D: to(pages[1]) }),
+      action('js', { S: 'JavaScript', JS: PDFString.of('app.alert(1)') }),
+      action('uri', { S: 'URI', URI: PDFString.of('https://x.test') }),
+      action('launch', { S: 'Launch', F: PDFString.of('calc.exe') }),
+      action('named', { S: 'Named', N: 'NextPage' }),
+    ]);
+    const out = await combineAll(a, await good());
+    const { items, problems } = readOutline(out);
+    expect(problems).toEqual([]);
+    expect(items.slice(0, 5).map((item) => [item.title, item.page, item.hasAction])).toEqual([
+      ['goto', 1, false],
+      ['js', undefined, false],
+      ['uri', undefined, false],
+      ['launch', undefined, false],
+      ['named', undefined, false],
+    ]);
+    const saved = new TextDecoder('latin1').decode(await out.save());
+    expect(saved).not.toContain('app.alert');
+    expect(saved).not.toContain('calc.exe');
+  });
+
+  it('keeps titles in UTF-16 and with parentheses and backslashes', async () => {
+    const titled = (title: PDFObject, page: PDFPage) => ({
+      fields: { Title: title, Dest: to(page) },
+    });
+    const a = await buildBookmarked((pages) => [
+      titled(PDFHexString.fromText('Chapter (1) \\ done'), pages[0]),
+      titled(PDFHexString.fromText('日本語 ✓'), pages[0]),
+      // A literal string, written with its own escapes.
+      titled(PDFString.of('Esc \\(a\\) \\\\ b'), pages[0]),
+    ]);
+    const { items } = readOutline(await combineAll(a, await good()));
+    expect(items.slice(0, 3).map((item) => item.title)).toEqual([
+      'Chapter (1) \\ done',
+      '日本語 ✓',
+      'Esc (a) \\ b',
+    ]);
+  });
+
+  it('ends a cycle through /Next and through /First instead of hanging', async () => {
+    const viaNext = await buildOutlined((ctx, pages) => {
+      const root = ctx.obj({ Type: 'Outlines' });
+      const a = ctx.obj({ Title: PDFString.of('a'), Dest: to(pages[0]) });
+      const b = ctx.obj({ Title: PDFString.of('b'), Dest: to(pages[1]) });
+      const [aRef, bRef] = [ctx.register(a), ctx.register(b)];
+      a.set(PDFName.of('Next'), bRef);
+      b.set(PDFName.of('Next'), aRef);
+      root.set(PDFName.of('First'), aRef);
+      return ctx.register(root);
+    });
+    const viaFirst = await buildOutlined((ctx, pages) => {
+      const root = ctx.obj({ Type: 'Outlines' });
+      const a = ctx.obj({ Title: PDFString.of('a'), Dest: to(pages[0]) });
+      const child = ctx.obj({ Title: PDFString.of('child'), Dest: to(pages[1]) });
+      const [aRef, childRef] = [ctx.register(a), ctx.register(child)];
+      a.set(PDFName.of('First'), childRef);
+      child.set(PDFName.of('First'), aRef);
+      root.set(PDFName.of('First'), aRef);
+      return ctx.register(root);
+    });
+    const titles = (doc: PDFDocument) => {
+      const walk = (items: ReadItem[]): string[] =>
+        items.flatMap((item) => [item.title, ...walk(item.children)]);
+      return walk(readOutline(doc).items);
+    };
+    expect(titles(await combineAll(viaNext, await good()))).toEqual(['a', 'b', 'Good']);
+    expect(titles(await combineAll(viaFirst, await good()))).toEqual(['a', 'child', 'Good']);
+  });
+
+  it.each([
+    ['a number for /Outlines', () => PDFNumber.of(5)],
+    ['a number for /First', (ctx: PDFContext) => ctx.obj({ Type: 'Outlines', First: 5 })],
+    [
+      'a string for /Count',
+      (ctx: PDFContext, pages: PDFPage[]) => {
+        const kid = ctx.register(ctx.obj({ Title: PDFString.of('k'), Dest: to(pages[0]) }));
+        const item = ctx.register(
+          ctx.obj({ Title: PDFString.of('i'), First: kid, Last: kid, Count: PDFString.of('3') }),
+        );
+        return ctx.obj({ Type: 'Outlines', First: item, Last: item, Count: PDFString.of('x') });
+      },
+    ],
+    [
+      'a non-dictionary in the chain',
+      (ctx: PDFContext, pages: PDFPage[]) => {
+        const item = ctx.register(
+          ctx.obj({ Title: PDFString.of('i'), Dest: to(pages[0]), Next: 7 }),
+        );
+        return ctx.obj({ Type: 'Outlines', First: item, Last: item });
+      },
+    ],
+    [
+      'an array for /First',
+      (ctx: PDFContext, pages: PDFPage[]) =>
+        ctx.obj({
+          Type: 'Outlines',
+          First: [ctx.obj({ Title: PDFString.of('i'), Dest: to(pages[0]) })],
+        }),
+    ],
+  ])('neither throws nor hangs on %s', async (_shape, make) => {
+    const bad = await buildOutlined((ctx, pages) => make(ctx, pages));
+    const out = await combineAll(bad, await good());
+    const { items, problems } = readOutline(out);
+    expect(problems).toEqual([]);
+    expect(items[items.length - 1]?.title).toBe('Good');
+    expect(items[items.length - 1]?.page).toBe(5);
+  });
+
+  it('keeps an item whose title is not a string, with an empty title', async () => {
+    const bad = await buildOutlined((ctx, pages) => {
+      const item = ctx.register(ctx.obj({ Title: 5, Dest: to(pages[1]) }));
+      return ctx.obj({ Type: 'Outlines', First: item, Last: item });
+    });
+    const { items } = readOutline(await combineAll(bad, await good()));
+    expect(items.map((item) => [item.title, item.page])).toEqual([
+      ['', 1],
+      ['Good', 5],
+    ]);
+  });
+
+  it('drops a destination that points at a deep object chain, and keeps the item', async () => {
+    const hostile = await buildOutlined((ctx, pages) => {
+      // Each array holds the next by reference: flat on disk, but a copier
+      // that follows references recurses to the bottom of it.
+      let tail: PDFRef = ctx.register(ctx.obj([]));
+      // 2,500 levels is past what the copier's recursion survives, and keeps
+      // the fixture quick to build.
+      for (let i = 0; i < 2500; i++) tail = ctx.register(ctx.obj([tail]));
+      const item = ctx.register(
+        ctx.obj({ Title: PDFString.of('deep'), Dest: [pages[1].ref, PDFName.of('Fit'), tail] }),
+      );
+      return ctx.obj({ Type: 'Outlines', First: item, Last: item });
+    });
+    const { items, problems } = readOutline(await combineAll(hostile, await good()));
+    expect(problems).toEqual([]);
+    expect(items.map((item) => [item.title, item.page])).toEqual([
+      ['deep', undefined],
+      ['Good', 5],
+    ]);
   });
 });
