@@ -1,10 +1,12 @@
 import {
   PDFArray,
   PDFBool,
+  type PDFContext,
   PDFDict,
   PDFDocument,
   PDFHexString,
   PDFName,
+  PDFNull,
   PDFNumber,
   type PDFObject,
   PDFObjectCopier,
@@ -12,6 +14,8 @@ import {
   PDFPageLeaf,
   PDFRef,
   PDFString,
+  pdfDocEncodingDecode,
+  utf16Decode,
 } from 'pdf-lib';
 
 import { hasPdfHeader, MIN_PDF_BYTES } from '@/core/pdf/pdfHeader';
@@ -117,7 +121,8 @@ const PAGES_PER_YIELD = 8;
  * {@link CombineResult.formsDegraded}). Every input's named destinations are
  * carried over too, so links that jump by name still resolve (see
  * {@link mergeNamedDestinations}); a name two inputs share is kept for the
- * first and the later one is renamed, along with the links that use it.
+ * first and the later one is renamed, along with the links that use it, and a
+ * link to a name its own file never defined stays unresolved.
  *
  * An input this function has to parse itself is validated with
  * {@link looksLikePdf} first; one that arrives already parsed (the modal's
@@ -219,14 +224,15 @@ export async function combinePdfs(
         copier,
         new Set(srcPages.map((page) => page.ref.toString())),
         destinations,
+        out.context,
       );
-      if (renames.strings.size > 0 || renames.names.size > 0) {
-        const firstPage = pagesCopied - srcPages.length;
-        rewriteDestinationReferences(
-          out.getPages().slice(firstPage, firstPage + srcPages.length),
-          renames,
-        );
-      }
+      // Every input, not only one that had renames: a link to a name this
+      // input never defined has to be dealt with too (see DestinationRenames).
+      const firstPage = pagesCopied - srcPages.length;
+      rewriteDestinationReferences(
+        out.getPages().slice(firstPage, firstPage + srcPages.length),
+        renames,
+      );
     } catch (error) {
       // Not wrapped with namedError below: a cancellation is not a failure of
       // this input, and namedError would bury CombineCancelledError's
@@ -472,9 +478,16 @@ const MAX_ACTION_CHAIN_DEPTH = 16;
 const NAME_TREE_LEAF_SIZE = 64;
 
 /**
- * Named destinations merged so far. Keys are identities: the raw bytes of a
- * string key (one char per byte), or the decoded text of a name key. `used`
- * holds both kinds, so one namespace covers them.
+ * Named destinations merged so far, keyed by identity.
+ *
+ * The identity of a string-keyed destination is its decoded TEXT, not its
+ * bytes (see {@link destinationText}). Readers resolve a name by what it
+ * says: PDF.js, which is Folio's own reader, hands the decoded name from a
+ * link to its lookup, so `(intro)` and the UTF-16 spelling of `intro` are one
+ * name to it. Two inputs spelling one name two ways would otherwise both be
+ * kept, and one file's links would land in the other. The identity of a
+ * name-keyed destination is the decoded name. `used` holds both kinds: a
+ * lenient reader tries both tables, so they share one namespace.
  */
 interface MergedDestinations {
   strings: Map<string, PDFArray>;
@@ -482,10 +495,28 @@ interface MergedDestinations {
   used: Set<string>;
 }
 
-/** Original identity to new identity, for the names one input had to rename. */
+/**
+ * What one input's references to named destinations have to become.
+ *
+ * `strings` and `names` map an original identity to its new one, for the names
+ * this input had to rename. `defined` holds every identity this input does
+ * define, renamed or not.
+ *
+ * A reference to a name the input does NOT define was dangling in its own
+ * file, and has to stay dangling. Left alone it would start resolving the
+ * moment any other input defines that name: a file split out of a larger one
+ * commonly keeps links to `section.1` with no destination behind them, and
+ * the next file's own `section.1` would capture every one of them. So such a
+ * reference is pointed at an `orphans` name instead, one that is reserved in
+ * the shared namespace and that no input can ever define.
+ */
 interface DestinationRenames {
   strings: Map<string, string>;
   names: Map<string, string>;
+  defined: Set<string>;
+  orphans: Map<string, string>;
+  /** The namespace shared by every input, where an orphan name is reserved. */
+  used: Set<string>;
 }
 
 /**
@@ -513,37 +544,179 @@ function nameFromText(text: string): PDFName {
   return PDFName.of(text.replace(/#/g, '#23'));
 }
 
-/** Bytes to a string with one char per byte, so JS string order is byte order. */
-function bytesToIdentity(bytes: Uint8Array): string {
-  let text = '';
-  for (const byte of bytes) text += String.fromCharCode(byte);
-  return text;
-}
-
-/** The inverse of {@link bytesToIdentity}; identities only hold chars 0-255. */
-function identityToHex(identity: string): PDFHexString {
+/**
+ * A hex string holding exactly `bytes`. Hex rather than a literal string, so
+ * nothing in the bytes (a parenthesis, a backslash, a byte above 127) needs
+ * escaping and the value comes back byte-for-byte.
+ */
+function hexFromBytes(bytes: Uint8Array): PDFHexString {
   let hex = '';
-  for (let i = 0; i < identity.length; i++) {
-    hex += (identity.charCodeAt(i) & 0xff).toString(16).padStart(2, '0');
-  }
+  for (const byte of bytes) hex += byte.toString(16).padStart(2, '0');
   return PDFHexString.of(hex);
 }
 
+/** Byte order, which is the order PDF 7.9.6 wants a name tree's keys in. */
+function compareBytes(a: Uint8Array, b: Uint8Array): number {
+  const shared = Math.min(a.length, b.length);
+  for (let i = 0; i < shared; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return a.length - b.length;
+}
+
 /**
- * The destination array a name-tree or /Dests value stands for: the array
- * itself, or the `/D` of a dictionary wrapping it. Undefined for anything
- * else, and for an array that does not lead with one of this input's pages.
- * A destination aimed anywhere else was already dangling, and copying an
- * arbitrary object graph through the copier on its behalf is not acceptable.
+ * The bytes a PDF string object stands for, read from how it is written.
+ *
+ * pdf-lib keeps a string as its source text and its own `asBytes()` does not
+ * finish the job: for `<69 6e74726f>` it pairs the characters without first
+ * dropping the white space the syntax allows, and for a literal it keeps the
+ * line break of a backslash-newline continuation. Both are legal spellings of
+ * `intro`, and a key read wrongly is a destination its own links cannot find.
+ * This follows PDF 7.3.4.
  */
-function validDestination(
+function stringBytes(value: PDFString | PDFHexString): Uint8Array {
+  const raw = value.asString();
+  if (value instanceof PDFHexString) {
+    // White space may sit anywhere between the digits, and a final lone digit
+    // stands for that digit followed by 0.
+    const digits = raw.replace(/[^0-9a-fA-F]/g, '');
+    const bytes = new Uint8Array(Math.ceil(digits.length / 2));
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = parseInt(digits.slice(i * 2, i * 2 + 2).padEnd(2, '0'), 16);
+    }
+    return bytes;
+  }
+
+  const CR = 0x0d;
+  const LF = 0x0a;
+  const ESCAPES: Record<string, number> = { n: LF, r: CR, t: 0x09, b: 0x08, f: 0x0c };
+  const bytes: number[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const code = raw.charCodeAt(i) & 0xff;
+    if (code === CR) {
+      // A bare line break is one LF however it was written.
+      if (raw.charCodeAt(i + 1) === LF) i++;
+      bytes.push(LF);
+    } else if (code !== 0x5c) {
+      bytes.push(code);
+    } else if (++i < raw.length) {
+      const next = raw[i];
+      if (next in ESCAPES) {
+        bytes.push(ESCAPES[next]);
+      } else if (next >= '0' && next <= '7') {
+        // Up to three octal digits; overflow is dropped, as the spec says.
+        let octal = next;
+        while (octal.length < 3 && raw[i + 1] >= '0' && raw[i + 1] <= '7') octal += raw[++i];
+        bytes.push(parseInt(octal, 8) & 0xff);
+      } else if (next === '\r') {
+        // A backslash before a line break continues the string: neither counts.
+        if (raw[i + 1] === '\n') i++;
+      } else if (next !== '\n') {
+        // `\(`, `\)`, `\\`, and a backslash before anything else, which is ignored.
+        bytes.push(next.charCodeAt(0) & 0xff);
+      }
+    }
+  }
+  return Uint8Array.from(bytes);
+}
+
+/**
+ * The text a destination name's bytes stand for, decoded the way PDF.js
+ * decodes it (`stringToPDFString`): UTF-16 after either byte-order mark,
+ * UTF-8 after its own, and PDFDocEncoding otherwise, which is also the
+ * fallback when a marked encoding does not decode.
+ */
+function destinationText(bytes: Uint8Array): string {
+  const [b0, b1, b2] = bytes;
+  if ((b0 === 0xfe && b1 === 0xff) || (b0 === 0xff && b1 === 0xfe)) {
+    return utf16Decode(bytes.length % 2 === 1 ? bytes.subarray(0, -1) : bytes);
+  }
+  if (b0 === 0xef && b1 === 0xbb && b2 === 0xbf) {
+    try {
+      // Strict UTF-8 without TextDecoder, whose jsdom build rejects a
+      // Uint8Array from another realm. A malformed sequence throws.
+      let escaped = '';
+      for (const byte of bytes.subarray(3)) escaped += `%${byte.toString(16).padStart(2, '0')}`;
+      return decodeURIComponent(escaped);
+    } catch {
+      // Not UTF-8 after all: PDFDocEncoding, as below.
+    }
+  }
+  return pdfDocEncodingDecode(bytes);
+}
+
+/**
+ * The one spelling a destination name is written in, for its key and for
+ * every reference to it: plain bytes when the text is printable ASCII,
+ * UTF-16BE with a byte-order mark otherwise. One spelling for both ends,
+ * because a strict reader compares bytes and a lenient one compares text;
+ * and derived from the text, so that a suffix added to a renamed name is
+ * encoded like the rest of it. (ASCII digits appended to UTF-16 bytes decode
+ * as other characters, and `~10` and `~11` came out as the same one.)
+ */
+function destinationBytes(text: string): Uint8Array {
+  let ascii = true;
+  for (let i = 0; i < text.length && ascii; i++) {
+    const code = text.charCodeAt(i);
+    ascii = code >= 0x20 && code <= 0x7e;
+  }
+  if (ascii) return Uint8Array.from(text, (char) => char.charCodeAt(0));
+  const bytes = new Uint8Array(2 + text.length * 2);
+  bytes[0] = 0xfe;
+  bytes[1] = 0xff;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    bytes[2 + i * 2] = code >> 8;
+    bytes[3 + i * 2] = code & 0xff;
+  }
+  return bytes;
+}
+
+/** The views PDF 12.3.2.2 defines for an explicit destination. */
+const DESTINATION_FITS = new Set(['XYZ', 'Fit', 'FitH', 'FitV', 'FitR', 'FitB', 'FitBH', 'FitBV']);
+/** `/FitR` takes the most: left, bottom, right, top. */
+const MAX_DESTINATION_OPERANDS = 4;
+
+/**
+ * A destination array for the merged file, built from a name-tree or `/Dests`
+ * value: the array itself, or the `/D` of a dictionary wrapping it. Undefined
+ * unless it leads with one of this input's pages, names a view the spec
+ * defines, and carries only numbers or nulls after that.
+ *
+ * Built, never copied. The copier follows every reference it is handed, with
+ * no limit of its own, so copying the source array would walk whatever an
+ * extra element points at: a file with one such destination failed the whole
+ * combine with a stack overflow. Here only the page reference goes through
+ * the copier, and that page is already copied. A destination aimed anywhere
+ * else was dangling to begin with.
+ */
+function sanitizedDestination(
   value: PDFObject | undefined,
   pageRefs: Set<string>,
+  copier: PDFObjectCopier,
+  context: PDFContext,
 ): PDFArray | undefined {
-  const array = value instanceof PDFDict ? value.lookup(PDFName.of('D')) : value;
-  if (!(array instanceof PDFArray)) return undefined;
-  const target = array.get(0);
-  return target instanceof PDFRef && pageRefs.has(target.toString()) ? array : undefined;
+  const source = value instanceof PDFDict ? value.lookup(PDFName.of('D')) : value;
+  if (!(source instanceof PDFArray)) return undefined;
+  if (source.size() > 2 + MAX_DESTINATION_OPERANDS) return undefined;
+  const target = source.get(0);
+  if (!(target instanceof PDFRef) || !pageRefs.has(target.toString())) return undefined;
+  // A lone page reference is not valid, but its meaning is plain enough.
+  const fit = source.size() > 1 ? source.lookup(1) : PDFName.of('Fit');
+  if (!(fit instanceof PDFName) || !DESTINATION_FITS.has(fit.decodeText())) return undefined;
+
+  const destination = PDFArray.withContext(context);
+  destination.push(copier.copy(target));
+  destination.push(fit);
+  for (let i = 2; i < source.size(); i++) {
+    // `lookup` resolves one reference and stops: a number behind a reference
+    // is still a number, and anything else is refused without being walked.
+    const operand = source.lookup(i);
+    if (operand instanceof PDFNumber) destination.push(PDFNumber.of(operand.asNumber()));
+    else if (operand === PDFNull) destination.push(PDFNull);
+    else return undefined;
+  }
+  return destination;
 }
 
 interface CollectedDestinations {
@@ -554,11 +727,17 @@ interface CollectedDestinations {
 /**
  * Read one input's named destinations from both places they live: the
  * `/Names` `/Dests` name tree (string keys) and the older catalog `/Dests`
- * dictionary (name keys). The first definition of an identity wins. The walk
- * is bounded by depth, by a visited set of node refs (cycles) and by a cap on
- * pairs examined.
+ * dictionary (name keys). Each is returned already rebuilt for the merged
+ * file (see {@link sanitizedDestination}). The first definition of an
+ * identity wins. The walk is bounded by depth, by a visited set of nodes
+ * (cycles) and by a cap on pairs examined.
  */
-function collectNamedDestinations(src: PDFDocument, pageRefs: Set<string>): CollectedDestinations {
+function collectNamedDestinations(
+  src: PDFDocument,
+  pageRefs: Set<string>,
+  copier: PDFObjectCopier,
+  context: PDFContext,
+): CollectedDestinations {
   const found: CollectedDestinations = { strings: new Map(), names: new Map() };
   let examined = 0;
 
@@ -566,12 +745,15 @@ function collectNamedDestinations(src: PDFDocument, pageRefs: Set<string>): Coll
   if (dests) {
     for (const [key, value] of dests.entries()) {
       if (++examined > MAX_NAMED_DESTINATIONS_PER_INPUT) break;
-      const array = validDestination(
+      const id = key.decodeText();
+      if (found.names.has(id)) continue;
+      const destination = sanitizedDestination(
         value instanceof PDFRef ? src.context.lookup(value) : value,
         pageRefs,
+        copier,
+        context,
       );
-      const id = key.decodeText();
-      if (array && !found.names.has(id)) found.names.set(id, array);
+      if (destination) found.names.set(id, destination);
     }
   }
 
@@ -588,9 +770,10 @@ function collectNamedDestinations(src: PDFDocument, pageRefs: Set<string>): Coll
       if (++examined > MAX_NAMED_DESTINATIONS_PER_INPUT) return found;
       const key = pairs.lookup(i);
       if (!(key instanceof PDFString || key instanceof PDFHexString)) continue;
-      const array = validDestination(pairs.lookup(i + 1), pageRefs);
-      const id = bytesToIdentity(key.asBytes());
-      if (array && !found.strings.has(id)) found.strings.set(id, array);
+      const id = destinationText(stringBytes(key));
+      if (found.strings.has(id)) continue;
+      const destination = sanitizedDestination(pairs.lookup(i + 1), pageRefs, copier, context);
+      if (destination) found.strings.set(id, destination);
     }
     const kids = arrayOf(entry.node.lookup(PDFName.of('Kids')));
     if (!kids || entry.depth >= MAX_NAME_TREE_DEPTH) continue;
@@ -607,8 +790,8 @@ function collectNamedDestinations(src: PDFDocument, pageRefs: Set<string>): Coll
  * just copied its pages so each destination's page ref lands on the
  * already-copied page. Names stay unique across inputs: a name an earlier
  * input already owns is renamed for this (later) input by appending `~2`,
- * `~3`, and so on, which needs no escaping in a name or a string. Returns the
- * renames, so the links that use them can follow.
+ * `~3`, and so on to its text. Returns what this input's references have to
+ * become, so its links can follow (see {@link DestinationRenames}).
  *
  * Only destinations are carried. Nothing else under an input's `/Names`
  * (embedded files, JavaScript, and so on) is copied: each is its own feature
@@ -619,11 +802,18 @@ function mergeNamedDestinations(
   copier: PDFObjectCopier,
   pageRefs: Set<string>,
   merged: MergedDestinations,
+  context: PDFContext,
 ): DestinationRenames {
-  const found = collectNamedDestinations(src, pageRefs);
-  const renames: DestinationRenames = { strings: new Map(), names: new Map() };
+  const found = collectNamedDestinations(src, pageRefs, copier, context);
   // This input's own identities, so a renamed entry cannot land on a sibling.
   const taken = new Set<string>([...found.strings.keys(), ...found.names.keys()]);
+  const renames: DestinationRenames = {
+    strings: new Map(),
+    names: new Map(),
+    defined: new Set(taken),
+    orphans: new Map(),
+    used: merged.used,
+  };
   const placed: string[] = [];
 
   const place = (
@@ -631,7 +821,7 @@ function mergeNamedDestinations(
     into: Map<string, PDFArray>,
     renamed: Map<string, string>,
   ): void => {
-    for (const [id, array] of from) {
+    for (const [id, destination] of from) {
       let finalId = id;
       if (merged.used.has(id)) {
         for (let n = 2; ; n++) {
@@ -644,7 +834,7 @@ function mergeNamedDestinations(
         renamed.set(id, finalId);
         taken.add(finalId);
       }
-      into.set(finalId, copier.copy(array));
+      into.set(finalId, destination);
       placed.push(finalId);
     }
   };
@@ -656,26 +846,61 @@ function mergeNamedDestinations(
   return renames;
 }
 
-/** The replacement for a destination reference naming a renamed destination. */
+/**
+ * The identity a reference to `id` has to carry in the merged file, or
+ * undefined to leave it as it is. A renamed destination gives its new name. A
+ * strict reader looks a name object up in `/Dests` and a string in the name
+ * tree, but lenient ones (PDF.js) try both, so the reference's own kind is
+ * tried first and the other kind second. A name this input does not define at
+ * all gets a reserved orphan name (see {@link DestinationRenames}): `~0`
+ * appended until it is free, then taken out of the shared namespace so no
+ * later input can define it either.
+ */
+function renamedIdentity(
+  id: string,
+  own: Map<string, string>,
+  other: Map<string, string>,
+  renames: DestinationRenames,
+): string | undefined {
+  const renamed = own.get(id) ?? other.get(id);
+  if (renamed !== undefined) return renamed;
+  if (renames.defined.has(id)) return undefined;
+  let orphan = renames.orphans.get(id);
+  if (orphan === undefined) {
+    orphan = `${id}~0`;
+    while (renames.used.has(orphan) || renames.defined.has(orphan)) orphan += '~0';
+    renames.used.add(orphan);
+    renames.orphans.set(id, orphan);
+  }
+  return orphan;
+}
+
+/**
+ * The replacement for a reference to a named destination, or undefined to
+ * keep it. A string reference is always replaced, renamed or not: by the one
+ * spelling its destination's key is written in (see {@link destinationBytes}),
+ * so the two still match for a reader that compares bytes.
+ */
 function renamedTarget(
   value: PDFObject | undefined,
   renames: DestinationRenames,
 ): PDFObject | undefined {
   if (value instanceof PDFName) {
-    const next = renames.names.get(value.decodeText());
+    const next = renamedIdentity(value.decodeText(), renames.names, renames.strings, renames);
     return next === undefined ? undefined : nameFromText(next);
   }
   if (value instanceof PDFString || value instanceof PDFHexString) {
-    const next = renames.strings.get(bytesToIdentity(value.asBytes()));
-    return next === undefined ? undefined : identityToHex(next);
+    const id = destinationText(stringBytes(value));
+    const next = renamedIdentity(id, renames.strings, renames.names, renames) ?? id;
+    return hexFromBytes(destinationBytes(next));
   }
   return undefined;
 }
 
 /**
  * Point a `/GoTo` action (and the actions chained after it through `/Next`) at
- * a renamed destination. Depth-capped, with a visited set, since `/Next` is
- * attacker-shaped and can loop.
+ * the name its destination has in the merged file. Depth-capped, with a
+ * visited set, since `/Next` is attacker-shaped and can loop.
  */
 function rewriteAction(
   action: PDFDict,
@@ -703,10 +928,11 @@ function rewriteAction(
 
 /**
  * Update the links on `pages` (this input's copied pages) that name a
- * destination which had to be renamed: an annotation's `/Dest`, its `/A`
- * action chain and its `/AA` additional actions. Only run for an input that
- * had renames, and only over its own pages, so another input's links, which
- * name their own destinations, are never touched.
+ * destination: an annotation's `/Dest`, its `/A` action chain and its `/AA`
+ * additional actions. A renamed destination's links follow it, and a link to
+ * a name this input never defined is kept dangling (see
+ * {@link DestinationRenames}). Run over each input's own pages only, so
+ * another input's links, which name their own destinations, are never touched.
  */
 function rewriteDestinationReferences(pages: PDFPage[], renames: DestinationRenames): void {
   const visited = new Set<PDFDict>();
@@ -739,12 +965,14 @@ function rewriteDestinationReferences(pages: PDFPage[], renames: DestinationRena
 function writeNamedDestinations(out: PDFDocument, merged: MergedDestinations): void {
   const context = out.context;
   if (merged.strings.size > 0) {
-    const entries = [...merged.strings].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    const leaf = (chunk: Array<[string, PDFArray]>): PDFDict => {
+    const entries = [...merged.strings]
+      .map(([text, destination]) => ({ key: destinationBytes(text), destination }))
+      .sort((a, b) => compareBytes(a.key, b.key));
+    const leaf = (chunk: typeof entries): PDFDict => {
       const names = PDFArray.withContext(context);
-      for (const [id, array] of chunk) {
-        names.push(identityToHex(id));
-        names.push(array);
+      for (const { key, destination } of chunk) {
+        names.push(hexFromBytes(key));
+        names.push(destination);
       }
       return context.obj({ Names: names });
     };
@@ -758,7 +986,7 @@ function writeNamedDestinations(out: PDFDocument, merged: MergedDestinations): v
         const kid = leaf(chunk);
         kid.set(
           PDFName.of('Limits'),
-          context.obj([identityToHex(chunk[0][0]), identityToHex(chunk[chunk.length - 1][0])]),
+          context.obj([hexFromBytes(chunk[0].key), hexFromBytes(chunk[chunk.length - 1].key)]),
         );
         kids.push(context.register(kid));
       }
@@ -768,7 +996,7 @@ function writeNamedDestinations(out: PDFDocument, merged: MergedDestinations): v
   }
   if (merged.names.size > 0) {
     const dests = context.obj({});
-    for (const [id, array] of merged.names) dests.set(nameFromText(id), array);
+    for (const [id, destination] of merged.names) dests.set(nameFromText(id), destination);
     out.catalog.set(PDFName.of('Dests'), dests);
   }
 }

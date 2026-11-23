@@ -222,6 +222,52 @@ describe('combinePdfs structure', () => {
     expect(textOf(second.lookup(PDFName.of('D')))).toBe('intro~2');
   });
 
+  // A file split out of a larger one often keeps links to names it no longer
+  // defines. They were dead in that file and must stay dead: left alone, the
+  // other input's destination of the same name would capture them.
+  it('keeps a link to an undefined name from resolving into another input', async () => {
+    const dangling = () => buildNamed(() => ({ link: { Dest: PDFString.of('intro') } }));
+    const defining = () =>
+      buildNamed((ctx, pages) => ({
+        names: ctx.obj({ Names: [PDFString.of('intro'), [pages[1].ref, PDFName.of('Fit')]] }),
+        link: { Dest: PDFString.of('intro') },
+      }));
+    const target = (doc: PDFDocument, pageIndex: number) =>
+      namedDestination(doc, textOf(linkOf(doc, pageIndex).lookup(PDFName.of('Dest'))));
+
+    // The dangling file first: the name is defined only by a LATER input.
+    const before = await combineAll(await dangling(), await defining());
+    expect(target(before, 0)).toBeUndefined();
+    expect(target(before, 2)).toBe(before.getPages()[3].ref.toString());
+
+    // And second: the name is already defined by an earlier input.
+    const after = await combineAll(await defining(), await dangling());
+    expect(target(after, 0)).toBe(after.getPages()[1].ref.toString());
+    expect(target(after, 2)).toBeUndefined();
+  });
+
+  it('keeps a dangling GoTo action dangling, and its orphan name out of reach', async () => {
+    const dangling = await buildNamed(() => ({
+      link: { A: { S: 'GoTo', D: PDFString.of('intro') } },
+    }));
+    // This input defines the very name the orphan would have been given.
+    const squatter = await buildNamed((ctx, pages) => ({
+      names: ctx.obj({
+        Names: [
+          PDFString.of('intro'),
+          [pages[1].ref, PDFName.of('Fit')],
+          PDFString.of('intro~0'),
+          [pages[1].ref, PDFName.of('Fit')],
+        ],
+      }),
+    }));
+    const out = await combineAll(dangling, squatter);
+    const action = linkOf(out, 0).lookup(PDFName.of('A'), PDFDict);
+    expect(namedDestination(out, textOf(action.lookup(PDFName.of('D'))))).toBeUndefined();
+    // Both of the second input's own names still resolve, to its own page.
+    expect(namedDestination(out, 'intro')).toBe(out.getPages()[3].ref.toString());
+  });
+
   it('carries the older catalog /Dests dictionary and renames on collision', async () => {
     const make = () =>
       buildNamed((ctx, pages) => ({
@@ -256,6 +302,70 @@ describe('combinePdfs structure', () => {
     const pageRefs = out.getPages().map((p) => p.ref.toString());
     expect(namedDestination(out, 'bad')).toBeUndefined();
     expect(namedDestination(out, 'good')).toBe(pageRefs[1]);
+  });
+
+  // The copier follows every reference it is handed, with no limit of its own.
+  // A destination is rebuilt from its page and its plain operands, so whatever
+  // an extra element points at is never walked: this input used to fail the
+  // whole combine with a stack overflow.
+  it('drops a destination with an extra element without walking what it points at', async () => {
+    const a = await buildNamed((ctx, pages) => {
+      let chain = ctx.register(ctx.obj({}));
+      for (let i = 0; i < 2500; i++) chain = ctx.register(ctx.obj({ Next: chain }));
+      return {
+        names: ctx.obj({
+          Names: [
+            PDFString.of('deep'),
+            [pages[1].ref, PDFName.of('Fit'), chain],
+            PDFString.of('fine'),
+            [pages[1].ref, PDFName.of('Fit')],
+          ],
+        }),
+      };
+    });
+    const out = await combineAll(a, await build('B'));
+    expect(namedDestination(out, 'deep')).toBeUndefined();
+    expect(namedDestination(out, 'fine')).toBe(out.getPages()[1].ref.toString());
+  });
+
+  it('keeps a view and its operands, and refuses what the spec does not define', async () => {
+    const a = await buildNamed((ctx, pages) => {
+      const page = pages[1].ref;
+      return {
+        names: ctx.obj({
+          Names: [
+            PDFString.of('bare'),
+            [page],
+            PDFString.of('bogus'),
+            [page, PDFName.of('Sideways')],
+            PDFString.of('many'),
+            [page, PDFName.of('FitR'), 1, 2, 3, 4, 5],
+            PDFString.of('text'),
+            [page, PDFName.of('FitH'), PDFString.of('x')],
+            PDFString.of('wrapped'),
+            { D: [page, PDFName.of('FitH'), 700] },
+            PDFString.of('xyz'),
+            [page, PDFName.of('XYZ'), 10, 20, null],
+          ],
+        }),
+      };
+    });
+    const out = await combineAll(a, await buildNamed(() => ({})));
+    const pairs = out.catalog
+      .lookup(PDFName.of('Names'), PDFDict)
+      .lookup(PDFName.of('Dests'), PDFDict)
+      .lookup(PDFName.of('Names'), PDFArray);
+    const views: Record<string, string> = {};
+    for (let i = 0; i + 1 < pairs.size(); i += 2) {
+      const [target, ...view] = pairs.lookup(i + 1, PDFArray).asArray();
+      expect(target.toString()).toBe(out.getPages()[1].ref.toString());
+      views[textOf(pairs.lookup(i))] = view.map((item) => item.toString()).join(' ');
+    }
+    expect(views).toEqual({
+      bare: '/Fit',
+      wrapped: '/FitH 700',
+      xyz: '/XYZ 10 20 null',
+    });
   });
 
   it('reads a name tree that is two levels of /Kids', async () => {
