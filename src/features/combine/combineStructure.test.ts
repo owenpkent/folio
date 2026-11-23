@@ -142,6 +142,93 @@ async function buildNamed(
   return doc.save();
 }
 
+/** An input of `count` blank pages whose /PageLabels is whatever `labels` returns, if given. */
+async function buildLabelled(
+  count: number,
+  labels?: (ctx: PDFContext) => PDFObject,
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.create({ updateMetadata: false });
+  for (let i = 0; i < count; i++) doc.addPage([300, 300]);
+  if (labels) doc.catalog.set(PDFName.of('PageLabels'), labels(doc.context));
+  return doc.save();
+}
+
+/** The output's page-label ranges as [start index, label dictionary], in tree order. */
+function labelRanges(doc: PDFDocument): Array<[number, PDFDict]> {
+  const found: Array<[number, PDFDict]> = [];
+  const walk = (node: PDFObject | undefined): void => {
+    if (!(node instanceof PDFDict)) return;
+    const nums = node.lookup(PDFName.of('Nums'));
+    for (let i = 0; nums instanceof PDFArray && i + 1 < nums.size(); i += 2) {
+      const index = nums.lookup(i);
+      const label = nums.lookup(i + 1);
+      if (index instanceof PDFNumber && label instanceof PDFDict) {
+        found.push([index.asNumber(), label]);
+      }
+    }
+    const kids = node.lookup(PDFName.of('Kids'));
+    for (let i = 0; kids instanceof PDFArray && i < kids.size(); i++) walk(kids.lookup(i));
+  };
+  walk(doc.catalog.lookup(PDFName.of('PageLabels')));
+  return found;
+}
+
+function roman(n: number, upper: boolean): string {
+  const table: Array<[number, string]> = [
+    [1000, 'm'],
+    [900, 'cm'],
+    [500, 'd'],
+    [400, 'cd'],
+    [100, 'c'],
+    [90, 'xc'],
+    [50, 'l'],
+    [40, 'xl'],
+    [10, 'x'],
+    [9, 'ix'],
+    [5, 'v'],
+    [4, 'iv'],
+    [1, 'i'],
+  ];
+  let text = '';
+  for (const [value, symbol] of table) {
+    while (n >= value) {
+      text += symbol;
+      n -= value;
+    }
+  }
+  return upper ? text.toUpperCase() : text;
+}
+
+/** A, B, ..., Z, AA, BB, ..., ZZ, AAA (PDF 12.4.2). */
+function letters(n: number, upper: boolean): string {
+  const letter = String.fromCharCode((upper ? 65 : 97) + ((n - 1) % 26));
+  return letter.repeat(Math.floor((n - 1) / 26) + 1);
+}
+
+/** The label every page of `doc` shows, computed from its /PageLabels per the spec. */
+function pageLabels(doc: PDFDocument): string[] {
+  const ranges = labelRanges(doc).sort((a, b) => a[0] - b[0]);
+  return doc.getPages().map((_, page) => {
+    let range: [number, PDFDict] | undefined;
+    for (const candidate of ranges) if (candidate[0] <= page) range = candidate;
+    if (!range) return String(page + 1);
+    const [start, dict] = range;
+    const prefix = dict.lookup(PDFName.of('P'));
+    const startAt = dict.lookup(PDFName.of('St'));
+    const number = (startAt instanceof PDFNumber ? startAt.asNumber() : 1) + (page - start);
+    const style = textOf(dict.lookup(PDFName.of('S')));
+    const numeric =
+      style === 'D'
+        ? String(number)
+        : style === 'R' || style === 'r'
+          ? roman(number, style === 'R')
+          : style === 'A' || style === 'a'
+            ? letters(number, style === 'A')
+            : '';
+    return textOf(prefix) + numeric;
+  });
+}
+
 async function combineAll(...inputs: Uint8Array[]): Promise<PDFDocument> {
   const { bytes } = await combinePdfs(
     inputs.map((data, i) => ({ name: `in${i}.pdf`, bytes: data })),
@@ -197,10 +284,180 @@ describe('combinePdfs structure', () => {
     expect(namedDestination(input, 'dest_B')).toBeUndefined();
   });
 
-  // GAP: /PageLabels are never copied.
-  it.fails('preserves page labels', async () => {
+  it('preserves page labels', async () => {
     const out = await combined();
-    expect(out.catalog.lookupMaybe(PDFName.of('PageLabels'), PDFDict)).toBeDefined();
+    expect(pageLabels(out)).toEqual(['i', 'ii', 'i', 'ii']);
+  });
+
+  it('restarts an unlabelled input at 1 after a labelled one', async () => {
+    const out = await combineAll(await build('A'), await buildLabelled(2));
+    expect(pageLabels(out)).toEqual(['i', 'ii', '1', '2']);
+  });
+
+  it('gives a labelled input its own labels after an unlabelled one', async () => {
+    const out = await combineAll(await buildLabelled(2), await build('B'));
+    expect(pageLabels(out)).toEqual(['1', '2', 'i', 'ii']);
+  });
+
+  // A file can parse and hold no pages at all. It has nothing to label, and its
+  // offset is the next input's, so a range for it would put two entries at one
+  // index of the number tree.
+  it('gives a zero-page input no label range', async () => {
+    // Buffer, not TextEncoder: under jsdom that hands back another realm's
+    // Uint8Array, which pdf-lib's own instanceof check rejects.
+    const empty = Uint8Array.from(
+      Buffer.from(
+        [
+          '%PDF-1.7',
+          // A comment line, so the file clears combine's minimum-size check.
+          '% ' + 'padding '.repeat(60),
+          '1 0 obj',
+          '<< /Type /Catalog /Pages 2 0 R >>',
+          'endobj',
+          '2 0 obj',
+          '<< /Type /Pages /Kids [] /Count 0 >>',
+          'endobj',
+          'trailer',
+          '<< /Root 1 0 R /Size 3 >>',
+          '%%EOF',
+          '',
+        ].join('\n'),
+        'latin1',
+      ),
+    );
+    expect((await PDFDocument.load(empty, { updateMetadata: false })).getPageCount()).toBe(0);
+    const out = await combineAll(
+      await buildLabelled(2, (ctx) => ctx.obj({ Nums: [0, { S: 'r' }] })),
+      empty,
+      await buildLabelled(2),
+    );
+    expect(labelRanges(out).map(([index]) => index)).toEqual([0, 2]);
+    expect(pageLabels(out)).toEqual(['i', 'ii', '1', '2']);
+  });
+
+  it('writes no /PageLabels when no input has any', async () => {
+    const out = await combineAll(await buildLabelled(2), await buildLabelled(3));
+    expect(out.catalog.has(PDFName.of('PageLabels'))).toBe(false);
+    expect(pageLabels(out)).toEqual(['1', '2', '3', '4', '5']);
+  });
+
+  it('keeps a prefix and a start number', async () => {
+    const a = await buildLabelled(2, (ctx) =>
+      ctx.obj({ Nums: [0, { S: 'D', P: PDFString.of('A-'), St: 5 }] }),
+    );
+    const out = await combineAll(a, await buildLabelled(1));
+    expect(pageLabels(out)).toEqual(['A-5', 'A-6', '1']);
+  });
+
+  it('keeps a prefix with parentheses and non-Latin text byte-exact', async () => {
+    const prefix = PDFHexString.fromText('章 (a)\\');
+    const a = await buildLabelled(2, (ctx) => ctx.obj({ Nums: [0, { S: 'D', P: prefix }] }));
+    const out = await combineAll(await buildLabelled(1), a);
+    expect(pageLabels(out)).toEqual(['1', '章 (a)\\1', '章 (a)\\2']);
+    const written = labelRanges(out).find(([index]) => index === 1)?.[1];
+    const bytes = written?.lookup(PDFName.of('P'));
+    expect(bytes instanceof PDFHexString && Array.from(bytes.asBytes())).toEqual(
+      Array.from(prefix.asBytes()),
+    );
+  });
+
+  it('adds a decimal range at the first page of an input whose labels start later', async () => {
+    const a = await buildLabelled(2, (ctx) => ctx.obj({ Nums: [1, { S: 'r' }] }));
+    const out = await combineAll(await build('A'), a);
+    expect(pageLabels(out)).toEqual(['i', 'ii', '1', 'i']);
+  });
+
+  it('reads a page-label tree that uses /Kids', async () => {
+    const a = await buildLabelled(2, (ctx) => {
+      const leaf = ctx.register(ctx.obj({ Nums: [0, { S: 'A' }] }));
+      return ctx.obj({ Kids: [leaf] });
+    });
+    const out = await combineAll(a, await buildLabelled(2));
+    expect(pageLabels(out)).toEqual(['A', 'B', '1', '2']);
+  });
+
+  it('splits more than 64 ranges into /Kids with ascending /Limits', async () => {
+    const a = await buildLabelled(70, (ctx) => {
+      const nums = PDFArray.withContext(ctx);
+      // Reverse order in the input, so the output sort is what is being tested.
+      for (let i = 69; i >= 0; i--) {
+        nums.push(PDFNumber.of(i));
+        nums.push(ctx.obj({ P: PDFString.of(`p${i}-`) }));
+      }
+      return ctx.obj({ Nums: nums });
+    });
+    const out = await combineAll(a, await buildLabelled(2));
+    const root = out.catalog.lookup(PDFName.of('PageLabels'), PDFDict);
+    expect(root.has(PDFName.of('Nums'))).toBe(false);
+    const kids = root.lookup(PDFName.of('Kids'), PDFArray);
+    expect(kids.size()).toBe(2);
+    const limits: number[][] = [];
+    for (let i = 0; i < kids.size(); i++) {
+      const kid = kids.lookup(i, PDFDict);
+      const pair = kid.lookup(PDFName.of('Limits'), PDFArray);
+      const nums = kid.lookup(PDFName.of('Nums'), PDFArray);
+      const first = pair.lookup(0, PDFNumber).asNumber();
+      const last = pair.lookup(1, PDFNumber).asNumber();
+      expect(nums.lookup(0, PDFNumber).asNumber()).toBe(first);
+      expect(nums.lookup(nums.size() - 2, PDFNumber).asNumber()).toBe(last);
+      limits.push([first, last]);
+    }
+    expect(limits).toEqual([
+      [0, 63],
+      [64, 70],
+    ]);
+    const labels = pageLabels(out);
+    expect(labels.slice(0, 3)).toEqual(['p0-', 'p1-', 'p2-']);
+    expect(labels[69]).toBe('p69-');
+    expect(labels.slice(70)).toEqual(['1', '2']);
+  });
+
+  it('survives malformed page-label trees and keeps the valid entries beside them', async () => {
+    const n = PDFName.of;
+    const out = await combineAll(
+      // /PageLabels is a number.
+      await buildLabelled(2, () => PDFNumber.of(3)),
+      // Non-integer and out-of-range indices, non-dictionary values, one good pair.
+      await buildLabelled(2, (ctx) =>
+        ctx.obj({
+          Nums: [
+            PDFNumber.of(0.5),
+            { S: 'a' },
+            99,
+            { S: 'a' },
+            -1,
+            { S: 'a' },
+            1,
+            5,
+            0,
+            { S: 'r' },
+          ],
+        }),
+      ),
+      // A kid that is a number, a kid that refers back to the root, a good pair.
+      await buildLabelled(2, (ctx) => {
+        const root = ctx.obj({ Nums: [1, { S: 'a' }] });
+        const rootRef = ctx.register(root);
+        root.set(n('Kids'), ctx.obj([7, rootRef]));
+        return rootRef;
+      }),
+    );
+    expect(pageLabels(out)).toEqual(['1', '2', 'i', 'ii', '1', 'a']);
+  });
+
+  it('turns an unknown style into decimal, and drops a non-integer start and a non-string prefix', async () => {
+    const a = await buildLabelled(2, (ctx) =>
+      ctx.obj({ Nums: [0, { S: 'Q', P: PDFString.of('x-'), St: 3, Junk: 1 }] }),
+    );
+    const b = await buildLabelled(2, (ctx) =>
+      ctx.obj({ Nums: [0, { S: 'D', P: PDFNumber.of(7), St: PDFNumber.of(2.5) }] }),
+    );
+    const out = await combineAll(a, b);
+    expect(pageLabels(out)).toEqual(['x-3', 'x-4', '1', '2']);
+    const first = labelRanges(out)[0][1];
+    expect(first.lookup(PDFName.of('S'))).toBe(PDFName.of('D'));
+    expect(first.has(PDFName.of('Junk'))).toBe(false);
+    expect(first.lookup(PDFName.of('St'), PDFNumber).asNumber()).toBe(3);
   });
 
   it('renames a colliding named destination and the later input link that uses it', async () => {
