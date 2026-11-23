@@ -328,6 +328,40 @@ function landings(items: ResolvedBookmark[]): Array<[string, number | null]> {
   return items.map((item) => [item.title, item.page]);
 }
 
+/**
+ * A two-page tagged input whose one bookmark has only `/SE`: no `/Dest` and
+ * no `/A` unless `action` is given. `element` builds the structure it points
+ * at and returns the element.
+ */
+async function taggedBookmark(
+  element: (ctx: PDFContext, pages: [PDFRef, PDFRef], root: PDFRef) => PDFRef,
+  action?: (ctx: PDFContext) => PDFObject,
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.create({ updateMetadata: false });
+  const pages: [PDFRef, PDFRef] = [doc.addPage([300, 300]).ref, doc.addPage([300, 300]).ref];
+  const ctx = doc.context;
+  const treeRoot = ctx.register(ctx.obj({ Type: 'StructTreeRoot' }));
+  doc.catalog.set(PDFName.of('StructTreeRoot'), treeRoot);
+  doc.catalog.set(PDFName.of('MarkInfo'), ctx.obj({ Marked: true }));
+  const se = element(ctx, pages, treeRoot);
+  const item = ctx.obj({ Title: PDFString.of('tagged'), SE: se });
+  if (action) item.set(PDFName.of('A'), action(ctx));
+  const root: PDFDict = ctx.obj({ Type: 'Outlines' });
+  const rootRef = ctx.register(root);
+  const itemRef = ctx.register(item);
+  item.set(PDFName.of('Parent'), rootRef);
+  root.set(PDFName.of('First'), itemRef);
+  root.set(PDFName.of('Last'), itemRef);
+  root.set(PDFName.of('Count'), PDFNumber.of(1));
+  doc.catalog.set(PDFName.of('Outlines'), rootRef);
+  return doc.save();
+}
+
+/** A structure element: `/S /Sect`, a parent, and whatever else is given. */
+function sect(ctx: PDFContext, parent: PDFRef, extra: Record<string, unknown> = {}): PDFRef {
+  return ctx.register(ctx.obj({ Type: 'StructElem', S: 'Sect', P: parent, ...extra } as never));
+}
+
 describe('bookmarks, as PDF.js resolves them', () => {
   it('jumps each bookmark to a page of its own file', async () => {
     const make = (tag: string) =>
@@ -378,6 +412,99 @@ describe('bookmarks, as PDF.js resolves them', () => {
       ['by name', 1],
       ['by name', 3],
     ]);
+  });
+
+  // Tagged PDFs can point a bookmark at a structure element instead of a page.
+  // PDF.js finds the page through the element's /Pg, a descendant's or an
+  // ancestor's, and the rebuilt bookmark has to land on the same page.
+  it.each([
+    [
+      'its own /Pg',
+      (ctx: PDFContext, pages: [PDFRef, PDFRef], root: PDFRef) => sect(ctx, root, { Pg: pages[1] }),
+    ],
+    [
+      'a child element',
+      (ctx: PDFContext, pages: [PDFRef, PDFRef], root: PDFRef) => {
+        const child = ctx.obj({ Type: 'StructElem', S: 'P', Pg: pages[1] });
+        const se = sect(ctx, root, { K: [ctx.register(child)] });
+        child.set(PDFName.of('P'), se);
+        return se;
+      },
+    ],
+    [
+      'a marked-content reference two levels down',
+      (ctx: PDFContext, pages: [PDFRef, PDFRef], root: PDFRef) => {
+        const mcr = ctx.obj({ Type: 'MCR', Pg: pages[1], MCID: 0 });
+        const middle = ctx.obj({ Type: 'StructElem', S: 'P', K: [mcr] });
+        const se = sect(ctx, root, { K: ctx.register(middle) });
+        middle.set(PDFName.of('P'), se);
+        return se;
+      },
+    ],
+    [
+      'its parent',
+      (ctx: PDFContext, pages: [PDFRef, PDFRef], root: PDFRef) => {
+        const parent = sect(ctx, root, { Pg: pages[1] });
+        return sect(ctx, parent);
+      },
+    ],
+  ])('lands a bookmark that has only /SE where %s puts it', async (_where, element) => {
+    const tagged = await taggedBookmark(element);
+    expect(landings(await outlineTargets(tagged))).toEqual([['tagged', 1]]);
+    const front = await bookmarked([{ title: 'front', dest: toPage(0) }]);
+    expect(landings(await combinedOutline(front, tagged))).toEqual([
+      ['front', 0],
+      ['tagged', 3],
+    ]);
+  });
+
+  it('does not let /SE give a web-link bookmark a page, or follow a page from another file', async () => {
+    const link = await taggedBookmark(
+      (ctx, pages, root) => sect(ctx, root, { Pg: pages[1] }),
+      (ctx) => ctx.obj({ S: 'URI', URI: PDFString.of('https://example.com/') }),
+    );
+    const foreign = await taggedBookmark((ctx, _pages, root) => {
+      const stray = ctx.register(ctx.obj({ Type: 'Page' }));
+      return sect(ctx, root, { Pg: stray });
+    });
+    expect(landings(await combinedOutline(link, foreign))).toEqual([
+      ['tagged', null],
+      ['tagged', null],
+    ]);
+  });
+
+  // PDF.js aims at the top left of the element's /BBox attribute.
+  it('aims a /SE bookmark at the top left of the element box', async () => {
+    const tagged = await taggedBookmark((ctx, pages, root) =>
+      sect(ctx, root, { Pg: pages[1], A: { O: 'Layout', BBox: [40, 100, 200, 250] } }),
+    );
+    const { bytes } = await combinePdfs([
+      { name: 'a.pdf', bytes: await input() },
+      { name: 'b.pdf', bytes: tagged },
+    ]);
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const task = pdfjs.getDocument({ data: bytes.slice(), useSystemFonts: true });
+    const pdf = await task.promise;
+    try {
+      const [item] = (await pdf.getOutline()) ?? [];
+      const dest = item?.dest;
+      expect(Array.isArray(dest)).toBe(true);
+      const [page, view, left, top, zoom] = dest as unknown[];
+      expect(await pdf.getPageIndex(page as Parameters<typeof pdf.getPageIndex>[0])).toBe(3);
+      expect([view, left, top, zoom]).toEqual([{ name: 'XYZ' }, 40, 250, null]);
+    } finally {
+      await task.destroy();
+    }
+  });
+
+  it('does not hang on a structure element that is its own child', async () => {
+    const looped = await taggedBookmark((ctx, _pages, root) => {
+      const se = ctx.obj({ Type: 'StructElem', S: 'Sect', P: root });
+      const ref = ctx.register(se);
+      se.set(PDFName.of('K'), ctx.obj([ref]));
+      return ref;
+    });
+    expect(landings(await combinedOutline(looped, await input()))).toEqual([['tagged', null]]);
   });
 
   it('keeps a bookmark to a name its file never defines unresolved', async () => {

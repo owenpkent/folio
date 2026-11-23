@@ -1341,25 +1341,111 @@ function sanitizedOutlineItem(
 ): OutlineNode {
   const title = item.lookup(PDFName.of('Title'));
   let destination = item.lookup(PDFName.of('Dest'));
+  const action = dictOf(item.lookup(PDFName.of('A')));
   if (destination === undefined || destination === PDFNull) {
-    const action = dictOf(item.lookup(PDFName.of('A')));
     destination =
       action && action.lookup(PDFName.of('S')) === PDFName.of('GoTo')
         ? action.lookup(PDFName.of('D'))
         : undefined;
   }
+  // A tagged bookmark may have only `/SE`. A reader falls back on it when
+  // nothing else gave the bookmark somewhere to go, so it is tried last, and
+  // not for a bookmark whose action did something else (a web link, say),
+  // which never pointed at the element's page.
+  const otherAction = action && action.lookup(PDFName.of('S')) !== PDFName.of('GoTo');
   const count = item.lookup(PDFName.of('Count'));
   return {
     title:
       title instanceof PDFString || title instanceof PDFHexString
         ? destinationText(stringBytes(title))
         : '',
-    target: outlineTarget(destination, pageRefs, copier, renames, context),
+    target:
+      outlineTarget(destination, pageRefs, copier, renames, context) ??
+      (otherAction ? undefined : structElementDestination(item, pageRefs, copier, context)),
     color: outlineColor(item.lookup(PDFName.of('C'))),
     flags: (integerOf(item.lookup(PDFName.of('F'))) ?? 0) & 3,
     open: count instanceof PDFNumber && count.asNumber() > 0,
     children: [],
   };
+}
+
+/** Ceilings on the search for the page a structure element is on (see {@link structElementDestination}). */
+const MAX_STRUCT_ELEMENTS_SEARCHED = 10_000;
+const MAX_STRUCT_PARENT_DEPTH = 40;
+
+/** A structure element's `/Pg`, when it is one of this input's pages. */
+function pageOf(element: PDFDict, pageRefs: Set<string>): PDFRef | undefined {
+  const page = element.get(PDFName.of('Pg'));
+  return page instanceof PDFRef && pageRefs.has(page.toString()) ? page : undefined;
+}
+
+/**
+ * The page a tagged bookmark lands on when all it has is `/SE`, a structure
+ * element, as a fresh explicit destination. PDF.js, Folio's reader, follows
+ * these, so a bookmark that worked in its own file must keep working.
+ *
+ * The same search PDF.js makes (`#getDestFromStructElement`): the element's
+ * own `/Pg`; failing that the first `/Pg` among its descendants (`/K`,
+ * breadth first, including marked-content references); failing that the
+ * nearest ancestor's (`/P`, stopping at the structure tree root). The place on
+ * the page is the top left of the element's `/BBox` attribute when it has
+ * one. Bounded, unlike a structure tree: a visited set, a cap on elements
+ * searched and a cap on ancestors. The page has to be one of this input's,
+ * and only that page reference goes through the copier.
+ */
+function structElementDestination(
+  item: PDFDict,
+  pageRefs: Set<string>,
+  copier: PDFObjectCopier,
+  context: PDFContext,
+): PDFArray | undefined {
+  if (!(item.get(PDFName.of('SE')) instanceof PDFRef)) return undefined;
+  const element = dictOf(item.lookup(PDFName.of('SE')));
+  if (!element) return undefined;
+
+  let page = pageOf(element, pageRefs);
+  const visited = new Set<PDFDict>([element]);
+  const queue: PDFDict[] = [element];
+  for (let next = 0; !page && next < queue.length; next++) {
+    const kids = queue[next].lookup(PDFName.of('K'));
+    const list = kids instanceof PDFArray ? kids.asArray().map((_, i) => kids.lookup(i)) : [kids];
+    for (const kid of list) {
+      const child = dictOf(kid);
+      if (!child || visited.has(child)) continue;
+      if (visited.size >= MAX_STRUCT_ELEMENTS_SEARCHED) break;
+      visited.add(child);
+      page = pageOf(child, pageRefs);
+      if (page) break;
+      queue.push(child);
+    }
+  }
+  let current = element;
+  for (let depth = 0; !page && depth < MAX_STRUCT_PARENT_DEPTH; depth++) {
+    const parent = dictOf(current.lookup(PDFName.of('P')));
+    if (!parent || parent.lookup(PDFName.of('Type')) === PDFName.of('StructTreeRoot')) break;
+    page = pageOf(parent, pageRefs);
+    current = parent;
+  }
+  if (!page) return undefined;
+
+  // `/A` is an attribute dictionary here, not an action. PDF.js reads one
+  // dictionary and ignores the array form, and so does this.
+  const corner: [PDFObject, PDFObject] = [PDFNull, PDFNull];
+  const bbox = arrayOf(dictOf(element.lookup(PDFName.of('A')))?.lookup(PDFName.of('BBox')));
+  if (bbox && bbox.size() === 4) {
+    const numbers = bbox.asArray().map((_, i) => bbox.lookup(i));
+    if (numbers.every((value) => value instanceof PDFNumber)) {
+      corner[0] = PDFNumber.of((numbers[0] as PDFNumber).asNumber());
+      corner[1] = PDFNumber.of((numbers[3] as PDFNumber).asNumber());
+    }
+  }
+  const destination = PDFArray.withContext(context);
+  destination.push(copier.copy(page));
+  destination.push(PDFName.of('XYZ'));
+  destination.push(corner[0]);
+  destination.push(corner[1]);
+  destination.push(PDFNull);
+  return destination;
 }
 
 /** The siblings starting at `first`, each with its subtree, bounded by depth, cycles and total. */
