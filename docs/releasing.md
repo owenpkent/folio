@@ -82,6 +82,32 @@ Windows 10 SDK.
 > If `CARGO_TARGET_DIR` is set (a redirected Rust output dir), the bundles land
 > under `$CARGO_TARGET_DIR/release/bundle/nsis/`, not `src-tauri/target/…`.
 
+#### Check the build runs before publishing
+
+0.9.0 passed every signature, audit and test check and still crashed on every
+launch: the bundle inside the installer held two copies of React, which a clean
+rebuild of the same commit did not. Two things now stand between a bad bundle
+and a release:
+
+- **The build refuses it.** `vite build`, which `tauri build` runs first, fails
+  if React, React DOM, scheduler or Zustand is bundled twice, or if any file is
+  bundled under two spellings of its path
+  ([`scripts/vite/singleCopyGuard.ts`](../scripts/vite/singleCopyGuard.ts)).
+  The error lists the paths. Run `npm ci` and build again.
+- **You launch it.** Run the exact `folio.exe` the installer carries and confirm
+  the start screen appears. Close any running Folio first: the single-instance
+  plugin hands a second launch to the copy already running, which would test
+  the old version.
+
+  ```powershell
+  7z e src-tauri\target\release\bundle\nsis\Folio_<ver>_x64-setup.exe folio.exe -r -o"$env:TEMP\folio-check"
+  & "$env:TEMP\folio-check\folio.exe"
+  ```
+
+  `target/release/folio.exe` would do as well, but the copy inside the
+  installer is the one that ships, and also the only one whose EV signature
+  can be checked after the build (Tauri rewrites the other).
+
 #### Why one invocation
 
 The `.sig` must be computed over the **EV-signed** bytes. Tauri's bundler runs
@@ -182,6 +208,24 @@ On launch (desktop only), `src/features/updates/checkForUpdates.ts` calls the
 updater, and if a newer version is published it prompts the user, downloads +
 installs, and offers to relaunch. Per-user install (`%LOCALAPPDATA%\Folio`) means
 updates apply **without a UAC prompt**.
+
+### When the app itself fails
+
+That check runs from the root `App` component and talks to the user through the
+app's own toasts and dialogs, so a build that fails to render never runs it.
+0.9.0 crashed on launch and could not update itself; everyone on it had to
+install 0.9.1 by hand.
+
+From 0.9.1 the crash screen ("Folio hit an unexpected error") checks once by
+itself and, when a newer version is published, offers **Update to X and
+restart**. It goes through `src/features/updates/crashUpdate.ts`, which uses
+only the updater and process plugins and no app state, so it does not depend on
+whatever broke. A failed install is reported on the same screen, with a pointer
+to the releases page.
+
+It cannot help a build that fails before React renders the crash screen: a
+script that does not load, or a throw in `main.tsx` before `createRoot`. The
+launch check above is what catches those.
 
 ### The restart puts the document back
 
