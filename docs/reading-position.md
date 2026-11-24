@@ -1,6 +1,6 @@
 # Reading position: pick up where you left off
 
-Status: merged 2026-11-23 (#171). Not in a release yet.
+Status: shipped in 0.9.1 (2026-11-23). It was also in 0.9.0, whose installer crashed on launch.
 
 Folio remembers where you were in each document (the page, and the zoom and
 fit mode) and puts you back there when you reopen it. The start screen offers

@@ -58,7 +58,12 @@ What is covered today:
 - **Signing**: an end-to-end helper test that generates a self-signed
   certificate, signs a pdf-lib document, and re-detects the signature; plus
   `detectSignatures` on unsigned input.
-- **Components**: `ToastHost` and `EmptyState` render tests.
+- **Components**: `ToastHost` and `EmptyState` render tests, and the crash
+  screen (`ErrorBoundary`), including its update offer under `StrictMode`.
+- **Build checks**: `scripts/vite/singleCopyGuard.test.ts` covers the guard that
+  fails a production build with React bundled twice (see
+  [releasing.md](releasing.md#check-the-build-runs-before-publishing)). It is in
+  the normal `npm test` run, which also picks up `fuzz/*.test.mjs`.
 
 Coverage: the core logic modules (stores, registry, `cert`, `verify`) sit around
 90 to 100 percent. Overall line coverage is lower because the view components and
@@ -450,7 +455,9 @@ Get-Item .\src-tauri\target\release\bundle\nsis\Folio_*_x64-setup.exe | Get-Auth
 ```
 
 Status should be `Valid` with signer `CN=OK Studio Inc.`. Run the installer and
-confirm it installs to `%LOCALAPPDATA%\Folio` and launches.
+confirm it installs to `%LOCALAPPDATA%\Folio` and launches to the start screen.
+Launching is the check that matters most: 0.9.0's installer was signed and
+valid and crashed on every start.
 
 ### folio:// deep link
 
@@ -664,6 +671,11 @@ pass, since only the packaged app can exercise it:
 - Move or delete the file between the restart being accepted and Folio coming
   back up. The failure should be one toast naming the problem, and the launch
   after that should be clean.
+
+The crash screen's own update (see
+[releasing.md](releasing.md#when-the-app-itself-fails)) needs the same
+two-version setup plus a way to crash the older one. Its unit tests mock the
+updater; nothing has yet installed a real update from it.
 
 ## Continuous integration
 
