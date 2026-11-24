@@ -1,12 +1,28 @@
+import type { Update } from '@tauri-apps/plugin-updater';
 import { Component, createRef, type ErrorInfo, type ReactNode } from 'react';
+
+import { findCrashUpdate, installCrashUpdate } from '@/features/updates/crashUpdate';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
 }
 
+/**
+ * Where the crash screen's own update check has got to. `none` covers every
+ * way of there being nothing to offer: not the desktop app, still checking,
+ * up to date, or the check failed. None of those is worth a line on a screen
+ * that already has bad news on it.
+ */
+type CrashUpdateState =
+  | { status: 'none' }
+  | { status: 'available'; version: string }
+  | { status: 'installing'; version: string }
+  | { status: 'failed'; version: string; reason: string };
+
 interface ErrorBoundaryState {
   /** One safe line describing the failure, or null while everything is fine. */
   message: string | null;
+  update: CrashUpdateState;
 }
 
 /** Shown when whatever was thrown carries nothing worth putting on screen. */
@@ -62,11 +78,16 @@ function describeThrown(value: unknown): string {
  * running out of memory. Those still need handling where they happen.
  */
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { message: null };
+  state: ErrorBoundaryState = { message: null, update: { status: 'none' } };
 
   private readonly headingRef = createRef<HTMLHeadingElement>();
 
-  static getDerivedStateFromError(error: unknown): ErrorBoundaryState {
+  /** The release the crash screen found, kept out of state: it is a handle, not something to render. */
+  private pendingUpdate: Update | null = null;
+  private updateChecked = false;
+  private unmounted = false;
+
+  static getDerivedStateFromError(error: unknown): Pick<ErrorBoundaryState, 'message'> {
     return { message: describeThrown(error) };
   }
 
@@ -82,7 +103,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     // mounting, so the fallback commits as part of the mount and never reaches
     // componentDidUpdate. That is the common case here: the boundary wraps the
     // whole app, and the throw that matters most happens at startup.
-    if (this.state.message) this.focusFallback();
+    if (this.state.message) this.enterFallback();
+  }
+
+  componentWillUnmount(): void {
+    this.unmounted = true;
   }
 
   componentDidUpdate(_prevProps: ErrorBoundaryProps, prevState: ErrorBoundaryState): void {
@@ -92,8 +117,41 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     // screen-reader user free to keep navigating a tree that is gone. The
     // heading takes it (tabIndex -1) rather than the button, so reading starts
     // at the top of the message and arrives at the recovery control in order.
-    if (!prevState.message && this.state.message) this.focusFallback();
+    if (!prevState.message && this.state.message) this.enterFallback();
   }
+
+  private enterFallback(): void {
+    this.focusFallback();
+    void this.checkForUpdate();
+  }
+
+  /**
+   * Look once for a newer release. A build that crashes on launch can only be
+   * replaced from here: the app's own update check runs inside the tree that
+   * just failed (see features/updates/crashUpdate.ts).
+   */
+  private async checkForUpdate(): Promise<void> {
+    if (this.updateChecked) return;
+    this.updateChecked = true;
+    const update = await findCrashUpdate();
+    if (!update || this.unmounted) return;
+    this.pendingUpdate = update;
+    this.setState({ update: { status: 'available', version: update.version } });
+  }
+
+  private handleUpdate = async (): Promise<void> => {
+    const update = this.pendingUpdate;
+    if (!update) return;
+    this.setState({ update: { status: 'installing', version: update.version } });
+    try {
+      await installCrashUpdate(update);
+    } catch (error) {
+      if (this.unmounted) return;
+      this.setState({
+        update: { status: 'failed', version: update.version, reason: describeThrown(error) },
+      });
+    }
+  };
 
   private focusFallback(): void {
     this.headingRef.current?.focus();
@@ -103,9 +161,48 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     window.location.reload();
   };
 
+  private renderUpdate(): ReactNode {
+    const { update } = this.state;
+    if (update.status === 'none') return null;
+    return (
+      // A status region of its own: it fills in after the alert has been read,
+      // and has to be announced then without repeating the whole alert.
+      <div className="folio-crash__update" role="status">
+        {update.status === 'available' && (
+          <>
+            <p className="folio-crash__body">
+              Folio {update.version} is available. Updating replaces this version, which may be what
+              failed.
+            </p>
+            <button type="button" className="folio-crash__action" onClick={this.handleUpdate}>
+              Update to {update.version} and restart
+            </button>
+          </>
+        )}
+        {update.status === 'installing' && (
+          <p className="folio-crash__body">
+            Downloading and installing Folio {update.version}. Folio restarts when it is done.
+          </p>
+        )}
+        {update.status === 'failed' && (
+          <p className="folio-crash__body">
+            Folio {update.version} could not be installed: {update.reason} You can download it from
+            the Folio releases page on GitHub.
+          </p>
+        )}
+      </div>
+    );
+  }
+
   render(): ReactNode {
-    const { message } = this.state;
+    const { message, update } = this.state;
     if (!message) return this.props.children;
+    // With an update on offer, Reload is the second choice: reloading the
+    // same build usually crashes the same way.
+    const reloadClass =
+      update.status === 'none'
+        ? 'folio-crash__action'
+        : 'folio-crash__action folio-crash__action--quiet';
 
     return (
       <div className="folio-crash" role="alert">
@@ -117,7 +214,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           you had open will need to be opened again.
         </p>
         <pre className="folio-crash__detail">{message}</pre>
-        <button type="button" className="folio-crash__action" onClick={this.handleReload}>
+        {this.renderUpdate()}
+        <button
+          type="button"
+          className={reloadClass}
+          onClick={this.handleReload}
+          disabled={update.status === 'installing'}
+        >
           Reload Folio
         </button>
       </div>

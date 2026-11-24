@@ -6,6 +6,7 @@ import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
+import { singleCopyGuard } from './scripts/vite/singleCopyGuard';
 
 // Tauri exposes this when running `tauri dev` on a mobile device / remote host.
 const host = process.env.TAURI_DEV_HOST;
@@ -105,7 +106,9 @@ function pdfjsWasmAssets(): Plugin {
 
 // https://vitejs.dev/config/  +  https://v2.tauri.app/develop/
 export default defineConfig({
-  plugins: [react(), pdfjsWasmAssets()],
+  // singleCopyGuard: fails the build if React (or anything that must be
+  // single) is bundled twice, which is what broke 0.9.0 on launch.
+  plugins: [react(), pdfjsWasmAssets(), singleCopyGuard()],
 
   resolve: {
     alias: {
@@ -161,6 +164,8 @@ export default defineConfig({
       // The corpus harness itself is opt-in (vitest.corpus.config.ts); only
       // its pure baseline logic runs here.
       'scripts/corpus/baseline.test.ts',
+      // The build's own checks (see scripts/vite/singleCopyGuard.ts).
+      'scripts/vite/*.test.ts',
       // Checks the Jazzer.js harness's static inputs (the fuzzer itself runs
       // nightly, never on a pull request).
       'fuzz/*.test.mjs',

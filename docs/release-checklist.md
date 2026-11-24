@@ -80,6 +80,17 @@ On the EV-cert Windows host:
 - [ ] `npx tauri build` produces `Folio_<ver>_x64-setup.exe` and a matching `Folio_<ver>_x64-setup.exe.sig` in `src-tauri/target/release/bundle/nsis/`. Sidecars only appear when `TAURI_SIGNING_PRIVATE_KEY[_PASSWORD]` are set; if missing, the build **fails** because `bundle.createUpdaterArtifacts` is `true`.
 - [ ] EV signature is valid: `Get-AuthenticodeSignature <exe> | Format-List Status, SignerCertificate` shows `Status: Valid`, signer `CN=OK Studio Inc.` (or `signtool verify /pa /v <exe>`). Never skip this: the sign script skips quietly when the token is not plugged in, and the build still succeeds.
 - [ ] `release/latest.json` `signature` for `windows-x86_64` matches the contents of `Folio_<ver>_x64-setup.exe.sig`, and `pub_date` is the current UTC time
+- [ ] The build bundled every library once. `vite build` fails on its own if
+      React, React DOM, scheduler or Zustand is bundled twice, or if any file is
+      bundled under two spellings of its path
+      ([`scripts/vite/singleCopyGuard.ts`](../scripts/vite/singleCopyGuard.ts));
+      0.9.0 shipped that way and crashed on every launch. If it fails, run
+      `npm ci` and build again.
+- [ ] The built app starts: launch `src-tauri/target/release/folio.exe` once and
+      see the start screen, not "Folio hit an unexpected error". The installer
+      and the auto-update both ship this build, and nothing else in this
+      checklist runs it. 0.9.0 passed every other check here and crashed on
+      launch.
 - [ ] File association survived the build. Tauri regenerates the NSIS script on
   every build, and nothing fails if the hook stops being applied, so check
   that the hook actually made it into the generated script before checking

@@ -6,6 +6,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Folio 0.9.0 crashed every time it started.** The 0.9.0 installer was built
+  with two copies of React, the library Folio's interface is made with, so
+  the window showed "Folio hit an unexpected error" as soon as it opened. The
+  code was fine; the build that went into the installer was not. A build that
+  would contain any of these libraries twice now fails before it can be
+  released. 0.9.0 cannot update itself, so if you have it, download the new
+  version from the releases page.
+
+### Changed
+
+- **The crash screen offers an update.** When Folio fails badly enough to show
+  "Folio hit an unexpected error", it now checks for a newer version by itself
+  and offers to install it and restart, so a broken version can be replaced
+  without a manual download.
+
 ## [0.9.0] - 2026-11-23
 
 ### Added

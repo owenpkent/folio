@@ -2449,3 +2449,21 @@ kbd {
 .folio-crash__action:hover {
   background: var(--folio-accent-hover);
 }
+.folio-crash__action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.folio-crash__action--quiet {
+  background: transparent;
+  border: 1px solid var(--folio-border);
+  color: var(--folio-text);
+}
+.folio-crash__action--quiet:hover {
+  background: var(--folio-surface);
+}
+.folio-crash__update {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
