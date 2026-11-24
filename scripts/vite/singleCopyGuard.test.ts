@@ -27,6 +27,26 @@ describe('findDuplicateModules', () => {
     expect(problems[0]).toMatch(/^one file under 2 paths/);
   });
 
+  // The directory itself can be spelled another way on Windows, and testing for
+  // it before folding let this pair through with two Reacts in the bundle.
+  it('refuses React reached through NODE_MODULES and node_modules', () => {
+    const problems = findDuplicateModules(
+      [`${root}/react/index.js`, 'W:/dev/folio/NODE_MODULES/react/index.js'],
+      true,
+    );
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/^one file under 2 paths/);
+    expect(problems[0]).toContain('NODE_MODULES');
+  });
+
+  it('matches a singleton package however its directory is spelled', () => {
+    const problems = findDuplicateModules(
+      [`${root}/react/index.js`, 'W:/dev/folio/Node_Modules/lib/NODE_MODULES/React/index.js'],
+      true,
+    );
+    expect(problems).toEqual([expect.stringMatching(/^react from 2 places/)]);
+  });
+
   // The bundler keys modules by id, so the prefixed and plain spellings of one
   // file are two modules even where case matters.
   it('refuses a verbatim \\\\?\\ path next to the plain one', () => {

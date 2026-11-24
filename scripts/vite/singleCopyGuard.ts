@@ -58,22 +58,25 @@ export function findDuplicateModules(ids: Iterable<string>, caseInsensitive: boo
   const roots = new Map<string, Set<string>>();
 
   for (const id of ids) {
-    const path = normalizeModuleId(id);
-    if (!path.includes('/node_modules/')) continue;
+    // Everything below works on the folded path, the directory test and the
+    // package match included. Testing the raw spelling first let
+    // `NODE_MODULES/react` past unchecked: a valid Windows path to the same
+    // directory, and one way to get a second React in.
+    const key = fold(normalizeModuleId(id));
+    if (!key.includes('/node_modules/')) continue;
     // Keyed by the file, holding the spellings the bundler actually used: two
     // of them means one file became two modules.
-    const key = fold(path);
     let seen = spellings.get(key);
     if (!seen) spellings.set(key, (seen = new Set()));
     seen.add(moduleFile(id));
 
     // The package a file belongs to is the one after the LAST node_modules
     // segment: a nested copy lives at .../node_modules/a/node_modules/react/.
-    const match = /^(.*\/node_modules\/)((?:@[^/]+\/)?[^/]+)\//.exec(path);
+    const match = /^(.*\/node_modules\/)((?:@[^/]+\/)?[^/]+)\//.exec(key);
     if (!match || !SINGLETON_PACKAGES.includes(match[2])) continue;
     let places = roots.get(match[2]);
     if (!places) roots.set(match[2], (places = new Set()));
-    places.add(fold(match[1] + match[2]));
+    places.add(match[1] + match[2]);
   }
 
   const problems: string[] = [];

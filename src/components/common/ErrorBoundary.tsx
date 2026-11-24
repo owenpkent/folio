@@ -99,6 +99,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidMount(): void {
+    // Reset, not just initialised: in development StrictMode mounts, unmounts
+    // and mounts the same instance again, and a flag left set by that unmount
+    // would throw away the update the first mount went looking for.
+    this.unmounted = false;
     // A child that throws on its very first render leaves this boundary still
     // mounting, so the fallback commits as part of the mount and never reaches
     // componentDidUpdate. That is the common case here: the boundary wraps the

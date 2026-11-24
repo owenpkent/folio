@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const plugins = vi.hoisted(() => ({
@@ -66,6 +67,53 @@ describe('ErrorBoundary update offer', () => {
     await userEvent.click(update);
     expect(downloadAndInstall).toHaveBeenCalledOnce();
     expect(plugins.relaunch).toHaveBeenCalledOnce();
+  });
+
+  // The real entry point (main.tsx) wraps everything in StrictMode, which in
+  // development mounts, unmounts and remounts the boundary. The offer has to
+  // survive that, for a crash at startup and for one later on.
+  it('offers the update under StrictMode, as main.tsx renders it', async () => {
+    setTauri(true);
+    plugins.check.mockResolvedValue({ version: '0.9.1', downloadAndInstall: vi.fn() });
+    render(
+      <StrictMode>
+        <ErrorBoundary>
+          <Boom />
+        </ErrorBoundary>
+      </StrictMode>,
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Update to 0.9.1 and restart' }),
+    ).toBeInTheDocument();
+  });
+
+  it('offers the update under StrictMode when the crash comes after startup', async () => {
+    setTauri(true);
+    plugins.check.mockResolvedValue({ version: '0.9.1', downloadAndInstall: vi.fn() });
+    let broken = false;
+    function Later() {
+      if (broken) throw new Error('later');
+      return <p>the document</p>;
+    }
+    const view = render(
+      <StrictMode>
+        <ErrorBoundary>
+          <Later />
+        </ErrorBoundary>
+      </StrictMode>,
+    );
+    expect(screen.getByText('the document')).toBeInTheDocument();
+    broken = true;
+    view.rerender(
+      <StrictMode>
+        <ErrorBoundary>
+          <Later />
+        </ErrorBoundary>
+      </StrictMode>,
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Update to 0.9.1 and restart' }),
+    ).toBeInTheDocument();
   });
 
   it('says so when the install fails, and keeps Reload', async () => {
