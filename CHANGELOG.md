@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-23
+
 ### Fixed
 
 - **Folio 0.9.0 crashed every time it started.** The 0.9.0 installer was built
@@ -1294,7 +1296,8 @@ Prepared but never published; everything below first shipped in 0.8.1.
   a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
   cargo-deny policy.
 
-[Unreleased]: https://github.com/owenpkent/folio/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/owenpkent/folio/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/owenpkent/folio/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/owenpkent/folio/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/owenpkent/folio/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/owenpkent/folio/compare/v0.8.1...v0.8.2
