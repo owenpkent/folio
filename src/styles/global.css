@@ -976,16 +976,24 @@ kbd {
   --s: var(--folio-as-scale, 1);
   position: absolute;
   bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
+  /* Centred without a transform, so the width is the content's own, capped to
+     the area: past that the controls wrap onto more rows at full size. */
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: max-content;
+  max-width: 100%;
+  box-sizing: border-box;
   z-index: 150;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: calc(8px * var(--s));
   padding: calc(8px * var(--s)) calc(12px * var(--s));
   background: var(--folio-surface);
   border: 1px solid var(--folio-border);
-  border-radius: 999px;
+  border-radius: calc(40px * var(--s));
   box-shadow: var(--folio-shadow);
   touch-action: none;
   user-select: none;
@@ -1060,6 +1068,7 @@ kbd {
   right: 0;
   min-width: 170px;
   cursor: default;
+  overflow-y: auto;
 }
 .folio-autoscroll__menu.is-up {
   top: auto;

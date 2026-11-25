@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { CSSProperties, PointerEvent } from 'react';
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent } from 'react';
 
 import { announce } from '@/a11y/announcer';
 import { Icon } from '@/components/common/Icon';
@@ -16,8 +16,16 @@ import {
 
 // One press of slower/faster: the same step as the arrow keys while scrolling.
 const SPEED_STEP = 1.3;
-// The size menu opens upward unless the bar sits closer than this to the top.
-const MENU_ROOM = 220;
+// Gap between the Size button and its menu (matches the CSS offset).
+const MENU_GAP = 10;
+// Fallback for the menu's height before it has been measured.
+const MENU_HEIGHT_GUESS = 190;
+
+interface MenuPlace {
+  dir: 'up' | 'down';
+  /** Caps the menu to the room on its side so it is never clipped. */
+  maxHeight: number | undefined;
+}
 
 /**
  * The floating transport shown over the document while auto-scroll is on:
@@ -64,9 +72,14 @@ function AutoScrollBar() {
   const speed = useViewerStore((s) => s.autoScrollSpeed);
   const [layout, setLayout] = useState<AutoScrollLayout>(readLayout);
   const [dragging, setDragging] = useState(false);
-  const [menu, setMenu] = useState<'up' | 'down' | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [place, setPlace] = useState<MenuPlace>({ dir: 'down', maxHeight: undefined });
+  const [activeItem, setActiveItem] = useState(0);
   const barRef = useRef<HTMLDivElement>(null);
   const sizeRef = useRef<HTMLDivElement>(null);
+  const sizeBtnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const dragRef = useRef<Drag | null>(null);
   // The latest layout, for saving once a drag ends.
   const layoutRef = useRef(layout);
@@ -74,7 +87,8 @@ function AutoScrollBar() {
     layoutRef.current = layout;
   });
 
-  const areaOf = (bar: HTMLElement | null) => bar?.offsetParent as HTMLElement | null | undefined;
+  const areaOf = (bar: HTMLElement | null) =>
+    (bar?.offsetParent ?? bar?.parentElement) as HTMLElement | null | undefined;
 
   // Keep a placed bar fully on screen: after a size change, and when the
   // window (and so the document area) shrinks.
@@ -97,22 +111,38 @@ function AutoScrollBar() {
   }, []);
   useLayoutEffect(fitIntoArea, [fitIntoArea, layout.scale]);
   useEffect(() => {
+    // The area can resize with no window resize (the sidebar toggling), so watch
+    // the area itself; the window listener covers environments without it.
     window.addEventListener('resize', fitIntoArea);
-    return () => window.removeEventListener('resize', fitIntoArea);
+    const area = areaOf(barRef.current);
+    let ro: ResizeObserver | undefined;
+    if (area && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => fitIntoArea());
+      ro.observe(area);
+    }
+    return () => {
+      window.removeEventListener('resize', fitIntoArea);
+      ro?.disconnect();
+    };
   }, [fitIntoArea]);
+
+  const closeMenu = useCallback((refocus: boolean) => {
+    setMenuOpen(false);
+    if (refocus) sizeBtnRef.current?.focus();
+  }, []);
 
   // Close the size menu on a press outside it, or on Escape.
   useEffect(() => {
-    if (!menu) return;
+    if (!menuOpen) return;
     const onDown = (e: globalThis.PointerEvent) => {
-      if (!sizeRef.current?.contains(e.target as Node)) setMenu(null);
+      if (!sizeRef.current?.contains(e.target as Node)) setMenuOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       // Escape here closes the menu only; it must not also stop auto-scroll.
       e.stopImmediatePropagation();
       e.preventDefault();
-      setMenu(null);
+      closeMenu(true);
     };
     window.addEventListener('pointerdown', onDown);
     window.addEventListener('keydown', onKey, true);
@@ -120,7 +150,29 @@ function AutoScrollBar() {
       window.removeEventListener('pointerdown', onDown);
       window.removeEventListener('keydown', onKey, true);
     };
-  }, [menu]);
+  }, [menuOpen, closeMenu]);
+
+  // On open, choose the side with room and cap the height to it, measured against
+  // the document area, then focus the current size.
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+    const anchor = sizeRef.current;
+    const menuEl = menuRef.current;
+    const area = areaOf(barRef.current);
+    if (anchor && menuEl && area) {
+      const a = anchor.getBoundingClientRect();
+      const r = area.getBoundingClientRect();
+      const below = Math.max(0, r.bottom - a.bottom - MENU_GAP);
+      const above = Math.max(0, a.top - r.top - MENU_GAP);
+      const need = menuEl.scrollHeight || MENU_HEIGHT_GUESS;
+      const dir = below >= need || below >= above ? 'down' : 'up';
+      const room = dir === 'down' ? below : above;
+      setPlace({ dir, maxHeight: room > 0 && room < need ? Math.floor(room) : undefined });
+    }
+    itemRefs.current[activeItem]?.focus();
+    // Runs once per open; activeItem is set before opening.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuOpen]);
 
   const commit = (next: AutoScrollLayout) => {
     setLayout(next);
@@ -166,14 +218,53 @@ function AutoScrollBar() {
   };
 
   const toggleMenu = () => {
-    if (menu) {
-      setMenu(null);
+    if (menuOpen) {
+      setMenuOpen(false);
       return;
     }
-    const bar = barRef.current;
-    const area = areaOf(bar);
-    const top = bar && area ? barInArea(bar, area).y : Infinity;
-    setMenu(top < MENU_ROOM ? 'down' : 'up');
+    const current = SIZES.findIndex((size) => size.scale === layout.scale);
+    setActiveItem(current < 0 ? 0 : current);
+    setPlace({ dir: 'down', maxHeight: undefined });
+    setMenuOpen(true);
+  };
+
+  const focusItem = (i: number) => {
+    const n = SIZES.length;
+    const next = ((i % n) + n) % n;
+    setActiveItem(next);
+    itemRefs.current[next]?.focus();
+  };
+
+  // WAI-ARIA menu button pattern. These keys stop here so the viewer's
+  // auto-scroll handler (arrows change speed) never sees them.
+  const onMenuKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const at = itemRefs.current.findIndex((el) => el === document.activeElement);
+    const here = at < 0 ? activeItem : at;
+    switch (e.key) {
+      case 'ArrowDown':
+        focusItem(here + 1);
+        break;
+      case 'ArrowUp':
+        focusItem(here - 1);
+        break;
+      case 'Home':
+        focusItem(0);
+        break;
+      case 'End':
+        focusItem(SIZES.length - 1);
+        break;
+      case 'Tab':
+        // Focus goes back to the Size button, then Tab moves on from there.
+        closeMenu(true);
+        return;
+      default:
+        // Enter and Space click the focused item; nothing else leaks out.
+        e.stopPropagation();
+        return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   const store = () => useViewerStore.getState();
@@ -186,7 +277,9 @@ function AutoScrollBar() {
   const placed = layout.x !== null && layout.y !== null;
   const style = {
     '--folio-as-scale': s,
-    ...(placed ? { left: layout.x, top: layout.y, bottom: 'auto', transform: 'none' } : {}),
+    ...(placed
+      ? { left: layout.x, top: layout.y, right: 'auto', bottom: 'auto', marginInline: 0 }
+      : {}),
   } as CSSProperties;
 
   return (
@@ -256,25 +349,34 @@ function AutoScrollBar() {
       </button>
       <div className="folio-autoscroll__size" ref={sizeRef}>
         <button
+          ref={sizeBtnRef}
           type="button"
           className="folio-autoscroll__btn"
           aria-label="Size"
           title="Size of these controls"
           aria-haspopup="menu"
-          aria-expanded={menu !== null}
+          aria-expanded={menuOpen}
           onClick={toggleMenu}
         >
           <Icon name="resize" size={Math.round(20 * s)} />
         </button>
-        {menu && (
+        {menuOpen && (
           <div
-            className={`folio-dropdown__menu folio-autoscroll__menu is-${menu}`}
+            ref={menuRef}
+            className={`folio-dropdown__menu folio-autoscroll__menu is-${place.dir}`}
+            style={place.maxHeight ? { maxHeight: place.maxHeight } : undefined}
             role="menu"
+            tabIndex={-1}
             aria-label="Size"
+            onKeyDown={onMenuKeyDown}
           >
-            {SIZES.map((size) => (
+            {SIZES.map((size, i) => (
               <button
                 key={size.label}
+                ref={(el) => {
+                  itemRefs.current[i] = el;
+                }}
+                tabIndex={i === activeItem ? 0 : -1}
                 type="button"
                 role="menuitemradio"
                 aria-checked={s === size.scale}
@@ -282,7 +384,7 @@ function AutoScrollBar() {
                 onClick={() => {
                   commit({ ...layout, scale: size.scale });
                   announce(`Auto-scroll controls ${size.label}`);
-                  setMenu(null);
+                  closeMenu(true);
                 }}
               >
                 <span className="folio-dropdown__label">{size.label}</span>

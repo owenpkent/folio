@@ -310,6 +310,8 @@ export function PdfViewer() {
       // Don't steal keys while the user is typing in a field (find box, page box).
       const el = e.target as Element | null;
       if (el?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      // Menus (the auto-scroll Size menu) own their arrow keys.
+      if (el?.closest('[role="menu"]')) return;
       // Space pauses and resumes, teleprompter style. On a focused button Space
       // is that button's own click, so leave it alone there.
       if (e.key === ' ' && !el?.closest('button, a, [role="button"]')) {

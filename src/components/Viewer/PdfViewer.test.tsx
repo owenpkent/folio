@@ -169,3 +169,50 @@ describe('PdfViewer scroll-to-page', () => {
     }
   });
 });
+
+describe('PdfViewer auto-scroll keys', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
+    );
+    useDocumentStore.setState({ status: 'ready' });
+    useViewerStore.setState({ numPages: 5 });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useDocumentStore.getState().reset();
+    useViewerStore.getState().reset();
+    resetPageSizes();
+  });
+
+  it('leaves arrow keys inside a menu alone but still adjusts speed elsewhere', () => {
+    useViewerStore.getState().setAutoScroll(true);
+    render(
+      <>
+        <PdfViewer />
+        <div role="menu">
+          <button type="button" role="menuitemradio" aria-checked="true">
+            Medium
+          </button>
+        </div>
+      </>,
+    );
+    const speed = useViewerStore.getState().autoScrollSpeed;
+    const item = document.querySelector<HTMLElement>('[role="menuitemradio"]')!;
+    act(() => {
+      item.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    });
+    expect(useViewerStore.getState().autoScrollSpeed).toBe(speed);
+    act(() => {
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }),
+      );
+    });
+    expect(useViewerStore.getState().autoScrollSpeed).toBeLessThan(speed);
+  });
+});
