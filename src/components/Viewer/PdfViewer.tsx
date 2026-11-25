@@ -278,12 +278,14 @@ export function PdfViewer() {
       // Clamp dt so a dropped/backgrounded frame doesn't lurch the page.
       const dt = Math.min((ts - last) / 1000, 0.05);
       last = ts;
-      // Hold position while the user is actively panning the page by hand.
+      // Hold position while the user is actively panning the page by hand, or
+      // while auto-scroll is paused.
+      const paused = useViewerStore.getState().autoScrollPaused;
       const maxTop = container.scrollHeight - container.clientHeight;
       // Nothing to scroll (the document fits the viewport): idle without
       // advancing or spuriously announcing the end. Stays armed, so it starts
       // gliding if the content later overflows (e.g. the user zooms in).
-      if (!panRef.current && dt > 0 && maxTop > 0.5) {
+      if (!panRef.current && !paused && dt > 0 && maxTop > 0.5) {
         // If the user scrolled by hand (wheel, keys), adopt that position.
         if (Math.abs(container.scrollTop - pos) > 2) pos = container.scrollTop;
         const speed = useViewerStore.getState().autoScrollSpeed;
@@ -308,7 +310,15 @@ export function PdfViewer() {
       // Don't steal keys while the user is typing in a field (find box, page box).
       const el = e.target as Element | null;
       if (el?.closest('input, textarea, select, [contenteditable="true"]')) return;
-      if (e.key === 'Escape') {
+      // Space pauses and resumes, teleprompter style. On a focused button Space
+      // is that button's own click, so leave it alone there.
+      if (e.key === ' ' && !el?.closest('button, a, [role="button"]')) {
+        useViewerStore.getState().toggleAutoScrollPaused();
+        announce(
+          useViewerStore.getState().autoScrollPaused ? 'Auto-scroll paused' : 'Auto-scroll playing',
+        );
+        e.preventDefault();
+      } else if (e.key === 'Escape') {
         useViewerStore.getState().setAutoScroll(false);
         announce('Auto-scroll off');
         e.preventDefault();

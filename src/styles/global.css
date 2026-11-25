@@ -968,6 +968,119 @@ kbd {
 .folio-viewer.is-autoscroll {
   scroll-behavior: auto;
 }
+/* Auto-scroll transport: floats over the bottom of the document while
+   auto-scroll is on. Big pointer targets (48px, play 64px) on purpose, all
+   multiplied by --folio-as-scale, which the Size menu sets. Dragging any empty
+   part of the bar pins it with inline left/top instead of the centred default. */
+.folio-autoscroll {
+  --s: var(--folio-as-scale, 1);
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--s));
+  padding: calc(8px * var(--s)) calc(12px * var(--s));
+  background: var(--folio-surface);
+  border: 1px solid var(--folio-border);
+  border-radius: 999px;
+  box-shadow: var(--folio-shadow);
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.folio-autoscroll.is-dragging {
+  cursor: grabbing;
+}
+.folio-autoscroll__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: calc(48px * var(--s));
+  height: calc(48px * var(--s));
+  padding: 0;
+  border: 1px solid var(--folio-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--folio-text);
+  cursor: pointer;
+  transition:
+    background var(--folio-transition),
+    border-color var(--folio-transition);
+}
+.folio-autoscroll__btn:hover:not(:disabled) {
+  background: var(--folio-surface-hover);
+  border-color: var(--folio-accent);
+}
+.folio-autoscroll__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.folio-autoscroll__btn:focus-visible {
+  outline: 2px solid var(--folio-focus);
+  outline-offset: 2px;
+}
+.folio-autoscroll__play {
+  width: calc(64px * var(--s));
+  height: calc(64px * var(--s));
+  border: none;
+  background: var(--folio-accent);
+  color: var(--folio-accent-contrast);
+}
+.folio-autoscroll__play:hover:not(:disabled) {
+  background: var(--folio-accent-hover);
+}
+.folio-autoscroll__speed {
+  min-width: 4.5ch;
+  padding: 0 calc(4px * var(--s));
+  text-align: center;
+  font-size: calc(1.1rem * var(--s));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.folio-autoscroll__speed small {
+  display: block;
+  font-size: calc(0.7rem * var(--s));
+  font-weight: 400;
+  color: var(--folio-text-muted);
+}
+.folio-autoscroll__stop {
+  margin-left: calc(4px * var(--s));
+}
+.folio-autoscroll__size {
+  position: relative;
+  display: inline-flex;
+}
+/* Unscaled: the menu is ordinary text, and it opens away from the nearer edge. */
+.folio-autoscroll__menu {
+  right: 0;
+  min-width: 170px;
+  cursor: default;
+}
+.folio-autoscroll__menu.is-up {
+  top: auto;
+  bottom: calc(100% + 10px);
+}
+.folio-autoscroll__menu.is-down {
+  top: calc(100% + 10px);
+}
+.folio-autoscroll__menu .folio-dropdown__item {
+  min-height: 40px;
+  font-size: 1rem;
+}
+.folio-autoscroll__stop:hover:not(:disabled) {
+  border-color: var(--folio-danger);
+  color: var(--folio-danger);
+}
+@media (forced-colors: active) {
+  .folio-autoscroll__play {
+    border: 2px solid ButtonText;
+  }
+}
 .folio-pages {
   display: flex;
   flex-direction: column;

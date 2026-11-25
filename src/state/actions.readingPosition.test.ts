@@ -65,41 +65,14 @@ beforeEach(async () => {
 afterEach(() => vi.useRealTimers());
 
 describe('resuming a remembered page', () => {
-  it('jumps there, announces it once, and toasts with a Start over action', async () => {
+  it('jumps there and announces it once, without a toast', async () => {
     await remember('a', 47);
     await open('a');
     expect(useViewerStore.getState().currentPage).toBe(47);
     expect(useViewerStore.getState().pendingScrollPage).toBe(47);
     expect(announce).toHaveBeenCalledTimes(1);
     expect(announce).toHaveBeenCalledWith('Opened a.pdf, 100 pages, resumed at page 47');
-    expect(pushToast).toHaveBeenCalledWith('Resumed at page 47', 'info', {
-      label: 'Start over',
-      onClick: expect.any(Function),
-    });
-  });
-
-  it('Start over goes back to page 1, but not on a different document', async () => {
-    await remember('a', 47);
-    await open('a');
-    const action = vi.mocked(pushToast).mock.calls[0][2]!;
-    action.onClick();
-    expect(useViewerStore.getState().currentPage).toBe(1);
-
-    await closeDocument();
-    await remember('a', 47);
-    await open('a');
-    const stale = vi.mocked(pushToast).mock.calls[1][2]!;
-    await open('b');
-    scrollTo(9);
-    stale.onClick();
-    expect(useViewerStore.getState().currentPage).toBe(9);
-  });
-
-  it('skips the toast when silent, but still announces', async () => {
-    await remember('a', 47);
-    await open('a', { silent: true });
     expect(pushToast).not.toHaveBeenCalled();
-    expect(announce).toHaveBeenCalledWith('Opened a.pdf, 100 pages, resumed at page 47');
   });
 
   it('lets an explicit page win over the remembered one', async () => {

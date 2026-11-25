@@ -280,6 +280,29 @@ const ICONS = {
       <line x1="5" y1="12" x2="19" y2="12" />
     </>
   ),
+  minus: <line x1="5" y1="12" x2="19" y2="12" />,
+  // Filled, not outlined: the auto-scroll transport reads as play/pause at a
+  // glance, like a media player's.
+  play: (
+    <path
+      d="M8 5.5v13a1 1 0 0 0 1.5.86l10-6.5a1 1 0 0 0 0-1.72l-10-6.5A1 1 0 0 0 8 5.5Z"
+      fill="currentColor"
+    />
+  ),
+  pause: (
+    <>
+      <rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" />
+      <rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" />
+    </>
+  ),
+  // A diagonal two-way arrow: make the thing bigger or smaller.
+  resize: (
+    <>
+      <path d="M5 19L19 5" />
+      <path d="M13 5h6v6" />
+      <path d="M11 19H5v-6" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof ICONS;

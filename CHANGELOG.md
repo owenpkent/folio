@@ -6,6 +6,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Bigger auto-scroll controls.** While auto-scroll is on, a bar floats over
+  the document with a large play/pause button, slower and faster buttons, the
+  current speed, and a stop button. Space pauses and resumes too. Drag any
+  empty part of the bar to move it (double-click it to put it back), and pick
+  Small, Medium, Large or Extra large from its Size menu. Folio remembers
+  where you put it and how big you made it.
+
+### Changed
+
+- **No "Resumed at page" notice.** Reopening a document still takes you back
+  to the page you were on, but no longer shows a notice with a **Start over**
+  button about it.
+
 ## [0.9.1] - 2026-11-23
 
 ### Fixed

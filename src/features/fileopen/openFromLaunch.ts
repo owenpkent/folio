@@ -29,9 +29,9 @@ export async function openPath(
 ): Promise<boolean> {
   try {
     const source = await readPath(path);
-    // The page and silence go to loadSource, which announces once and lets an
-    // explicit page win over the remembered reading position.
-    await loadSource(source, { page, silent });
+    // The page goes to loadSource, which announces once and lets an explicit
+    // page win over the remembered reading position.
+    await loadSource(source, { page });
     // Resolving is not the same as loading: loadSource catches its own
     // failures, records them on the document store, and returns normally. On a
     // file whose bytes read fine but whose PDF structure does not parse, going
