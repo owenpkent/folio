@@ -15,7 +15,7 @@ The real need was resuming reading, not editing the outline.
 | --- | --- |
 | What is restored | Top of the remembered page, plus zoom and fit mode |
 | On launch with no file | A large "Continue: name.pdf, page N" button on the start screen. Nothing opens automatically. |
-| Notice on resume | A toast saying "Resumed at page N" with a **Start over** button (goes to page 1). The open announcement gets ", resumed at page N" for screen readers. |
+| Notice on resume | None on screen. The document simply opens at the remembered page (an earlier design showed a "Resumed at page N" toast with a **Start over** button; it was dropped). Screen readers still hear it: the open announcement gets ", resumed at page N". |
 | A file changed by another app | Lookup chain: exact content hash, then the first trailer `/ID`, then the file path. Both fallback keys are stored only as SHA-256 digests, so there is no readable list of files opened. A match whose page is beyond the file's page count is ignored. |
 
 ## Storage
