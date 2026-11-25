@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Folio auto-scroll controls: design options</title>
+<link rel="stylesheet" href="vendor/tokens.css">
+<style>
+  /* ---- Page chrome (okstudio-style) ---- */
+  html, body { margin: 0; background: var(--ax-bg); color: var(--ax-ink); font-family: var(--ax-font); }
+  main { max-width: 980px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-family: var(--ax-font-title); font-weight: 700; font-size: 32px; margin: 0 0 8px; letter-spacing: .02em; }
+  h2 { font-family: var(--ax-font-title); font-weight: 700; font-size: 22px; margin: 0 0 6px; letter-spacing: .02em; }
+  h2 .tag { color: var(--ax-accent); font-family: var(--ax-font-mono); margin-right: 10px; }
+  p, li { line-height: 1.5; font-size: 15px; }
+  .lead { color: var(--ax-muted); max-width: 70ch; }
+  section.opt { margin-top: 40px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 12px 0 14px; }
+  .cols h3 { font: 500 12px/1 var(--ax-font-mono); text-transform: uppercase; letter-spacing: .1em; margin: 0 0 6px; }
+  .cols ul { margin: 0; padding-left: 18px; }
+  .pros h3 { color: var(--ax-good); } .cons h3 { color: var(--ax-warning); }
+  .bar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+  .bar .hint { color: var(--ax-muted); font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+  th, td { border: 1px solid var(--ax-border); padding: 9px 12px; text-align: left; font-size: 14px; }
+  th { font: 500 12px/1.2 var(--ax-font-mono); text-transform: uppercase; letter-spacing: .08em; background: var(--ax-panel); }
+  td.rec { min-width: 140px; }
+  @media (max-width: 700px) { .cols { grid-template-columns: 1fr; } }
+
+  /* ---- Mocks: Folio dark theme tokens, from src/theme/tokens.css ---- */
+  .mock {
+    --f-bg: #17191d; --f-surface: #1f2228; --f-surface-2: #2a2e36; --f-hover: #333944;
+    --f-text: #e7e9ee; --f-muted: #9aa2b1; --f-border: #333944;
+    --f-accent: #6f9bff; --f-accent-hover: #8bb0ff; --f-on-accent: #0d1016; --f-focus: #6f9bff;
+    --f-danger: #ff6b6b; --f-shadow: 0 6px 24px rgba(0,0,0,.5);
+    --f-radius: 10px; --f-radius-sm: 6px; --f-tr: 150ms ease;
+    --f-font: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-family: var(--f-font); color: var(--f-text); font-size: .875rem;
+    background: #0e1013; border: 1px solid var(--ax-border); padding: 12px; overflow-x: auto;
+  }
+  .mock * { box-sizing: border-box; }
+  .area { position: relative; width: 100%; height: 400px; overflow: hidden; background: var(--f-bg);
+          border: 1px solid var(--f-border); display: flex; margin: 0 auto; }
+  .mock.narrow .area { width: 440px; height: 300px; margin: 0; }
+  .col { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; position: relative; }
+  .viewer { position: relative; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+  .doc { position: absolute; inset: 0; overflow: hidden; padding: 16px 0; }
+  .page { width: min(86%, 560px); margin: 0 auto 16px; background: #f2f2f0; color: #2a2d33; padding: 28px 30px;
+          box-shadow: 0 1px 3px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.45); font: 13px/1.6 Georgia, serif; }
+  .page h4 { margin: 0 0 10px; font: 700 15px/1.3 var(--f-font); }
+  .page p { margin: 0 0 10px; }
+  .off { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 5; pointer-events: none; }
+  .off button { pointer-events: auto; }
+  .is-hidden { display: none !important; }
+
+  .fbtn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+          width: calc(48px * var(--s,1)); height: calc(48px * var(--s,1)); padding: 0; border: 1px solid var(--f-border);
+          border-radius: 50%; background: transparent; color: var(--f-text); cursor: pointer;
+          transition: background var(--f-tr), border-color var(--f-tr); font: inherit; }
+  .fbtn:hover:not(:disabled) { background: var(--f-hover); border-color: var(--f-accent); }
+  .fbtn:focus-visible, .seg button:focus-visible { outline: 2px solid var(--f-focus); outline-offset: 2px; }
+  .fbtn.play { width: calc(64px * var(--s,1)); height: calc(64px * var(--s,1)); border: none; background: var(--f-accent); color: var(--f-on-accent); }
+  .fbtn.play:hover:not(:disabled) { background: var(--f-accent-hover); }
+  .fbtn svg { width: calc(26px * var(--s,1)); height: calc(26px * var(--s,1)); }
+  .fbtn.play svg { width: calc(34px * var(--s,1)); height: calc(34px * var(--s,1)); }
+  .speed { min-width: 4.5ch; padding: 0 calc(4px * var(--s,1)); text-align: center; font-size: calc(1.1rem * var(--s,1));
+           font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .speed small { display: block; font-size: calc(.7rem * var(--s,1)); font-weight: 400; color: var(--f-muted); }
+  .seg { display: inline-flex; border: 1px solid var(--f-border); border-radius: 999px; overflow: hidden; flex-shrink: 0; }
+  .seg button { min-width: calc(44px * var(--s,1)); height: calc(44px * var(--s,1)); border: 0; border-right: 1px solid var(--f-border);
+                background: transparent; color: var(--f-text); font: 600 calc(.9rem * var(--s,1)) var(--f-font); cursor: pointer; }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover { background: var(--f-hover); }
+  .seg button[aria-pressed="true"] { background: var(--f-accent); color: var(--f-on-accent); }
+
+  .pill { --pad: calc(8px * var(--s,1)); position: absolute; z-index: 150; bottom: 24px; left: 50%; transform: translateX(-50%);
+          max-width: calc(100% - 16px); display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+          gap: calc(8px * var(--s,1)); padding: var(--pad) calc(12px * var(--s,1)); background: var(--f-surface);
+          border: 1px solid var(--f-border); border-radius: 36px; box-shadow: var(--f-shadow);
+          touch-action: none; user-select: none; cursor: grab; }
+  .pill.placed { bottom: auto; transform: none; }
+  .pill.dragging { cursor: grabbing; }
+  .pill .row2 { flex-basis: 100%; display: flex; justify-content: center; align-items: center; gap: 12px; }
+  .sizewrap { position: relative; display: inline-flex; }
+  .menu { position: absolute; right: 0; min-width: 170px; z-index: 40; padding: 4px; background: var(--f-surface);
+          border: 1px solid var(--f-border); border-radius: var(--f-radius); box-shadow: var(--f-shadow);
+          display: flex; flex-direction: column; gap: 1px; cursor: default; }
+  .menu.up { bottom: calc(100% + 10px); } .menu.down { top: calc(100% + 10px); }
+  .menu button { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 0; background: transparent;
+                 color: var(--f-text); padding: 8px 10px; border-radius: var(--f-radius-sm); font: inherit; cursor: pointer; text-align: left; }
+  .menu button:hover { background: var(--f-hover); }
+
+  .strip { --s: 1; flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+           gap: calc(10px * var(--s,1)) calc(14px * var(--s,1)); padding: calc(10px * var(--s,1)) 14px; background: var(--f-surface);
+           border-top: 1px solid var(--f-border); }
+  .strip .fbtn.play { width: calc(88px * var(--s,1)); }
+  .strip .fbtn.play { border-radius: calc(44px * var(--s,1)); }
+  .strip .fbtn { border-radius: calc(24px * var(--s,1)); }
+  .strip .fbtn.play { width: calc(120px * var(--s,1)); }
+
+  .rail { --s: 1; position: absolute; z-index: 150; top: 8px; bottom: 8px; right: 8px; max-height: calc(100% - 16px);
+          display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(8px * var(--s,1));
+          padding: calc(10px * var(--s,1)); background: var(--f-surface); border: 1px solid var(--f-border);
+          border-radius: 36px; box-shadow: var(--f-shadow); overflow-y: auto; scrollbar-width: thin; }
+  .rail .sizebtn { width: calc(48px * var(--s,1)); height: calc(32px * var(--s,1)); border-radius: 16px; font-size: calc(.85rem * var(--s,1)); font-weight: 600; }
+  .rail .speed { min-width: 0; }
+
+  .puckwrap { position: absolute; z-index: 150; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 10px;
+              flex-direction: row-reverse; max-width: calc(100% - 24px); }
+  .puck { width: calc(84px * var(--s,1)); height: calc(84px * var(--s,1)); border-radius: 50%; border: none; background: var(--f-accent); color: var(--f-on-accent);
+          display: inline-flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: var(--f-shadow); flex-shrink: 0; }
+  .puck:hover { background: var(--f-accent-hover); } .puck svg { width: calc(40px * var(--s,1)); height: calc(40px * var(--s,1)); }
+  .puck-extra { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; padding: 8px 12px;
+                background: var(--f-surface); border: 1px solid var(--f-border); border-radius: 36px; box-shadow: var(--f-shadow); }
+  .chev { position: absolute; top: -6px; left: -6px; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--f-border);
+          background: var(--f-surface); color: var(--f-text); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+  .chev:hover { border-color: var(--f-accent); } .chev svg { width: 16px; height: 16px; }
+  .puckbox { position: relative; flex-shrink: 0; }
+
+  .slider { flex: 1 1 260px; min-width: 200px; position: relative; padding: 0 6px 22px; }
+  .slider input { width: 100%; margin: 0; height: calc(40px * var(--s,1)); background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
+  .slider input::-webkit-slider-runnable-track { height: calc(12px * var(--s,1)); background: var(--f-surface-2); border: 1px solid var(--f-border); border-radius: 999px; }
+  .slider input::-moz-range-track { height: calc(12px * var(--s,1)); background: var(--f-surface-2); border: 1px solid var(--f-border); border-radius: 999px; }
+  .slider input::-webkit-slider-thumb { -webkit-appearance: none; width: calc(36px * var(--s,1)); height: calc(36px * var(--s,1)); margin-top: calc(-13px * var(--s,1));
+          border-radius: 50%; background: var(--f-accent); border: 3px solid var(--f-surface); box-shadow: 0 0 0 1px var(--f-accent); }
+  .slider input::-moz-range-thumb { width: calc(30px * var(--s,1)); height: calc(30px * var(--s,1)); border-radius: 50%; background: var(--f-accent); border: 3px solid var(--f-surface); }
+  .slider input:focus-visible { outline: 2px solid var(--f-focus); outline-offset: 4px; border-radius: 8px; }
+  .ticks { position: absolute; left: calc(6px + 18px); right: calc(6px + 18px); bottom: 0; height: 18px; font-size: 11px; color: var(--f-muted); }
+  .ticks span { position: absolute; transform: translateX(-50%); font-variant-numeric: tabular-nums; }
+  .ticks span::before { content: ""; position: absolute; left: 50%; top: -6px; width: 1px; height: 5px; background: var(--f-muted); }
+  .startbtn { padding: 12px 22px; border-radius: 999px; border: none; background: var(--f-accent); color: var(--f-on-accent); font: 600 1rem var(--f-font); cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Folio auto-scroll controls: design options</h1>
+  <p class="lead">Six ways to lay out the on-screen auto-scroll controls. Each mock below is live: press Play, change speed, change size, then switch on "Narrow / short area" to see how it copes (the area becomes 440 by 300 pixels, like a small window with the sidebar open). Mocks use Folio's dark theme; page chrome uses okstudio-style. The mocks do not handle keyboard shortcuts, only focus and Enter or Space on buttons.</p>
+  <p class="lead">Failure modes found in review: the bar growing wider than the area at large sizes, clipping when the sidebar opens, the Size popup clipping in short windows, and menu arrow keys leaking to the viewer. Designs with no popup and no overflow are marked in the Pros lists.</p>
+
+  <div id="options"></div>
+
+  <section>
+    <h2>Comparison</h2>
+    <table>
+      <thead><tr><th>Option</th><th>Pointer effort</th><th>Covers text</th><th>Survives narrow area</th><th>Keyboard complexity</th><th>Implementation effort</th><th>Recommendation</th></tr></thead>
+      <tbody>
+        <tr><td>A. Current pill, Size menu</td><td>Med</td><td>Med</td><td>Low</td><td>High</td><td>Low</td><td class="rec"></td></tr>
+        <tr><td>B. Pill, inline size buttons</td><td>Low</td><td>Med</td><td>Med</td><td>Low</td><td>Low</td><td class="rec"></td></tr>
+        <tr><td>C. Docked bottom strip</td><td>Low</td><td>Low</td><td>Med</td><td>Low</td><td>Med</td><td class="rec"></td></tr>
+        <tr><td>D. Right-edge rail</td><td>Low</td><td>Low</td><td>Med</td><td>Low</td><td>Med</td><td class="rec"></td></tr>
+        <tr><td>E. Minimal puck</td><td>Med</td><td>Low</td><td>High</td><td>Med</td><td>Med</td><td class="rec"></td></tr>
+        <tr><td>F. Pill with speed slider</td><td>Low</td><td>Med</td><td>Med</td><td>Med</td><td>Med</td><td class="rec"></td></tr>
+      </tbody>
+    </table>
+    <p class="lead">Survives narrow area: High means all controls stay reachable with no extra step. Pointer effort counts clicks and travel to reach any control.</p>
+  </section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var MIN = 4, MAX = 160, STEP = 1.3;
+  var SIZES = [['S', 'Small', 0.75], ['M', 'Medium', 1], ['L', 'Large', 1.5], ['XL', 'Extra large', 2]];
+  var ICON = {
+    play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+    pause: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>',
+    minus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+    x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    resize: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l16-16M4 20h6M4 20v-6M20 4h-6M20 4v6"/></svg>',
+    check: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>',
+    up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>',
+    down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+    left: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>',
+    right: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>'
+  };
+
+  var OPTIONS = [
+    { id: 'A', title: 'Current: floating pill with Size menu', kind: 'pill-menu',
+      desc: 'As shipped: a draggable horizontal pill over the document, bottom centre. Slower, Play/Pause, Faster, speed, Stop, and a Size button that opens a popup menu. This mock includes the wrap fix: controls drop to a second row when the pill is wider than the area. Drag any empty part of the pill; double-click it to reset.',
+      pros: ['Already built and familiar', 'Draggable out of the way of the text', 'Compact at Medium size'],
+      cons: ['Size popup clips in short areas (try Narrow, then open Size)', 'Menu needs its own key handling (arrows leaked to the viewer)', 'Wraps to several rows at XL, covering more text', 'Size takes two clicks'] },
+    { id: 'B', title: 'Floating pill with inline size buttons', kind: 'pill-seg',
+      desc: 'The same draggable pill, but Size is a row of S M L XL buttons instead of a popup. Wrapping still applies, so the extra row appears when the area is narrow.',
+      pros: ['No popup, so nothing to clip and no menu keys to leak', 'Size is one click, always visible', 'Smallest change from today'],
+      cons: ['Pill is wider or taller, covers more text', 'Still floats over the document', 'Wraps to multiple rows at XL in small areas'] },
+    { id: 'C', title: 'Docked bottom strip', kind: 'strip',
+      desc: 'A full-width strip at the bottom of the document area. It is not floating and not draggable: the document area shrinks above it, so the controls never cover text. Very large targets, size set by a segmented control.',
+      pros: ['Covers no text, by construction', 'Cannot be dragged off or clipped by the sidebar: it is part of the layout', 'Largest targets, simplest mental model'],
+      cons: ['Permanently uses vertical space while on', 'Wraps to extra rows at XL in a narrow area, shrinking the page more', 'Needs a layout change in the viewer, not just an overlay'] },
+    { id: 'D', title: 'Vertical rail on the right edge', kind: 'rail',
+      desc: 'A tall rail docked to the right edge: Faster, Play/Pause, Slower, speed, Stop, and a Size button that cycles S, M, L, XL (no menu). It uses vertical space, which is plentiful in a portrait document, and only covers the right margin.',
+      pros: ['Covers only the margin on most pages', 'Short window friendly: scrolls inside itself, never wider than the area', 'No menu, one click to change size'],
+      cons: ['Can cover text on pages with narrow margins or when narrow', 'In a short area at XL the rail scrolls (try it)', 'Cycling size is less discoverable than a labelled row'] },
+    { id: 'E', title: 'Minimal puck', kind: 'puck',
+      desc: 'One large round Play/Pause button in the bottom-right corner. Hover, or click the small chevron, to expand speed, Slower, Faster, Stop and size. It collapses after a few seconds idle.',
+      pros: ['Smallest footprint, least text covered', 'Needs the least space, so survives narrow areas best', 'Big primary target'],
+      cons: ['Speed controls are hidden until expanded: an extra step', 'Auto-collapse can be annoying for slow movers; the timeout must be generous', 'Hover-to-expand is awkward with a hand tracker or dwell click'] },
+    { id: 'F', title: 'Pill with a speed slider', kind: 'slider',
+      desc: 'Like B, plus a large horizontal slider with a big thumb, wide track and tick marks to set speed directly (log scale, 4 to 160 px/s), alongside the Slower and Faster steps.',
+      pros: ['Jump straight to any speed in one drag', 'Ticks show where you are in the range', 'Still no popup menu'],
+      cons: ['Dragging a thumb is harder than clicking for some users; the steps remain as a fallback', 'Widest and tallest option, covers the most text', 'Slider keyboard behaviour (arrows) has to be reconciled with the viewer shortcuts'] }
+  ];
+
+  var PARAS = ['Auto-scroll moves the page for you so your hands can rest. Set a speed that matches your reading pace and let the document come to you.',
+    'The placeholder text on this page exists only to give the mock something to scroll. It does not describe a real document, and the lines are long enough to wrap a few times in a narrow area.',
+    'Large pointer targets matter most when the pointer is the only input. Every control here is sized so a slightly imprecise click still lands.'];
+  function pageHtml(n) {
+    var h = '';
+    for (var i = 0; i < 12; i++) {
+      h += '<div class="page"><h4>Section ' + (n * 12 + i + 1) + '</h4>';
+      for (var j = 0; j < 5; j++) h += '<p>' + PARAS[(i + j) % PARAS.length] + '</p>';
+      h += '</div>';
+    }
+    return h;
+  }
+  function fbtn(act, label, icon, cls) {
+    return '<button type="button" class="fbtn ' + (cls || '') + '" data-act="' + act + '" aria-label="' + label + '" title="' + label + '">' + ICON[icon] + '</button>';
+  }
+  var PLAY = function () { return fbtn('play', 'Play', 'play', 'play'); };
+  var SPEED = '<span class="speed" aria-hidden="true"><span data-speed>40</span><small>px/s</small></span>';
+  function seg() {
+    return '<div class="seg" role="group" aria-label="Size">' + SIZES.map(function (s, i) {
+      return '<button type="button" data-act="size" data-i="' + i + '" aria-pressed="false" aria-label="' + s[1] + '" title="' + s[1] + '">' + s[0] + '</button>';
+    }).join('') + '</div>';
+  }
+  var core = function () { return fbtn('slower', 'Slower', 'minus') + PLAY() + fbtn('faster', 'Faster', 'plus') + SPEED + fbtn('stop', 'Stop auto-scroll', 'x'); };
+  function sliderHtml() {
+    return '<div class="slider"><input type="range" min="0" max="100" step="1" data-act="slider" aria-label="Speed in pixels per second">' +
+      '<div class="ticks">' + [4, 10, 20, 40, 80, 160].map(function (v) {
+        return '<span style="left:' + (Math.log(v / MIN) / Math.log(MAX / MIN) * 100) + '%">' + v + '</span>';
+      }).join('') + '</div></div>';
+  }
+
+  function controlsFor(kind) {
+    switch (kind) {
+      case 'pill-menu':
+        return '<div class="pill" data-float>' + core() +
+          '<div class="sizewrap">' + fbtn('menu', 'Size', 'resize') +
+          '<div class="menu is-hidden" role="menu" aria-label="Size">' + SIZES.map(function (s, i) {
+            return '<button type="button" role="menuitemradio" data-act="size" data-i="' + i + '"><span>' + s[1] + '</span><span data-check>' + ICON.check + '</span></button>';
+          }).join('') + '</div></div></div>';
+      case 'pill-seg':
+        return '<div class="pill" data-float>' + core() + seg() + '</div>';
+      case 'slider':
+        return '<div class="pill" data-float>' + core() + '<div class="row2">' + sliderHtml() + '</div>' + '<div class="row2">' + seg() + '</div></div>';
+      case 'strip':
+        return '<div class="strip">' + core() + seg() + '</div>';
+      case 'rail':
+        return '<div class="rail">' + fbtn('faster', 'Faster', 'plus') + PLAY() + fbtn('slower', 'Slower', 'minus') + SPEED + fbtn('stop', 'Stop auto-scroll', 'x') +
+          '<button type="button" class="fbtn sizebtn" data-act="cycle" aria-label="Size" title="Size: click to cycle"><span data-sizelabel>M</span></button></div>';
+      case 'puck':
+        return '<div class="puckwrap"><div class="puckbox"><button type="button" class="puck" data-act="play" aria-label="Play">' + ICON.play + '</button>' +
+          '<button type="button" class="chev" data-act="expand" aria-label="Show more controls" aria-expanded="false">' + ICON.left + '</button></div>' +
+          '<div class="puck-extra is-hidden">' + fbtn('slower', 'Slower', 'minus') + SPEED + fbtn('faster', 'Faster', 'plus') + fbtn('stop', 'Stop auto-scroll', 'x') + seg() + '</div></div>';
+    }
+  }
+
+  function build(opt) {
+    var sec = document.createElement('section');
+    sec.className = 'opt';
+    sec.innerHTML =
+      '<h2><span class="tag">' + opt.id + '</span>' + opt.title + '</h2><p>' + opt.desc + '</p>' +
+      '<div class="cols"><div class="pros"><h3>Pros</h3><ul>' + opt.pros.map(function (t) { return '<li>' + t + '</li>'; }).join('') + '</ul></div>' +
+      '<div class="cons"><h3>Cons</h3><ul>' + opt.cons.map(function (t) { return '<li>' + t + '</li>'; }).join('') + '</ul></div></div>' +
+      '<div class="bar"><button type="button" class="ax-btn" data-narrow aria-pressed="false">Narrow / short area: off</button><span class="hint">Mock area is 440 by 300 px when on.</span></div>' +
+      '<div class="mock"><div class="area">' + areaHtml(opt) + '</div></div>';
+    document.getElementById('options').appendChild(sec);
+    wire(sec, opt);
+  }
+
+  function areaHtml(opt) {
+    var k = opt.kind, ctl = controlsFor(k);
+    var viewer = '<div class="viewer"><div class="doc" data-doc>' + pageHtml(0) + '</div>' +
+      '<div class="off is-hidden" data-off><button type="button" class="startbtn" data-act="start">Start auto-scroll</button></div>' +
+      (k === 'strip' ? '' : ctl) + '</div>';
+    return '<div class="col">' + viewer + (k === 'strip' ? ctl : '') + '</div>';
+  }
+
+  function wire(sec, opt) {
+    var mock = sec.querySelector('.mock'), area = sec.querySelector('.area'), doc = sec.querySelector('[data-doc]');
+    var off = sec.querySelector('[data-off]');
+    var ctl = sec.querySelector('.pill, .strip, .rail, .puckwrap');
+    var st = { playing: false, speed: 40, size: 1, on: true, pos: 0 };
+    var q = function (s) { return sec.querySelectorAll(s); };
+
+    function sizeVal() { return SIZES[st.size][2]; }
+    function update() {
+      var s = sizeVal();
+      ctl.style.setProperty('--s', s);
+      q('[data-speed]').forEach(function (e) { e.textContent = Math.round(st.speed); });
+      q('[data-act="play"]').forEach(function (b) {
+        b.innerHTML = st.playing ? ICON.pause : ICON.play;
+        b.setAttribute('aria-label', st.playing ? 'Pause' : 'Play'); b.title = st.playing ? 'Pause' : 'Play';
+      });
+      q('[data-act="slower"]').forEach(function (b) { b.disabled = st.speed <= MIN; });
+      q('[data-act="faster"]').forEach(function (b) { b.disabled = st.speed >= MAX; });
+      q('.seg [data-i]').forEach(function (b) { b.setAttribute('aria-pressed', String(+b.dataset.i === st.size)); });
+      q('.menu [data-i]').forEach(function (b) { b.querySelector('[data-check]').style.visibility = (+b.dataset.i === st.size) ? 'visible' : 'hidden'; });
+      var sl = sec.querySelector('[data-act="slider"]');
+      if (sl) sl.value = Math.log(st.speed / MIN) / Math.log(MAX / MIN) * 100;
+      var lab = sec.querySelector('[data-sizelabel]'); if (lab) lab.textContent = SIZES[st.size][0];
+      ctl.classList.toggle('is-hidden', !st.on);
+      off.classList.toggle('is-hidden', st.on);
+    }
+    function setSpeed(v) { st.speed = Math.max(MIN, Math.min(MAX, v)); update(); }
+    function fit() { if (ctl.hasAttribute('data-float')) resetPos(); }
+    function resetPos() { ctl.classList.remove('placed'); ctl.style.left = ctl.style.top = ''; }
+
+    // Scroll loop: fractional position so slow speeds still move.
+    var last = performance.now();
+    function frame(now) {
+      var dt = Math.min(0.1, (now - last) / 1000); last = now;
+      if (st.on && st.playing) {
+        st.pos += st.speed * dt;
+        var max = doc.scrollHeight - doc.clientHeight;
+        if (st.pos >= max) { st.pos = 0; }
+        doc.scrollTop = st.pos;
+      }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    // Puck expand and idle collapse.
+    var extra = sec.querySelector('.puck-extra'), chev = sec.querySelector('.chev'), idleT = null, hovering = false;
+    function expand(v) {
+      if (!extra) return;
+      extra.classList.toggle('is-hidden', !v);
+      chev.setAttribute('aria-expanded', String(v));
+      chev.innerHTML = v ? ICON.right : ICON.left;
+      clearTimeout(idleT);
+      if (v) idleT = setTimeout(function () { if (!hovering) expand(false); else expand(true); }, 4000);
+    }
+    if (extra) {
+      var wrap = sec.querySelector('.puckwrap');
+      wrap.addEventListener('pointerenter', function () { hovering = true; expand(true); });
+      wrap.addEventListener('pointerleave', function () { hovering = false; expand(!extra.classList.contains('is-hidden')); });
+      wrap.addEventListener('pointerdown', function () { if (!extra.classList.contains('is-hidden')) expand(true); });
+    }
+
+    // Size menu (option A).
+    var menu = sec.querySelector('.menu');
+    function closeMenu() { if (menu) menu.classList.add('is-hidden'); }
+    function toggleMenu() {
+      if (menu.classList.contains('is-hidden')) {
+        var ar = area.getBoundingClientRect(), br = ctl.getBoundingClientRect();
+        menu.className = 'menu ' + ((br.top - ar.top) < 220 ? 'down' : 'up');
+      } else closeMenu();
+    }
+    document.addEventListener('pointerdown', function (e) { if (menu && !e.target.closest('.sizewrap') && e.target.closest('.mock') !== mock) closeMenu(); else if (menu && !sec.contains(e.target)) closeMenu(); });
+
+    sec.addEventListener('click', function (e) {
+      var nb = e.target.closest('[data-narrow]');
+      if (nb) {
+        var on = !mock.classList.contains('narrow'); mock.classList.toggle('narrow', on);
+        nb.setAttribute('aria-pressed', String(on)); nb.textContent = 'Narrow / short area: ' + (on ? 'on' : 'off');
+        fit(); closeMenu(); return;
+      }
+      var b = e.target.closest('[data-act]'); if (!b || b.tagName === 'INPUT') return;
+      switch (b.dataset.act) {
+        case 'play': st.playing = !st.playing; update(); break;
+        case 'slower': setSpeed(st.speed / STEP); break;
+        case 'faster': setSpeed(st.speed * STEP); break;
+        case 'stop': st.on = false; st.playing = false; closeMenu(); update(); break;
+        case 'start': st.on = true; st.playing = true; update(); break;
+        case 'size': st.size = +b.dataset.i; closeMenu(); update(); fit(); break;
+        case 'cycle': st.size = (st.size + 1) % SIZES.length; update(); break;
+        case 'menu': toggleMenu(); break;
+        case 'expand': expand(extra.classList.contains('is-hidden')); break;
+      }
+    });
+    var slider = sec.querySelector('[data-act="slider"]');
+    if (slider) slider.addEventListener('input', function () { setSpeed(MIN * Math.pow(MAX / MIN, slider.value / 100)); });
+
+    // Drag floating pills by any empty part; double-click resets.
+    if (ctl.hasAttribute('data-float')) {
+      var d = null;
+      ctl.addEventListener('pointerdown', function (e) {
+        if (e.button !== 0 || e.target.closest('button, input, [role="menu"], .slider')) return;
+        e.preventDefault();
+        var ar = area.getBoundingClientRect(), br = ctl.getBoundingClientRect();
+        ctl.classList.add('placed', 'dragging');
+        ctl.style.left = (br.left - ar.left - area.clientLeft) + 'px'; ctl.style.top = (br.top - ar.top - area.clientTop) + 'px';
+        d = { gx: e.clientX - br.left, gy: e.clientY - br.top };
+        ctl.setPointerCapture(e.pointerId);
+      });
+      ctl.addEventListener('pointermove', function (e) {
+        if (!d) return;
+        var ar = area.getBoundingClientRect();
+        var x = e.clientX - ar.left - area.clientLeft - d.gx, y = e.clientY - ar.top - area.clientTop - d.gy;
+        ctl.style.left = Math.max(0, Math.min(area.clientWidth - ctl.offsetWidth, x)) + 'px';
+        ctl.style.top = Math.max(0, Math.min(area.clientHeight - ctl.offsetHeight, y)) + 'px';
+      });
+      var end = function () { d = null; ctl.classList.remove('dragging'); };
+      ctl.addEventListener('pointerup', end); ctl.addEventListener('lostpointercapture', end);
+      ctl.addEventListener('dblclick', function (e) { if (!e.target.closest('button, input, [role="menu"], .slider')) resetPos(); });
+    }
+    update();
+  }
+
+  OPTIONS.forEach(build);
+})();
+</script>
+</body>
+</html>
