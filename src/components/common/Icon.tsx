@@ -295,14 +295,6 @@ const ICONS = {
       <rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" />
     </>
   ),
-  // A diagonal two-way arrow: make the thing bigger or smaller.
-  resize: (
-    <>
-      <path d="M5 19L19 5" />
-      <path d="M13 5h6v6" />
-      <path d="M11 19H5v-6" />
-    </>
-  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof ICONS;

@@ -8,12 +8,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **Bigger auto-scroll controls.** While auto-scroll is on, a bar floats over
-  the document with a large play/pause button, slower and faster buttons, the
-  current speed, and a stop button. Space pauses and resumes too. Drag any
-  empty part of the bar to move it (double-click it to put it back), and pick
-  Small, Medium, Large or Extra large from its Size menu. Folio remembers
-  where you put it and how big you made it.
+- **Bigger auto-scroll controls.** While auto-scroll is on, a large round
+  play/pause button sits in the bottom-right corner of the document. A
+  chevron beside it opens a panel above them with slower, faster and stop buttons, the
+  current speed, and S, M, L and XL buttons for the size of the controls. The
+  panel opens and closes only when you click the chevron, never on hover or a
+  timer, and wraps (then scrolls) in a small window. Space pauses and resumes
+  too. Folio remembers the size and whether the panel was open.
 
 ### Changed
 

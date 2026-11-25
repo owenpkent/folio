@@ -190,7 +190,7 @@ describe('PdfViewer auto-scroll keys', () => {
     resetPageSizes();
   });
 
-  it('leaves arrow keys inside a menu alone but still adjusts speed elsewhere', () => {
+  it('leaves arrow keys inside an open menu alone but still adjusts speed elsewhere', () => {
     useViewerStore.getState().setAutoScroll(true);
     render(
       <>

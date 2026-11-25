@@ -968,41 +968,65 @@ kbd {
 .folio-viewer.is-autoscroll {
   scroll-behavior: auto;
 }
-/* Auto-scroll transport: floats over the bottom of the document while
-   auto-scroll is on. Big pointer targets (48px, play 64px) on purpose, all
-   multiplied by --folio-as-scale, which the Size menu sets. Dragging any empty
-   part of the bar pins it with inline left/top instead of the centred default. */
+/* Auto-scroll controls: a play/pause puck fixed in the bottom-right corner of
+   the document area, a chevron beside it, and a panel that opens above them
+   (click only: no hover, no idle timer). Big pointer targets (48px buttons,
+   84px puck) on purpose, all multiplied by --folio-as-scale. The panel wraps
+   onto more rows at full button size, and scrolls if the area is too short, so
+   no control ever leaves the area. */
 .folio-autoscroll {
   --s: var(--folio-as-scale, 1);
   position: absolute;
-  bottom: 24px;
-  /* Centred without a transform, so the width is the content's own, capped to
-     the area: past that the controls wrap onto more rows at full size. */
-  left: 0;
-  right: 0;
-  margin-inline: auto;
-  width: max-content;
-  max-width: 100%;
+  right: 16px;
+  bottom: 16px;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 32px);
   box-sizing: border-box;
   z-index: 150;
+  /* A column: the panel above, the chevron and puck along the bottom. The
+     column shrinks the panel (which then scrolls) before anything leaves the
+     area, even at the smallest window with the sidebar open. */
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
   gap: calc(8px * var(--s));
-  padding: calc(8px * var(--s)) calc(12px * var(--s));
+  padding: calc(8px * var(--s));
   background: var(--folio-surface);
   border: 1px solid var(--folio-border);
-  border-radius: calc(40px * var(--s));
+  border-radius: calc(28px * var(--s));
   box-shadow: var(--folio-shadow);
-  touch-action: none;
   user-select: none;
-  cursor: grab;
 }
-.folio-autoscroll.is-dragging {
-  cursor: grabbing;
+.folio-autoscroll__panel {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: calc(8px * var(--s));
+  min-height: 0;
+  max-width: 100%;
+  overflow-y: auto;
 }
-.folio-autoscroll__btn {
+.folio-autoscroll__base {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(8px * var(--s));
+}
+/* The speed and stop buttons wrap with the size buttons as one flow. */
+.folio-autoscroll__row {
+  display: contents;
+}
+.folio-autoscroll__row[role='group'] {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: calc(8px * var(--s));
+  margin-left: calc(8px * var(--s));
+}
+.folio-autoscroll__btn,
+.folio-autoscroll__size {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1019,7 +1043,8 @@ kbd {
     background var(--folio-transition),
     border-color var(--folio-transition);
 }
-.folio-autoscroll__btn:hover:not(:disabled) {
+.folio-autoscroll__btn:hover:not(:disabled),
+.folio-autoscroll__size:hover {
   background: var(--folio-surface-hover);
   border-color: var(--folio-accent);
 }
@@ -1027,13 +1052,14 @@ kbd {
   opacity: 0.4;
   cursor: default;
 }
-.folio-autoscroll__btn:focus-visible {
+.folio-autoscroll__btn:focus-visible,
+.folio-autoscroll__size:focus-visible {
   outline: 2px solid var(--folio-focus);
   outline-offset: 2px;
 }
 .folio-autoscroll__play {
-  width: calc(64px * var(--s));
-  height: calc(64px * var(--s));
+  width: calc(84px * var(--s));
+  height: calc(84px * var(--s));
   border: none;
   background: var(--folio-accent);
   color: var(--folio-accent-contrast);
@@ -1056,37 +1082,22 @@ kbd {
   font-weight: 400;
   color: var(--folio-text-muted);
 }
-.folio-autoscroll__stop {
-  margin-left: calc(4px * var(--s));
-}
 .folio-autoscroll__size {
-  position: relative;
-  display: inline-flex;
+  font-size: calc(0.95rem * var(--s));
+  font-weight: 600;
 }
-/* Unscaled: the menu is ordinary text, and it opens away from the nearer edge. */
-.folio-autoscroll__menu {
-  right: 0;
-  min-width: 170px;
-  cursor: default;
-  overflow-y: auto;
-}
-.folio-autoscroll__menu.is-up {
-  top: auto;
-  bottom: calc(100% + 10px);
-}
-.folio-autoscroll__menu.is-down {
-  top: calc(100% + 10px);
-}
-.folio-autoscroll__menu .folio-dropdown__item {
-  min-height: 40px;
-  font-size: 1rem;
+.folio-autoscroll__size[aria-pressed='true'] {
+  background: var(--folio-accent);
+  border-color: var(--folio-accent);
+  color: var(--folio-accent-contrast);
 }
 .folio-autoscroll__stop:hover:not(:disabled) {
   border-color: var(--folio-danger);
   color: var(--folio-danger);
 }
 @media (forced-colors: active) {
-  .folio-autoscroll__play {
+  .folio-autoscroll__play,
+  .folio-autoscroll__size[aria-pressed='true'] {
     border: 2px solid ButtonText;
   }
 }
