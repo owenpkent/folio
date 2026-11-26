@@ -17,8 +17,9 @@ receives critical fixes only for a short transition window.
 | older releases         | No                  |
 
 We recommend always running the latest release to receive security updates.
-Folio updates itself on launch from 0.9.1 on; 0.9.0 cannot, so install a
-current release by hand.
+Folio updates itself on launch. The one exception is 0.9.0, which crashes as
+it starts and so cannot update: if you have it, install a current release by
+hand.
 
 ## Reporting a vulnerability
 

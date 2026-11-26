@@ -263,10 +263,10 @@ export function PdfViewer() {
   }, [status]);
 
   // Auto-scroll (teleprompter): glide the page down, or up when the speed is
-  // negative, while active. A floating
-  // point position is advanced every frame and written straight to scrollTop —
-  // browsers keep sub-pixel scroll offsets on HiDPI, so even a slow crawl moves
-  // smoothly instead of stepping a whole pixel at a time. Speed is read live so
+  // negative, while active. A floating point position is advanced every frame
+  // and written straight to scrollTop — browsers keep sub-pixel scroll offsets
+  // on HiDPI, so even a slow crawl moves smoothly instead of stepping a whole
+  // pixel at a time. Speed is read live so
   // button/keyboard changes apply without restarting the loop. Panning pauses
   // it, manual scrolling is adopted, and reaching the end (or the top, when
   // scrolling up) switches it off.

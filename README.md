@@ -18,7 +18,7 @@ native [Tauri](https://tauri.app) shell, and is designed from the first commit
 around three things Acrobat treats as afterthoughts: **accessibility**,
 **a real dark mode**, and **extensibility**.
 
-> Status: 1.0 is out and updates itself. The core viewer, printing, forms, annotations
+> Status: 1.x, stable; Folio updates itself. The core viewer, printing, forms, annotations
 > that embed into a saved copy, editing, OCR, visual and cryptographic signing,
 > theming, accessibility (Section 508), and the plugin system are in
 > place, and development continues. See the [roadmap](ROADMAP.md).
