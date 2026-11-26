@@ -71,6 +71,7 @@ export function ContextMenu() {
   const close = useContextMenu((s) => s.closeMenu);
 
   const handMode = useViewerStore((s) => s.handMode);
+  const autoScroll = useViewerStore((s) => s.autoScroll);
   const setHandMode = useViewerStore((s) => s.setHandMode);
   const hasDoc = useDocumentStore((s) => s.status === 'ready');
 
@@ -124,6 +125,14 @@ export function ContextMenu() {
       icon: 'hand',
       checked: handMode,
       onSelect: () => setHandMode(true),
+    },
+    {
+      kind: 'item',
+      label: 'Auto-scroll',
+      icon: 'auto-scroll',
+      checked: autoScroll,
+      disabled: !hasDoc,
+      onSelect: () => run('view.toggleAutoScroll'),
     },
     { kind: 'separator' },
     {

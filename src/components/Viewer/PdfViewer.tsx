@@ -7,14 +7,16 @@ import { NATIVE_CONTEXT_MENU_TARGETS, useContextMenu } from '@/features/contextm
 import { AddressHint, copyTargetAt, useTrackAddressHover } from '@/features/links';
 import { watchDevicePixelRatio } from '@/hooks/watchDevicePixelRatio';
 import { focusViewer, setViewerElement } from '@/state/viewerElement';
-import { MAX_SCALE, MIN_SCALE, useViewerStore } from '@/state/viewerStore';
+import { describeAutoScrollSpeed, MAX_SCALE, MIN_SCALE, useViewerStore } from '@/state/viewerStore';
 import { useDocumentStore } from '@/state/documentStore';
 
 import { EmptyState } from './EmptyState';
 import { Page } from './Page';
 
 function announceSpeed(): void {
-  announce(`Auto-scroll speed ${useViewerStore.getState().autoScrollSpeed} pixels per second`);
+  announce(
+    `Auto-scroll speed ${describeAutoScrollSpeed(useViewerStore.getState().autoScrollSpeed)}`,
+  );
 }
 
 // How long a scroll-to-page request keeps re-aiming at its target. Closed on a
@@ -288,12 +290,18 @@ export function PdfViewer() {
       if (!panRef.current && !paused && dt > 0 && maxTop > 0.5) {
         // If the user scrolled by hand (wheel, keys), adopt that position.
         if (Math.abs(container.scrollTop - pos) > 2) pos = container.scrollTop;
+        // Signed: negative scrolls up.
         const speed = useViewerStore.getState().autoScrollSpeed;
-        pos += speed * dt;
+        pos = Math.min(maxTop, Math.max(0, pos + speed * dt));
         container.scrollTop = pos;
-        if (pos >= maxTop - 0.5) {
+        if (speed > 0 && pos >= maxTop - 0.5) {
           useViewerStore.getState().setAutoScroll(false);
           announce('Auto-scroll reached the end');
+          return;
+        }
+        if (speed < 0 && pos <= 0.5) {
+          useViewerStore.getState().setAutoScroll(false);
+          announce('Auto-scroll reached the top');
           return;
         }
       }

@@ -137,17 +137,6 @@ kbd {
   color: var(--folio-text-muted);
   font-variant-numeric: tabular-nums;
 }
-.folio-toolbar__speed-slot {
-  display: inline-flex;
-  align-items: center;
-  width: 104px;
-  padding: 0 4px;
-}
-.folio-toolbar__speed {
-  width: 100%;
-  accent-color: var(--folio-accent);
-  cursor: pointer;
-}
 .folio-toolbar__title {
   margin-left: 8px;
   /* min-width:0 lets the name shrink below its content width (flex items default
@@ -971,7 +960,7 @@ kbd {
 /* Auto-scroll controls: a play/pause puck fixed in the bottom-right corner of
    the document area, with small slower and faster buttons under it.
    Right-click opens a size menu; nothing opens on hover or on a timer. Big
-   pointer targets (36px buttons, 84px puck) on purpose, all multiplied by
+   pointer targets (56px buttons, 84px puck) on purpose, all multiplied by
    --folio-as-scale. A narrow column, so it fits even a small window. */
 .folio-autoscroll {
   --s: var(--folio-as-scale, 1);
@@ -1015,11 +1004,10 @@ kbd {
     background var(--folio-transition),
     border-color var(--folio-transition);
 }
-/* Slower and faster are smaller than the puck; still a comfortable 36px
-   target at Medium. */
+/* − and + are smaller than the puck but still big targets: 56px at Medium. */
 .folio-autoscroll__btn--small {
-  width: calc(36px * var(--s));
-  height: calc(36px * var(--s));
+  width: calc(56px * var(--s));
+  height: calc(56px * var(--s));
 }
 .folio-autoscroll__btn:hover:not(:disabled) {
   background: var(--folio-surface-hover);
@@ -2381,7 +2369,6 @@ kbd {
     margin: 0 2px;
   }
   .folio-toolbar__title,
-  .folio-toolbar__speed-slot,
   .folio-toolbar__pinned,
   .folio-toolbar__fold-narrow {
     display: none;

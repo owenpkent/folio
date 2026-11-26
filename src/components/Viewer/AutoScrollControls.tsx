@@ -3,24 +3,56 @@ import type {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
 } from 'react';
 
 import { announce } from '@/a11y/announcer';
 import { Icon } from '@/components/common/Icon';
-import { AUTO_SCROLL_MAX, AUTO_SCROLL_MIN, useViewerStore } from '@/state/viewerStore';
+import {
+  AUTO_SCROLL_MAX,
+  AUTO_SCROLL_MIN,
+  describeAutoScrollSpeed,
+  stepAutoScrollSpeed,
+  useViewerStore,
+} from '@/state/viewerStore';
 import { useDocumentStore } from '@/state/documentStore';
 
 import { type AutoScrollLayout, readLayout, SIZES, writeLayout } from './autoScrollLayout';
 
-// One press of slower/faster: the same step as the arrow keys while scrolling.
+// One press of − or +: the same step as the arrow keys while scrolling.
 const SPEED_STEP = 1.3;
+// Holding − or + steps again after HOLD_DELAY, then every HOLD_INTERVAL. Slow
+// on purpose: a press that takes a moment to release should not run away.
+export const HOLD_DELAY = 500;
+export const HOLD_INTERVAL = 200;
+
+/**
+ * What − and + will do from this speed (signed: negative scrolls up). − moves
+ * toward scrolling up and + toward scrolling down, through zero, so each name
+ * says what the next press does.
+ */
+function speedLabels(speed: number): { up: string; down: string } {
+  if (speed > 0) {
+    return {
+      up: speed <= AUTO_SCROLL_MIN ? 'Reverse, scroll up' : 'Slower',
+      down: 'Faster',
+    };
+  }
+  return {
+    up: 'Faster',
+    down: speed >= -AUTO_SCROLL_MIN ? 'Reverse, scroll down' : 'Slower',
+  };
+}
 // Keeps the size menu this far inside the window edges.
 const EDGE = 8;
 
 /**
  * The auto-scroll controls shown over the document while auto-scroll is on: a
- * large play/pause puck fixed in the bottom-right corner, with small slower
- * and faster buttons under it. Esc or the toolbar's auto-scroll button stops
+ * large play/pause puck fixed in the bottom-right corner, with small − and +
+ * buttons under it. − slows a downward scroll and, past the slowest speed,
+ * scrolls up; + does the reverse. Holding either keeps stepping, but a held
+ * press stops at the slowest speed rather than reversing: reversing always
+ * takes a fresh press. Esc or the toolbar's auto-scroll button stops
  * it. Right-clicking anywhere on the controls
  * (or Shift+F10 / the Menu key on one of them) opens a menu to pick their
  * size. Sized as pointer targets, not toolbar icons, so the whole feature can
@@ -45,11 +77,53 @@ function AutoScrollBar() {
   const returnFocus = useRef<HTMLElement | null>(null);
 
   const s = layout.scale;
+  const labels = speedLabels(speed);
   const store = () => useViewerStore.getState();
   const adjust = (factor: number) => {
     store().adjustAutoScrollSpeed(factor);
-    announce(`Auto-scroll speed ${store().autoScrollSpeed} pixels per second`);
+    announce(`Auto-scroll speed ${describeAutoScrollSpeed(store().autoScrollSpeed)}`);
   };
+
+  // Press and hold − or +. The press itself steps on pointerdown, so the click
+  // that follows a mouse or touch press is ignored (it has a detail count);
+  // a keyboard click (Enter or Space, detail 0) steps through onClick.
+  const holdTimer = useRef<number | undefined>(undefined);
+  const stopHold = useCallback(() => {
+    window.clearTimeout(holdTimer.current);
+    holdTimer.current = undefined;
+  }, []);
+  useEffect(() => stopHold, [stopHold]);
+  // One held step; false when the hold should end (a limit, or the crossing).
+  const heldStep = (factor: number): boolean => {
+    const before = store().autoScrollSpeed;
+    const next = stepAutoScrollSpeed(before, factor);
+    if (next === before || Math.sign(next) !== Math.sign(before)) return false;
+    adjust(factor);
+    return true;
+  };
+  const startHold = (e: ReactPointerEvent<HTMLButtonElement>, factor: number) => {
+    if (e.button !== 0) return;
+    stopHold();
+    // Keep receiving pointerup even if the pointer drifts off the button.
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    adjust(factor);
+    const tick = (delay: number) => {
+      holdTimer.current = window.setTimeout(() => {
+        if (heldStep(factor)) tick(HOLD_INTERVAL);
+        else stopHold();
+      }, delay);
+    };
+    tick(HOLD_DELAY);
+  };
+  const holdProps = (factor: number) => ({
+    onPointerDown: (e: ReactPointerEvent<HTMLButtonElement>) => startHold(e, factor),
+    onPointerUp: stopHold,
+    onPointerCancel: stopHold,
+    onLostPointerCapture: stopHold,
+    onClick: (e: ReactMouseEvent<HTMLButtonElement>) => {
+      if (e.detail === 0) adjust(factor);
+    },
+  });
 
   const closeMenu = useCallback((refocus: boolean) => {
     setMenu(null);
@@ -178,22 +252,22 @@ function AutoScrollBar() {
         <button
           type="button"
           className="folio-autoscroll__btn folio-autoscroll__btn--small"
-          aria-label="Slower"
-          title="Slower (↓ or −)"
-          disabled={speed <= AUTO_SCROLL_MIN}
-          onClick={() => adjust(1 / SPEED_STEP)}
+          aria-label={labels.up}
+          title={`${labels.up} (↓ or −)`}
+          disabled={speed <= -AUTO_SCROLL_MAX}
+          {...holdProps(1 / SPEED_STEP)}
         >
-          <Icon name="minus" size={Math.round(18 * s)} />
+          <Icon name="minus" size={Math.round(28 * s)} />
         </button>
         <button
           type="button"
           className="folio-autoscroll__btn folio-autoscroll__btn--small"
-          aria-label="Faster"
-          title="Faster (↑ or +)"
+          aria-label={labels.down}
+          title={`${labels.down} (↑ or +)`}
           disabled={speed >= AUTO_SCROLL_MAX}
-          onClick={() => adjust(SPEED_STEP)}
+          {...holdProps(SPEED_STEP)}
         >
-          <Icon name="plus" size={Math.round(18 * s)} />
+          <Icon name="plus" size={Math.round(28 * s)} />
         </button>
       </div>
       {menu && (
