@@ -272,6 +272,19 @@ export function PdfViewer() {
     const container = containerRef.current;
     if (!autoScroll || !container) return;
 
+    // Starting with no room to go the current way (scrolling up from the top,
+    // or down from the end) would switch straight back off, taking the
+    // controls with it before they could be used: start the way there is room.
+    const startMax = container.scrollHeight - container.clientHeight;
+    if (startMax > 0.5) {
+      const startSpeed = useViewerStore.getState().autoScrollSpeed;
+      if (startSpeed < 0 && container.scrollTop <= 0.5) {
+        useViewerStore.getState().setAutoScrollSpeed(-startSpeed);
+      } else if (startSpeed > 0 && container.scrollTop >= startMax - 0.5) {
+        useViewerStore.getState().setAutoScrollSpeed(-startSpeed);
+      }
+    }
+
     let raf = 0;
     let last = 0;
     let pos = container.scrollTop; // float scroll position we own between frames

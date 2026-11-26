@@ -374,6 +374,11 @@ kbd {
   position: fixed;
   z-index: 61;
   min-width: 200px;
+  /* Never taller than the window (less the 8px clamp margin each side); a
+     short window scrolls the menu instead of hiding its last rows. */
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  box-sizing: border-box;
   padding: 4px;
   background: var(--folio-surface);
   border: 1px solid var(--folio-border);
