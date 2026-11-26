@@ -9,18 +9,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **Bigger auto-scroll controls.** While auto-scroll is on, a large round
-  play/pause button sits in the bottom-right corner of the document. A
-  chevron beside it opens a panel above them with slower, faster and stop buttons, the
-  current speed, and S, M, L and XL buttons for the size of the controls. The
-  panel opens and closes only when you click the chevron, never on hover or a
-  timer, and wraps (then scrolls) in a small window. Space pauses and resumes
-  too. Folio remembers the size and whether the panel was open.
+  play/pause button sits in the bottom-right corner of the document, with
+  small slower and faster buttons under it. Right-click the controls (or press
+  Shift+F10 on one of them) to pick their size: Small, Medium, Large or Extra
+  large. Nothing opens on hover or closes on a timer. Space pauses and
+  resumes; Esc or the toolbar's auto-scroll button stops. Folio remembers the
+  size.
 
 ### Changed
 
 - **No "Resumed at page" notice.** Reopening a document still takes you back
   to the page you were on, but no longer shows a notice with a **Start over**
   button about it.
+- **No "Word Count is ready" notice.** Opening a document no longer shows it.
+  The Word Count button and the Tools menu entry still count the document.
 
 ## [0.9.1] - 2026-11-23
 

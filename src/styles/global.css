@@ -969,64 +969,33 @@ kbd {
   scroll-behavior: auto;
 }
 /* Auto-scroll controls: a play/pause puck fixed in the bottom-right corner of
-   the document area, a chevron beside it, and a panel that opens above them
-   (click only: no hover, no idle timer). Big pointer targets (48px buttons,
-   84px puck) on purpose, all multiplied by --folio-as-scale. The panel wraps
-   onto more rows at full button size, and scrolls if the area is too short, so
-   no control ever leaves the area. */
+   the document area, with small slower and faster buttons under it.
+   Right-click opens a size menu; nothing opens on hover or on a timer. Big
+   pointer targets (36px buttons, 84px puck) on purpose, all multiplied by
+   --folio-as-scale. A narrow column, so it fits even a small window. */
 .folio-autoscroll {
   --s: var(--folio-as-scale, 1);
   position: absolute;
   right: 16px;
   bottom: 16px;
-  max-width: calc(100% - 32px);
-  max-height: calc(100% - 32px);
   box-sizing: border-box;
   z-index: 150;
-  /* A column: the panel above, the chevron and puck along the bottom. The
-     column shrinks the panel (which then scrolls) before anything leaves the
-     area, even at the smallest window with the sidebar open. */
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
   gap: calc(8px * var(--s));
   padding: calc(8px * var(--s));
   background: var(--folio-surface);
   border: 1px solid var(--folio-border);
-  border-radius: calc(28px * var(--s));
+  border-radius: calc(50px * var(--s));
   box-shadow: var(--folio-shadow);
   user-select: none;
 }
-.folio-autoscroll__panel {
+.folio-autoscroll__speed {
   display: flex;
-  flex: 0 1 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
-  gap: calc(8px * var(--s));
-  min-height: 0;
-  max-width: 100%;
-  overflow-y: auto;
-}
-.folio-autoscroll__base {
-  display: flex;
-  flex: none;
-  align-items: center;
   gap: calc(8px * var(--s));
 }
-/* The speed and stop buttons wrap with the size buttons as one flow. */
-.folio-autoscroll__row {
-  display: contents;
-}
-.folio-autoscroll__row[role='group'] {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: calc(8px * var(--s));
-  margin-left: calc(8px * var(--s));
-}
-.folio-autoscroll__btn,
-.folio-autoscroll__size {
+.folio-autoscroll__btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1043,8 +1012,13 @@ kbd {
     background var(--folio-transition),
     border-color var(--folio-transition);
 }
-.folio-autoscroll__btn:hover:not(:disabled),
-.folio-autoscroll__size:hover {
+/* Slower and faster are smaller than the puck; still a comfortable 36px
+   target at Medium. */
+.folio-autoscroll__btn--small {
+  width: calc(36px * var(--s));
+  height: calc(36px * var(--s));
+}
+.folio-autoscroll__btn:hover:not(:disabled) {
   background: var(--folio-surface-hover);
   border-color: var(--folio-accent);
 }
@@ -1052,8 +1026,7 @@ kbd {
   opacity: 0.4;
   cursor: default;
 }
-.folio-autoscroll__btn:focus-visible,
-.folio-autoscroll__size:focus-visible {
+.folio-autoscroll__btn:focus-visible {
   outline: 2px solid var(--folio-focus);
   outline-offset: 2px;
 }
@@ -1067,37 +1040,21 @@ kbd {
 .folio-autoscroll__play:hover:not(:disabled) {
   background: var(--folio-accent-hover);
 }
-.folio-autoscroll__speed {
-  min-width: 4.5ch;
-  padding: 0 calc(4px * var(--s));
-  text-align: center;
-  font-size: calc(1.1rem * var(--s));
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+/* The size menu opens at the pointer (fixed, so the corner box never clips
+   it), with rows tall enough to hit easily. */
+.folio-autoscroll__menu {
+  position: fixed;
+  right: auto;
+  z-index: 200;
+  min-width: 170px;
+  cursor: default;
 }
-.folio-autoscroll__speed small {
-  display: block;
-  font-size: calc(0.7rem * var(--s));
-  font-weight: 400;
-  color: var(--folio-text-muted);
-}
-.folio-autoscroll__size {
-  font-size: calc(0.95rem * var(--s));
-  font-weight: 600;
-}
-.folio-autoscroll__size[aria-pressed='true'] {
-  background: var(--folio-accent);
-  border-color: var(--folio-accent);
-  color: var(--folio-accent-contrast);
-}
-.folio-autoscroll__stop:hover:not(:disabled) {
-  border-color: var(--folio-danger);
-  color: var(--folio-danger);
+.folio-autoscroll__menu .folio-dropdown__item {
+  min-height: 40px;
+  font-size: 1rem;
 }
 @media (forced-colors: active) {
-  .folio-autoscroll__play,
-  .folio-autoscroll__size[aria-pressed='true'] {
+  .folio-autoscroll__play {
     border: 2px solid ButtonText;
   }
 }

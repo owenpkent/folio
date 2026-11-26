@@ -1,6 +1,5 @@
-// How big the auto-scroll controls are and whether their panel is open,
-// remembered across sessions. The puck itself is fixed in the corner, so there
-// is no position to store.
+// How big the auto-scroll controls are, remembered across sessions. The puck
+// is fixed in the corner, so there is no position to store.
 
 const STORAGE_KEY = 'folio.autoScrollControls';
 
@@ -17,10 +16,9 @@ const SCALE_DEFAULT: SizeScale = 1;
 
 export interface AutoScrollLayout {
   scale: SizeScale;
-  expanded: boolean;
 }
 
-const defaults = (): AutoScrollLayout => ({ scale: SCALE_DEFAULT, expanded: false });
+const defaults = (): AutoScrollLayout => ({ scale: SCALE_DEFAULT });
 
 /** The stored layout, or the default for anything missing or not valid. */
 export function readLayout(): AutoScrollLayout {
@@ -29,11 +27,11 @@ export function readLayout(): AutoScrollLayout {
     if (!raw || raw.length > 200) return defaults();
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return defaults();
-    // Older versions also stored x and y; they are ignored.
-    const { scale, expanded } = parsed as Record<string, unknown>;
+    // Older versions also stored x, y and whether a panel was open; they are
+    // ignored.
+    const { scale } = parsed as Record<string, unknown>;
     return {
       scale: SIZES.find((size) => size.scale === scale)?.scale ?? SCALE_DEFAULT,
-      expanded: typeof expanded === 'boolean' ? expanded : false,
     };
   } catch {
     return defaults();

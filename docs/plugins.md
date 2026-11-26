@@ -275,7 +275,7 @@ interface PluginUi {
 
 ## Worked example: the Word Count plugin
 
-This is a complete, self-contained plugin that registers a command and a toolbar button that runs it, and reacts when a document opens. It is the real built-in from `src/plugins/builtins/wordCount.ts`. (It also contributed a sidebar panel until that put a permanent Word Count tab in the left rail; [Adding a sidebar panel](#adding-a-sidebar-panel) below keeps that code as an illustration.)
+This is a complete, self-contained plugin that registers a command and a toolbar button that runs it. It is the real built-in from `src/plugins/builtins/wordCount.ts`. (It also contributed a sidebar panel until that put a permanent Word Count tab in the left rail; [Adding a sidebar panel](#adding-a-sidebar-panel) below keeps that code as an illustration. It also showed a "ready" toast on every document open, dropped as noise; the Hello example above shows `onDocumentOpen`.)
 
 ```ts
 // src/plugins/builtins/wordCount.ts
@@ -337,11 +337,6 @@ export const wordCountPlugin: FolioPlugin = {
       icon: 'hash',
       group: 'right',
       commandId: 'plugin.wordCount.show',
-    });
-
-    // 3) React whenever a new document opens.
-    ctx.onDocumentOpen(() => {
-      ctx.ui.showToast('Word Count is ready for this document', { kind: 'info' });
     });
   },
 };
