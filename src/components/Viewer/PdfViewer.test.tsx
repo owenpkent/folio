@@ -169,3 +169,71 @@ describe('PdfViewer scroll-to-page', () => {
     }
   });
 });
+
+describe('PdfViewer auto-scroll keys', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
+    );
+    useDocumentStore.setState({ status: 'ready' });
+    useViewerStore.setState({ numPages: 5 });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useDocumentStore.getState().reset();
+    useViewerStore.getState().reset();
+    resetPageSizes();
+  });
+
+  it('leaves arrow keys inside an open menu alone but still adjusts speed elsewhere', () => {
+    useViewerStore.getState().setAutoScroll(true);
+    render(
+      <>
+        <PdfViewer />
+        <div role="menu">
+          <button type="button" role="menuitemradio" aria-checked="true">
+            Medium
+          </button>
+        </div>
+      </>,
+    );
+    const speed = useViewerStore.getState().autoScrollSpeed;
+    const item = document.querySelector<HTMLElement>('[role="menuitemradio"]')!;
+    act(() => {
+      item.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    });
+    expect(useViewerStore.getState().autoScrollSpeed).toBe(speed);
+    act(() => {
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }),
+      );
+    });
+    expect(useViewerStore.getState().autoScrollSpeed).toBeLessThan(speed);
+  });
+
+  it('toggles pause once for a held Space, ignoring key repeats', () => {
+    useViewerStore.getState().setAutoScroll(true);
+    render(<PdfViewer />);
+    const press = (repeat: boolean) => {
+      const e = new KeyboardEvent('keydown', { key: ' ', repeat, bubbles: true, cancelable: true });
+      act(() => {
+        document.body.dispatchEvent(e);
+      });
+      return e;
+    };
+    press(false);
+    expect(useViewerStore.getState().autoScrollPaused).toBe(true);
+    const repeated = press(true);
+    press(true);
+    expect(useViewerStore.getState().autoScrollPaused).toBe(true);
+    // Repeats still don't scroll the page the browser's way.
+    expect(repeated.defaultPrevented).toBe(true);
+    press(false);
+    expect(useViewerStore.getState().autoScrollPaused).toBe(false);
+  });
+});

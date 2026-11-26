@@ -27,13 +27,17 @@ async function computeStats(): Promise<Stats | null> {
 /**
  * A small built-in plugin that demonstrates the plugin API: it contributes a
  * command and a toolbar item that runs it (which the menu bar surfaces under
- * Tools), and reacts to a document opening.
+ * Tools).
  *
  * It used to contribute a sidebar panel too, which put a permanent Word Count
  * tab in the left rail next to Thumbnails and Outline. That is a lot of
  * standing furniture for a demo, so the stats now come from the command's
  * toast. `registerSidebarPanel` is still part of the plugin API; see
  * docs/plugins.md.
+ *
+ * It also toasted "Word Count is ready for this document" on every open. That
+ * was noise on each launch and file, so it is gone; `onDocumentOpen` is still
+ * part of the plugin API.
  */
 export const wordCountPlugin: FolioPlugin = {
   id: 'app.folio.word-count',
@@ -65,10 +69,6 @@ export const wordCountPlugin: FolioPlugin = {
       icon: 'hash',
       group: 'right',
       commandId: 'plugin.wordCount.show',
-    });
-
-    ctx.onDocumentOpen(() => {
-      ctx.ui.showToast('Word Count is ready for this document', { kind: 'info' });
     });
   },
 };

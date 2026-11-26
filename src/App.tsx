@@ -10,6 +10,7 @@ import { MenuBar } from '@/components/MenuBar/MenuBar';
 import { SearchBar } from '@/components/Search/SearchBar';
 import { Sidebar } from '@/components/Sidebar/Sidebar';
 import { Toolbar } from '@/components/Toolbar/Toolbar';
+import { AutoScrollControls } from '@/components/Viewer/AutoScrollControls';
 import { PdfViewer } from '@/components/Viewer/PdfViewer';
 import { describeUnreadable, isTauri, readPathBatch } from '@/core/document/openDocument';
 import { openFromQueryParam } from '@/core/document/openFromQuery';
@@ -148,6 +149,7 @@ export function App() {
         <main id="folio-main" className="folio-main" tabIndex={-1} aria-label="Document">
           <LegacySidecarBanner />
           <PdfViewer />
+          <AutoScrollControls />
         </main>
       </div>
       {searchOpen && <SearchBar />}

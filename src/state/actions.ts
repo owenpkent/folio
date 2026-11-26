@@ -128,8 +128,6 @@ export interface LoadOptions {
    * scroll, which that resume is itself reproducing.
    */
   page?: number;
-  /** The open was not asked for by the reader, so no "Resumed" toast. */
-  silent?: boolean;
 }
 
 /**
@@ -220,19 +218,6 @@ export async function loadSourceHoldingLock(
       `Opened ${info.name}, ${info.numPages} page${info.numPages === 1 ? '' : 's'}` +
         (resumedAt ? `, resumed at page ${resumedAt}` : ''),
     );
-    if (resumedAt && !options.silent) {
-      const opened = info.fingerprint;
-      pushToast(`Resumed at page ${resumedAt}`, 'info', {
-        label: 'Start over',
-        // The toast outlives a document switch by several seconds; do not jump
-        // whatever is open by then.
-        onClick: () => {
-          if (useDocumentStore.getState().info?.fingerprint === opened) {
-            useViewerStore.getState().goToPage(1);
-          }
-        },
-      });
-    }
     // After the restore, never before: viewer.reset() above briefly puts the
     // viewer on page 1, and recording that would erase the page just read back.
     startReadingPosition(keys);

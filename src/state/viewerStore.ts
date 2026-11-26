@@ -23,6 +23,8 @@ interface ViewerState {
   handMode: boolean;
   /** Auto-scroll (teleprompter): the document scrolls down on its own. */
   autoScroll: boolean;
+  /** Auto-scroll is on but held still; play resumes from the same spot. */
+  autoScrollPaused: boolean;
   /** Auto-scroll speed in pixels per second. */
   autoScrollSpeed: number;
   /** Set when something requests a scroll-to-page; the viewer clears it. */
@@ -49,6 +51,7 @@ interface ViewerState {
   setHandMode(on: boolean): void;
   toggleAutoScroll(): void;
   setAutoScroll(on: boolean): void;
+  toggleAutoScrollPaused(): void;
   setAutoScrollSpeed(px: number): void;
   /** Multiply the current speed (e.g. 1.3 to speed up, 1/1.3 to slow down). */
   adjustAutoScrollSpeed(factor: number): void;
@@ -93,6 +96,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   aboutModalOpen: false,
   handMode: false,
   autoScroll: false,
+  autoScrollPaused: false,
   autoScrollSpeed: AUTO_SCROLL_DEFAULT,
   pendingScrollPage: null,
   renderNonce: 0,
@@ -132,8 +136,10 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   setAboutModalOpen: (aboutModalOpen) => set({ aboutModalOpen }),
   toggleHandMode: () => set((s) => ({ handMode: !s.handMode })),
   setHandMode: (handMode) => set({ handMode }),
-  toggleAutoScroll: () => set((s) => ({ autoScroll: !s.autoScroll })),
-  setAutoScroll: (autoScroll) => set({ autoScroll }),
+  // Turning auto-scroll on or off always starts it playing, never paused.
+  toggleAutoScroll: () => set((s) => ({ autoScroll: !s.autoScroll, autoScrollPaused: false })),
+  setAutoScroll: (autoScroll) => set({ autoScroll, autoScrollPaused: false }),
+  toggleAutoScrollPaused: () => set((s) => ({ autoScrollPaused: !s.autoScrollPaused })),
   setAutoScrollSpeed: (px) => set({ autoScrollSpeed: clampSpeed(px) }),
   adjustAutoScrollSpeed: (factor) =>
     set((s) => ({ autoScrollSpeed: clampSpeed(s.autoScrollSpeed * factor) })),
@@ -149,6 +155,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       signatureModalOpen: false,
       handMode: false,
       autoScroll: false,
+      autoScrollPaused: false,
       autoScrollSpeed: AUTO_SCROLL_DEFAULT,
       pendingScrollPage: null,
     }),

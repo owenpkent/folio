@@ -968,6 +968,99 @@ kbd {
 .folio-viewer.is-autoscroll {
   scroll-behavior: auto;
 }
+/* Auto-scroll controls: a play/pause puck fixed in the bottom-right corner of
+   the document area, with small slower and faster buttons under it.
+   Right-click opens a size menu; nothing opens on hover or on a timer. Big
+   pointer targets (36px buttons, 84px puck) on purpose, all multiplied by
+   --folio-as-scale. A narrow column, so it fits even a small window. */
+.folio-autoscroll {
+  --s: var(--folio-as-scale, 1);
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  box-sizing: border-box;
+  /* Above the page layers (up to 10) but below every menu (dropdowns and the
+     menu bar at 40, search at 50, the context menu at 60), so an open menu is
+     never covered or has its clicks taken by the controls. */
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(8px * var(--s));
+  padding: calc(8px * var(--s));
+  background: var(--folio-surface);
+  border: 1px solid var(--folio-border);
+  border-radius: calc(50px * var(--s));
+  box-shadow: var(--folio-shadow);
+  user-select: none;
+}
+.folio-autoscroll__speed {
+  display: flex;
+  gap: calc(8px * var(--s));
+}
+.folio-autoscroll__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: calc(48px * var(--s));
+  height: calc(48px * var(--s));
+  padding: 0;
+  border: 1px solid var(--folio-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--folio-text);
+  cursor: pointer;
+  transition:
+    background var(--folio-transition),
+    border-color var(--folio-transition);
+}
+/* Slower and faster are smaller than the puck; still a comfortable 36px
+   target at Medium. */
+.folio-autoscroll__btn--small {
+  width: calc(36px * var(--s));
+  height: calc(36px * var(--s));
+}
+.folio-autoscroll__btn:hover:not(:disabled) {
+  background: var(--folio-surface-hover);
+  border-color: var(--folio-accent);
+}
+.folio-autoscroll__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.folio-autoscroll__btn:focus-visible {
+  outline: 2px solid var(--folio-focus);
+  outline-offset: 2px;
+}
+.folio-autoscroll__play {
+  width: calc(84px * var(--s));
+  height: calc(84px * var(--s));
+  border: none;
+  background: var(--folio-accent);
+  color: var(--folio-accent-contrast);
+}
+.folio-autoscroll__play:hover:not(:disabled) {
+  background: var(--folio-accent-hover);
+}
+/* The size menu opens at the pointer (fixed, so the corner box never clips
+   it), with rows tall enough to hit easily. */
+.folio-autoscroll__menu {
+  position: fixed;
+  right: auto;
+  z-index: 200;
+  min-width: 170px;
+  cursor: default;
+}
+.folio-autoscroll__menu .folio-dropdown__item {
+  min-height: 40px;
+  font-size: 1rem;
+}
+@media (forced-colors: active) {
+  .folio-autoscroll__play {
+    border: 2px solid ButtonText;
+  }
+}
 .folio-pages {
   display: flex;
   flex-direction: column;
