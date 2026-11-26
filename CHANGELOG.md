@@ -6,6 +6,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Auto-scroll can scroll up.** Keep pressing **−** on the auto-scroll
+  controls (or the Down arrow) past the slowest speed and the document starts
+  scrolling up, faster with each press; **+** slows it and goes back to
+  scrolling down. Scrolling up stops on its own at the top of the document.
+- **Hold − or + to keep changing the speed.** After half a second, a held
+  button keeps stepping until you let go. A held press stops at the slowest
+  speed rather than reversing; press again to reverse.
+- **Auto-scroll in the right-click menu.** Right-click the document to turn
+  auto-scroll on or off.
+
+### Changed
+
+- **Bigger − and + on the auto-scroll controls:** 56 pixels at Medium, up from 36.
+
+### Removed
+
+- **The auto-scroll speed slider in the toolbar.** It could not show which way
+  the document was scrolling; the − and + on the auto-scroll controls (and the
+  arrow keys) set the speed instead.
+
 ## [1.0.0] - 2026-11-26
 
 ### Added

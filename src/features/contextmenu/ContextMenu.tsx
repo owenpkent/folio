@@ -71,13 +71,17 @@ export function ContextMenu() {
   const close = useContextMenu((s) => s.closeMenu);
 
   const handMode = useViewerStore((s) => s.handMode);
+  const autoScroll = useViewerStore((s) => s.autoScroll);
   const setHandMode = useViewerStore((s) => s.setHandMode);
   const hasDoc = useDocumentStore((s) => s.status === 'ready');
 
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
 
-  // Keep the menu on-screen: clamp against its measured size once rendered.
+  // Keep the menu on-screen: clamp against its measured size once rendered,
+  // and again when the address row arrives (it lands after the menu opens and
+  // makes it taller). CSS caps the height to the window, so it scrolls rather
+  // than running off a short window.
   useLayoutEffect(() => {
     if (!open) return;
     const el = menuRef.current;
@@ -88,7 +92,7 @@ export function ContextMenu() {
       x: Math.max(pad, Math.min(x, window.innerWidth - width - pad)),
       y: Math.max(pad, Math.min(y, window.innerHeight - height - pad)),
     });
-  }, [open, x, y]);
+  }, [open, x, y, target]);
 
   useEffect(() => {
     if (!open) return;
@@ -124,6 +128,14 @@ export function ContextMenu() {
       icon: 'hand',
       checked: handMode,
       onSelect: () => setHandMode(true),
+    },
+    {
+      kind: 'item',
+      label: 'Auto-scroll',
+      icon: 'auto-scroll',
+      checked: autoScroll,
+      disabled: !hasDoc,
+      onSelect: () => run('view.toggleAutoScroll'),
     },
     { kind: 'separator' },
     {

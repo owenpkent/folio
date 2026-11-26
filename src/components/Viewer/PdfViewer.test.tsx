@@ -237,3 +237,99 @@ describe('PdfViewer auto-scroll keys', () => {
     expect(useViewerStore.getState().autoScrollPaused).toBe(false);
   });
 });
+
+describe('PdfViewer auto-scroll direction at the ends', () => {
+  let frames: FrameRequestCallback[] = [];
+  let top = 0;
+
+  /** Runs every queued frame at time `ts`. */
+  const frame = (ts: number) => {
+    const queued = frames;
+    frames = [];
+    act(() => {
+      for (const cb of queued) cb(ts);
+    });
+  };
+
+  /** Gives the viewer a 2000px document in a 500px window, scrolled to `top`. */
+  const sizeViewer = () => {
+    const el = document.querySelector<HTMLElement>('.folio-viewer')!;
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => 2000 });
+    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => 500 });
+    Object.defineProperty(el, 'scrollTop', {
+      configurable: true,
+      get: () => top,
+      set: (v: number) => {
+        top = v;
+      },
+    });
+  };
+
+  beforeEach(() => {
+    frames = [];
+    top = 0;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
+    );
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      frames.push(cb);
+      return frames.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    useDocumentStore.setState({ status: 'ready' });
+    useViewerStore.setState({ numPages: 5 });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useDocumentStore.getState().reset();
+    useViewerStore.getState().reset();
+    resetPageSizes();
+  });
+
+  it('stops at the top, then starts downward when turned back on there', () => {
+    render(<PdfViewer />);
+    sizeViewer();
+    top = 1;
+    useViewerStore.getState().setAutoScrollSpeed(-40);
+    act(() => useViewerStore.getState().setAutoScroll(true));
+    frame(1000);
+    frame(1050);
+    expect(top).toBe(0);
+    expect(useViewerStore.getState().autoScroll).toBe(false);
+
+    act(() => useViewerStore.getState().setAutoScroll(true));
+    expect(useViewerStore.getState().autoScrollSpeed).toBe(40);
+    frame(2000);
+    frame(2050);
+    frame(2100);
+    expect(useViewerStore.getState().autoScroll).toBe(true);
+    expect(top).toBeGreaterThan(0);
+  });
+
+  it('starts upward when turned on at the end while set to scroll down', () => {
+    render(<PdfViewer />);
+    sizeViewer();
+    top = 1500;
+    useViewerStore.getState().setAutoScrollSpeed(40);
+    act(() => useViewerStore.getState().setAutoScroll(true));
+    expect(useViewerStore.getState().autoScrollSpeed).toBe(-40);
+    frame(1000);
+    frame(1050);
+    expect(useViewerStore.getState().autoScroll).toBe(true);
+    expect(top).toBeLessThan(1500);
+  });
+
+  it('keeps the direction when there is room to go that way', () => {
+    render(<PdfViewer />);
+    sizeViewer();
+    top = 700;
+    useViewerStore.getState().setAutoScrollSpeed(-40);
+    act(() => useViewerStore.getState().setAutoScroll(true));
+    expect(useViewerStore.getState().autoScrollSpeed).toBe(-40);
+  });
+});

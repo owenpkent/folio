@@ -10,7 +10,7 @@ import {
 } from '@/state/documentMutationStore';
 import { useDocumentStore } from '@/state/documentStore';
 import { focusViewer } from '@/state/viewerElement';
-import { AUTO_SCROLL_MAX, AUTO_SCROLL_MIN, useViewerStore } from '@/state/viewerStore';
+import { useViewerStore } from '@/state/viewerStore';
 import { COMPACT_VIEWPORT_QUERY, NARROW_VIEWPORT_QUERY } from '@/theme/breakpoints';
 import {
   DARK_SCHEME_LABELS,
@@ -31,14 +31,6 @@ const run = (id: string) => commandRegistry.execute(id);
 const SCHEME_ORDER: DarkScheme[] = ['night', 'green', 'amber'];
 const THEME_ORDER: UiTheme[] = ['light', 'dark', 'system'];
 
-// The auto-scroll slider is geometric, not linear: equal slider travel is equal
-// *ratio* of speed change, so the slow end (where fine control matters) gets as
-// much of the track as the fast end. Position runs 0..1.
-const speedToSlider = (speed: number): number =>
-  Math.log(speed / AUTO_SCROLL_MIN) / Math.log(AUTO_SCROLL_MAX / AUTO_SCROLL_MIN);
-const sliderToSpeed = (pos: number): number =>
-  AUTO_SCROLL_MIN * (AUTO_SCROLL_MAX / AUTO_SCROLL_MIN) ** pos;
-
 /** The top application toolbar. */
 export function Toolbar() {
   const hasDoc = useDocumentStore((s) => s.status === 'ready');
@@ -49,8 +41,6 @@ export function Toolbar() {
   const sidebarOpen = useViewerStore((s) => s.sidebarOpen);
   const handMode = useViewerStore((s) => s.handMode);
   const autoScroll = useViewerStore((s) => s.autoScroll);
-  const autoScrollSpeed = useViewerStore((s) => s.autoScrollSpeed);
-  const setAutoScrollSpeed = useViewerStore((s) => s.setAutoScrollSpeed);
   const goToPage = useViewerStore((s) => s.goToPage);
   const theme = useThemeStore((s) => s.theme);
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme);
@@ -345,23 +335,6 @@ export function Toolbar() {
           disabled={!hasDoc}
           onClick={() => run('view.toggleAutoScroll')}
         />
-        {/* Only occupy toolbar width while auto-scroll is on; reserving a fixed
-            slot when idle pushed the right-hand tools off narrow windows. */}
-        {autoScroll && (
-          <span className="folio-toolbar__speed-slot">
-            <input
-              className="folio-toolbar__speed"
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={speedToSlider(autoScrollSpeed)}
-              aria-label={`Auto-scroll speed, ${autoScrollSpeed} pixels per second`}
-              title="Auto-scroll speed (slower ← → faster)"
-              onChange={(e) => setAutoScrollSpeed(sliderToSpeed(Number(e.target.value)))}
-            />
-          </span>
-        )}
       </div>
 
       <div className="folio-toolbar__group folio-toolbar__group--right">

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AUTO_SCROLL_MAX, AUTO_SCROLL_MIN, useViewerStore } from '@/state/viewerStore';
 import { useDocumentStore } from '@/state/documentStore';
 
-import { AutoScrollControls } from './AutoScrollControls';
+import { AutoScrollControls, HOLD_DELAY, HOLD_INTERVAL } from './AutoScrollControls';
 import { readLayout, writeLayout } from './autoScrollLayout';
 
 const KEY = 'folio.autoScrollControls';
@@ -48,7 +48,7 @@ describe('AutoScrollControls', () => {
     expect(useViewerStore.getState().autoScrollPaused).toBe(false);
   });
 
-  it('changes speed and disables slower and faster at the limits', () => {
+  it('changes speed, and disables each button only at full speed its way', () => {
     useViewerStore.getState().setAutoScroll(true);
     render(<AutoScrollControls />);
     const before = useViewerStore.getState().autoScrollSpeed;
@@ -59,8 +59,94 @@ describe('AutoScrollControls', () => {
     expect(useViewerStore.getState().autoScrollSpeed).toBeLessThan(before);
     act(() => useViewerStore.getState().setAutoScrollSpeed(AUTO_SCROLL_MAX));
     expect(screen.getByRole('button', { name: 'Faster' })).toBeDisabled();
-    act(() => useViewerStore.getState().setAutoScrollSpeed(AUTO_SCROLL_MIN));
-    expect(screen.getByRole('button', { name: 'Slower' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Slower' })).toBeEnabled();
+    act(() => useViewerStore.getState().setAutoScrollSpeed(-AUTO_SCROLL_MAX));
+    const buttons = screen.getAllByRole('button');
+    // − is now "Faster" (upward) and at its limit; + slows the upward scroll.
+    expect(buttons[1]).toHaveAccessibleName('Faster');
+    expect(buttons[1]).toBeDisabled();
+    expect(buttons[2]).toHaveAccessibleName('Slower');
+    expect(buttons[2]).toBeEnabled();
+  });
+
+  it('passes through zero: − from the slowest speed scrolls up, + brings it back', () => {
+    useViewerStore.getState().setAutoScroll(true);
+    useViewerStore.getState().setAutoScrollSpeed(AUTO_SCROLL_MIN);
+    render(<AutoScrollControls />);
+    const reverseUp = screen.getByRole('button', { name: 'Reverse, scroll up' });
+    expect(reverseUp).toBeEnabled();
+    fireEvent.click(reverseUp);
+    expect(useViewerStore.getState().autoScrollSpeed).toBe(-AUTO_SCROLL_MIN);
+    fireEvent.click(screen.getByRole('button', { name: 'Faster' }));
+    expect(useViewerStore.getState().autoScrollSpeed).toBeLessThan(-AUTO_SCROLL_MIN);
+    fireEvent.click(screen.getByRole('button', { name: 'Slower' }));
+    expect(useViewerStore.getState().autoScrollSpeed).toBe(-AUTO_SCROLL_MIN);
+    fireEvent.click(screen.getByRole('button', { name: 'Reverse, scroll down' }));
+    expect(useViewerStore.getState().autoScrollSpeed).toBe(AUTO_SCROLL_MIN);
+  });
+
+  it('keeps stepping while − or + is held, and stops on release', () => {
+    vi.useFakeTimers();
+    try {
+      useViewerStore.getState().setAutoScroll(true);
+      useViewerStore.getState().setAutoScrollSpeed(12);
+      render(<AutoScrollControls />);
+      const plus = screen.getAllByRole('button')[2];
+      fireEvent.pointerDown(plus, { button: 0, pointerId: 1 });
+      // The press itself steps once, straight away.
+      expect(useViewerStore.getState().autoScrollSpeed).toBe(16);
+      act(() => vi.advanceTimersByTime(HOLD_DELAY - 1));
+      expect(useViewerStore.getState().autoScrollSpeed).toBe(16);
+      act(() => vi.advanceTimersByTime(1));
+      expect(useViewerStore.getState().autoScrollSpeed).toBe(21);
+      act(() => vi.advanceTimersByTime(HOLD_INTERVAL));
+      expect(useViewerStore.getState().autoScrollSpeed).toBe(27);
+      fireEvent.pointerUp(plus, { button: 0, pointerId: 1 });
+      // The click a mouse press ends with does not step again.
+      fireEvent.click(plus, { detail: 1 });
+      act(() => vi.advanceTimersByTime(HOLD_INTERVAL * 10));
+      expect(useViewerStore.getState().autoScrollSpeed).toBe(27);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a held − stops at the slowest speed instead of reversing', () => {
+    vi.useFakeTimers();
+    try {
+      useViewerStore.getState().setAutoScroll(true);
+      useViewerStore.getState().setAutoScrollSpeed(12);
+      render(<AutoScrollControls />);
+      const minus = screen.getAllByRole('button')[1];
+      fireEvent.pointerDown(minus, { button: 0, pointerId: 1 });
+      act(() => vi.advanceTimersByTime(HOLD_DELAY + HOLD_INTERVAL * 20));
+      expect(useViewerStore.getState().autoScrollSpeed).toBe(AUTO_SCROLL_MIN);
+      fireEvent.pointerUp(minus, { button: 0, pointerId: 1 });
+      // A fresh press reverses.
+      fireEvent.pointerDown(minus, { button: 0, pointerId: 1 });
+      expect(useViewerStore.getState().autoScrollSpeed).toBe(-AUTO_SCROLL_MIN);
+      fireEvent.pointerUp(minus, { button: 0, pointerId: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops a hold when the pointer is cancelled, and ignores other buttons', () => {
+    vi.useFakeTimers();
+    try {
+      useViewerStore.getState().setAutoScroll(true);
+      useViewerStore.getState().setAutoScrollSpeed(12);
+      render(<AutoScrollControls />);
+      const plus = screen.getAllByRole('button')[2];
+      fireEvent.pointerDown(plus, { button: 2, pointerId: 1 });
+      expect(useViewerStore.getState().autoScrollSpeed).toBe(12);
+      fireEvent.pointerDown(plus, { button: 0, pointerId: 1 });
+      fireEvent.pointerCancel(plus, { pointerId: 1 });
+      act(() => vi.advanceTimersByTime(HOLD_DELAY + HOLD_INTERVAL * 5));
+      expect(useViewerStore.getState().autoScrollSpeed).toBe(16);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('opens a size menu on right-click with the current size checked and focused', () => {
