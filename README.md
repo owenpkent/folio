@@ -37,7 +37,7 @@ Folio rendering a two-page form PDF, in light and dark:
 - Open, render, and navigate PDFs with a continuous, lazily-rendered page view
 - Zoom (snaps to clean preset levels), fit-to-width, fit-to-page, and a live page indicator
 - Hand (pan) tool with 1:1 cursor tracking, plus middle-click drag-to-pan in any mode
-- Continuous auto-scroll (teleprompter-style), with adjustable speed and keyboard control
+- Continuous auto-scroll (teleprompter-style), with adjustable speed, keyboard control, and a large corner play/pause button with small slower and faster buttons under it (right-click it to change its size)
 - Classic application menu bar (File, Edit, View, Annotate, Sign, Tools, Help)
   with full keyboard operation; the toolbar keeps the everyday buttons
 - Acrobat-style right-click context menu for common tools and actions, including

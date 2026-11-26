@@ -65,7 +65,7 @@ These commands exist but have **no keyboard binding**; they are reachable from t
 | Fit width | `view.fitWidth` | Toolbar button / View menu |
 | Fit page | `view.fitPage` | Toolbar button / View menu |
 | Hand tool (pan to scroll) | `view.toggleHandMode` | Toolbar button / View menu |
-| Auto-scroll (continuous, teleprompter-style) | `view.toggleAutoScroll` | Toolbar button / View menu |
+| Auto-scroll (continuous, teleprompter-style) | `view.toggleAutoScroll` | Toolbar button / View menu; while it runs, the on-screen auto-scroll controls |
 | Edit text | `textedit.toggle` | Edit menu |
 | Edit images | `imageedit.toggle` | Edit menu |
 | Add text box | `edit.addText` | Edit menu |
@@ -87,7 +87,13 @@ Every one of these is reachable by keyboard through its menu item, toolbar butto
 
 Three of them — **Add text box**, **Add image**, and **Add signature** — do not act immediately: they arm [click-to-place](editing-and-ocr.md#editing-text-boxes-and-images), where the next click on a page decides where the item lands. Picking a spot that way is inherently a pointer affordance, so the mode's banner carries the keyboard path: a focusable **Place in the middle** button that drops the item centered on the current page (what the tools did before click-to-place existed), plus **Cancel**. The banner takes focus when it opens, so the button is one key away rather than a full tab traversal, and `Escape` cancels from anywhere. Nothing is placed until one of those two is chosen.
 
-Once auto-scroll is running, it has its own keyboard controls rather than a fixed chord: `Esc` stops it, `ArrowUp`/`+` speeds it up, and `ArrowDown`/`-` slows it down. It also pauses automatically while hand-panning and stops on its own at the end of the document.
+Once auto-scroll is running, it has its own keyboard controls rather than a fixed chord: `Space` pauses and resumes it, `Esc` stops it, `ArrowUp`/`+` speeds it up, and `ArrowDown`/`-` slows it down. `Space` is left alone when a button or link has focus, since there it is that control's own click, and it toggles once per press: key repeats from a held `Space` are ignored. Turning auto-scroll on always starts it playing, never paused. It also holds still automatically while hand-panning and stops on its own at the end of the document.
+
+While auto-scroll is on, an **Auto-scroll controls** toolbar sits in the bottom-right corner of the document as large pointer targets: a round **Play**/**Pause** button (84px at the default size) with **Slower** and **Faster** (36px) under it. That is the whole control: no speed readout, no stop button and nothing that expands, so there is nothing to open before you can act. `Esc` or the toolbar's auto-scroll button stops auto-scroll. Nothing appears on hover or vanishes on a timer, so nothing moves under a pointer that is hard to hold still. It sits below every menu, so it never covers an open menu or takes its clicks.
+
+Right-click anywhere on the controls to choose their size: a menu of **Small**, **Medium**, **Large** and **Extra large** (0.75, 1, 1.5 and 2 times) opens at the pointer. From the keyboard, focus one of the buttons and press `Shift+F10` or the Menu key. The menu is a real `role="menu"` of `menuitemradio` items: the current size is checked and focused when it opens, `ArrowUp`/`ArrowDown`, `Home` and `End` move between sizes, `Enter` or `Space` picks one, and `Esc` or `Tab` closes it and returns focus to where it opened from. `Esc` there closes the menu only; it does not also stop auto-scroll, and the arrow keys move in the menu rather than changing speed.
+
+Every control is a real button, so the toolbar is also reachable by `Tab`; each tooltip names the keyboard equivalent, and **Slower** and **Faster** disable at the speed limits. Changes are announced to screen readers: "Auto-scroll paused", "Auto-scroll playing", "Auto-scroll speed N pixels per second", "Auto-scroll off", and "Auto-scroll controls Large" (and so on) for a size change. The size is remembered in local storage (`folio.autoScrollControls`) and validated when read.
 
 The hand tool, middle-mouse-button page panning (available in any mode, not just with the hand tool on), and the right-click context menu are pointer-only affordances layered on top of the command system, not replacements for it. The context menu duplicates a subset of the command set (select/hand tool, copy, highlight, add comment/text box/image/check mark/signature, find, save, save a copy) for convenience; every one of those remains reachable from the menu bar, the toolbar, and the keyboard as usual, so nothing the context menu offers is keyboard-inaccessible.
 
