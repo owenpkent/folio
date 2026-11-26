@@ -6,12 +6,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-26
+
 ### Added
 
 - **Auto-scroll can scroll up.** Keep pressing **−** on the auto-scroll
   controls (or the Down arrow) past the slowest speed and the document starts
   scrolling up, faster with each press; **+** slows it and goes back to
-  scrolling down. Scrolling up stops on its own at the top of the document.
+  scrolling down. Scrolling up stops on its own at the top of the document,
+  and turning auto-scroll on at the top (or at the end) starts it the way
+  there is room to go.
 - **Hold − or + to keep changing the speed.** After half a second, a held
   button keeps stepping until you let go. A held press stops at the slowest
   speed rather than reversing; press again to reverse.
@@ -21,6 +25,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - **Bigger − and + on the auto-scroll controls:** 56 pixels at Medium, up from 36.
+- **The right-click menu fits short windows.** It scrolls rather than running
+  off the bottom.
 
 ### Removed
 
@@ -1338,7 +1344,8 @@ Prepared but never published; everything below first shipped in 0.8.1.
   a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
   cargo-deny policy.
 
-[Unreleased]: https://github.com/owenpkent/folio/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/owenpkent/folio/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/owenpkent/folio/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/owenpkent/folio/compare/v0.9.1...v1.0.0
 [0.9.1]: https://github.com/owenpkent/folio/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/owenpkent/folio/compare/v0.8.3...v0.9.0
