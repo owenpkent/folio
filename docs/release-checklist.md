@@ -25,7 +25,7 @@ issue or defer the release.
       standing warning count is unmaintained/unsound advisories on transitive crates,
       most of them Tauri's Linux GTK stack, which Windows builds never compile. Treat a
       *new* warning as worth reading and any actual vulnerability as blocking.
-      As of 0.9.0 the expected set is six, none of them compiled into the
+      As of 1.0.1 the expected set is still six, none of them compiled into the
       Windows build: `glib` and `proc-macro-error` (Tauri's GTK 3 stack, #58),
       `zbus_names`, `zvariant`, `zvariant_derive` (`tauri-plugin-single-instance`'s
       `zbus` 5; they clear once the plugin ships on `zbus` 6), and `chrono`

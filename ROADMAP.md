@@ -25,7 +25,7 @@ The core viewer: open a PDF and read it comfortably, fully by keyboard, fully wi
 | Area | Deliverable | Status |
 | --- | --- | --- |
 | Open and render | Open local PDFs, render pages via PDF.js with a lazily-rendered page list | Done |
-| Navigate | Page navigation, go-to-page, continuous scroll, hand/pan tool (plus middle-click pan in any mode), and teleprompter auto-scroll (single-page mode planned) | Done |
+| Navigate | Page navigation, go-to-page, continuous scroll, hand/pan tool (plus middle-click pan in any mode), and teleprompter auto-scroll in either direction (single-page mode planned) | Done |
 | Zoom and fit | Zoom in/out (snapping to clean preset levels), fit-width, fit-page, and actual-size (per-page rotation ships as a page operation in v0.4) | Done |
 | Search | Full-text search with a results list and next/previous navigation | Done |
 | Thumbnails | Thumbnail sidebar panel for page navigation | Done |
