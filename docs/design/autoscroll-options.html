@@ -134,6 +134,7 @@
 <body>
 <main>
   <h1>Folio auto-scroll controls: design options</h1>
+  <p class="lead"><strong>Outcome:</strong> none of these shipped as drawn. Folio went with the corner play/pause button alone, small slower and faster buttons under it, and a right-click menu for size (no stop button, speed readout or expanding panel; Esc or the toolbar button stops). This page is kept as the record of the options weighed.</p>
   <p class="lead">Six ways to lay out the on-screen auto-scroll controls. Each mock below is live: press Play, change speed, change size, then switch on "Narrow / short area" to see how it copes (the area becomes 440 by 300 pixels, like a small window with the sidebar open). Mocks use Folio's dark theme; page chrome uses okstudio-style. The mocks do not handle keyboard shortcuts, only focus and Enter or Space on buttons.</p>
   <p class="lead">Failure modes found in review: the bar growing wider than the area at large sizes, clipping when the sidebar opens, the Size popup clipping in short windows, and menu arrow keys leaking to the viewer. Designs with no popup and no overflow are marked in the Pros lists.</p>
 
@@ -177,7 +178,7 @@
 
   var OPTIONS = [
     { id: 'A', title: 'Current: floating pill with Size menu', kind: 'pill-menu',
-      desc: 'As shipped: a draggable horizontal pill over the document, bottom centre. Slower, Play/Pause, Faster, speed, Stop, and a Size button that opens a popup menu. This mock includes the wrap fix: controls drop to a second row when the pill is wider than the area. Drag any empty part of the pill; double-click it to reset.',
+      desc: 'The first version: a draggable horizontal pill over the document, bottom centre. Slower, Play/Pause, Faster, speed, Stop, and a Size button that opens a popup menu. This mock includes the wrap fix: controls drop to a second row when the pill is wider than the area. Drag any empty part of the pill; double-click it to reset.',
       pros: ['Already built and familiar', 'Draggable out of the way of the text', 'Compact at Medium size'],
       cons: ['Size popup clips in short areas (try Narrow, then open Size)', 'Menu needs its own key handling (arrows leaked to the viewer)', 'Wraps to several rows at XL, covering more text', 'Size takes two clicks'] },
     { id: 'B', title: 'Floating pill with inline size buttons', kind: 'pill-seg',
