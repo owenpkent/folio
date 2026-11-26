@@ -230,7 +230,7 @@ export function Toolbar() {
   }, [toolCount]);
 
   // Re-measure after every render (catches content-width changes: the filename,
-  // the zoom readout, the auto-scroll slider appearing) and on toolbar resize.
+  // the zoom readout) and on toolbar resize.
   useLayoutEffect(() => {
     measure();
   });

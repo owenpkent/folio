@@ -18,10 +18,10 @@ native [Tauri](https://tauri.app) shell, and is designed from the first commit
 around three things Acrobat treats as afterthoughts: **accessibility**,
 **a real dark mode**, and **extensibility**.
 
-> Status: in development (v0.5). The core viewer, printing, forms, annotations
+> Status: 1.x, stable; Folio updates itself. The core viewer, printing, forms, annotations
 > that embed into a saved copy, editing, OCR, visual and cryptographic signing,
 > theming, accessibility (Section 508), and the plugin system are in
-> place. See the [roadmap](ROADMAP.md).
+> place, and development continues. See the [roadmap](ROADMAP.md).
 
 ## Screenshots
 
@@ -37,7 +37,7 @@ Folio rendering a two-page form PDF, in light and dark:
 - Open, render, and navigate PDFs with a continuous, lazily-rendered page view
 - Zoom (snaps to clean preset levels), fit-to-width, fit-to-page, and a live page indicator
 - Hand (pan) tool with 1:1 cursor tracking, plus middle-click drag-to-pan in any mode
-- Continuous auto-scroll (teleprompter-style), with adjustable speed, keyboard control, and a large corner play/pause button with small slower and faster buttons under it (right-click it to change its size)
+- Continuous auto-scroll (teleprompter-style) in either direction, with keyboard control and a large corner play/pause button with − and + under it (press − past the slowest speed to scroll up, hold either to keep stepping, and right-click the controls to change their size)
 - Classic application menu bar (File, Edit, View, Annotate, Sign, Tools, Help)
   with full keyboard operation; the toolbar keeps the everyday buttons
 - Acrobat-style right-click context menu for common tools and actions, including

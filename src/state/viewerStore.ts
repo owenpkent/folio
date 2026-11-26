@@ -75,9 +75,9 @@ export const MAX_SCALE = 8;
 const ZOOM_LEVELS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8];
 
 // Pixels per second. Skewed slow: the floor is a gentle reading crawl and even
-// the top speed is a calm auto-advance rather than a fling. The toolbar slider
-// maps its travel onto this range geometrically (see Toolbar), so the lower,
-// slower speeds get most of the slider.
+// the top speed is a calm auto-advance rather than a fling. The − and + buttons
+// and the arrow keys step it geometrically (see stepAutoScrollSpeed), so the
+// slow end, where fine control matters, gets the finer steps.
 export const AUTO_SCROLL_MIN = 4;
 export const AUTO_SCROLL_MAX = 160;
 const AUTO_SCROLL_DEFAULT = 12;
@@ -102,7 +102,7 @@ export function stepAutoScrollSpeed(speed: number, factor: number): number {
   return clampSpeed(speed / ratio);
 }
 
-/** "12 pixels per second, down", for the toolbar slider and announcements. */
+/** "12 pixels per second, down", for announcements. */
 export const describeAutoScrollSpeed = (speed: number): string =>
   `${Math.abs(speed)} pixels per second, ${speed < 0 ? 'up' : 'down'}`;
 

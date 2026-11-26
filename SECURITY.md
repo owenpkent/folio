@@ -10,15 +10,16 @@ Folio is under active development. Security fixes are provided for the latest
 released minor version. Once a new minor version ships, the previous one
 receives critical fixes only for a short transition window.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| latest `0.x` (current) | Yes                |
-| previous `0.x` minor   | Critical fixes only |
-| older `0.x` releases   | No                 |
+| Version                | Supported           |
+| ---------------------- | ------------------- |
+| latest `1.x` (current) | Yes                 |
+| previous `1.x` minor   | Critical fixes only |
+| older releases         | No                  |
 
-Pre-1.0 note: while Folio is on `0.x`, minor version bumps may include breaking
-changes. We recommend always running the latest release to receive security
-updates.
+We recommend always running the latest release to receive security updates.
+Folio updates itself on launch. The one exception is 0.9.0, which crashes as
+it starts and so cannot update: if you have it, install a current release by
+hand.
 
 ## Reporting a vulnerability
 
