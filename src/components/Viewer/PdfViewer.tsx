@@ -315,11 +315,14 @@ export function PdfViewer() {
       // Space pauses and resumes, teleprompter style. On a focused button Space
       // is that button's own click, so leave it alone there.
       if (e.key === ' ' && !el?.closest('button, a, [role="button"]')) {
+        // Holding Space repeats keydown: only the first press toggles, or a
+        // held press would pause and resume again with the key repeat.
+        e.preventDefault();
+        if (e.repeat) return;
         useViewerStore.getState().toggleAutoScrollPaused();
         announce(
           useViewerStore.getState().autoScrollPaused ? 'Auto-scroll paused' : 'Auto-scroll playing',
         );
-        e.preventDefault();
       } else if (e.key === 'Escape') {
         useViewerStore.getState().setAutoScroll(false);
         announce('Auto-scroll off');

@@ -215,4 +215,25 @@ describe('PdfViewer auto-scroll keys', () => {
     });
     expect(useViewerStore.getState().autoScrollSpeed).toBeLessThan(speed);
   });
+
+  it('toggles pause once for a held Space, ignoring key repeats', () => {
+    useViewerStore.getState().setAutoScroll(true);
+    render(<PdfViewer />);
+    const press = (repeat: boolean) => {
+      const e = new KeyboardEvent('keydown', { key: ' ', repeat, bubbles: true, cancelable: true });
+      act(() => {
+        document.body.dispatchEvent(e);
+      });
+      return e;
+    };
+    press(false);
+    expect(useViewerStore.getState().autoScrollPaused).toBe(true);
+    const repeated = press(true);
+    press(true);
+    expect(useViewerStore.getState().autoScrollPaused).toBe(true);
+    // Repeats still don't scroll the page the browser's way.
+    expect(repeated.defaultPrevented).toBe(true);
+    press(false);
+    expect(useViewerStore.getState().autoScrollPaused).toBe(false);
+  });
 });

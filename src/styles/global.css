@@ -979,7 +979,10 @@ kbd {
   right: 16px;
   bottom: 16px;
   box-sizing: border-box;
-  z-index: 150;
+  /* Above the page layers (up to 10) but below every menu (dropdowns and the
+     menu bar at 40, search at 50, the context menu at 60), so an open menu is
+     never covered or has its clicks taken by the controls. */
+  z-index: 20;
   display: flex;
   flex-direction: column;
   align-items: center;
