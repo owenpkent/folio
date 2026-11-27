@@ -4,8 +4,9 @@ Scope for an Android build of Folio: what it is, why it reuses the existing
 app rather than rewriting it, the work the port actually requires, and what is
 deliberately left out of the first release.
 
-This is a scoping document, not a record of shipped behaviour. Nothing in
-`docs/android.md` describes code that exists today; when the work lands, the
+This is a scoping document, not a record of shipped behaviour. It was written
+against Folio 0.5 and refreshed against 1.0.1 (2026-11-26). Nothing in
+`docs/android.md` describes Android code that exists; when the work lands, the
 sections here move into [architecture.md](architecture.md),
 [testing.md](testing.md), and [releasing.md](releasing.md), and this file
 shrinks to a pointer.
@@ -35,6 +36,11 @@ there, in ways that are easy to miss:
   `staticlib`/`cdylib`/`rlib` ("the library is what Tauri's mobile targets link
   against"), and `tauri-plugin-updater` and `tauri-plugin-single-instance` are
   already gated behind `cfg(not(any(target_os = "android", target_os = "ios")))`.
+  Tauri is at 2.12 (crate 2.12.2, `@tauri-apps/api` 2.12.4, enforced by
+  `npm run check:versions`), and the deep-link plugin is 2.6.3. The other
+  plugins in use (`dialog`, `opener`, `process`) all support Android;
+  `@tauri-apps/plugin-fs`, which the read path below needs, is not a dependency
+  yet.
 - **`run()` is already the shared entry point**, carrying
   `#[cfg_attr(mobile, tauri::mobile_entry_point)]`.
 - **Android icons already exist** under `src-tauri/icons/android/` (the full
@@ -67,12 +73,22 @@ that by touch, by keyboard, and with TalkBack.
 | Zoom and fit | Existing controls, plus pinch-to-zoom (new, see below) |
 | Search | Existing full-text search |
 | Outline and thumbnails | Existing sidebar, in its drawer layout |
+| Links | Existing in-document and external links; external ones go through the `opener` plugin, which supports Android |
+| Auto-scroll | Existing teleprompter-style scroll with its corner play/pause, slower and faster controls, and size setting (how touch changes the size is an open question) |
+| Reading position | Existing resume at the page and zoom you left, keyed by a hash of the file's bytes (the start-screen Continue button is an open question) |
 | Dark mode | Existing themes and reading schemes |
 | Accessibility | TalkBack equivalent of the screen-reader support (see below) |
 
 Explicitly **not** in the first release: annotations, in-place text and image
-editing, placed text/images/check marks, OCR, AcroForm filling, visual and
-cryptographic signatures, printing, the plugin host, and the AI layer. Each is
+editing, placed text/images/check marks, page operations (delete, reorder,
+rotate), combining PDFs, saving (and so the atomic `write_document` command),
+OCR, AcroForm filling, visual and cryptographic signatures, printing, the
+plugin host, and the AI layer. Anything that changes or builds a PDF follows
+from the read-only rule. Also left off, because there is nothing for them to
+do on a phone: the desktop-only shell features (update prompts, the crash
+screen's self-update, single-instance, "Set Folio as default PDF viewer") and
+the Chrome extension, which is a browser add-on rather than part of the app.
+Each of the excluded features is
 either desktop-shaped, memory-hungry, or both. See
 [Deferred](#deferred-and-why).
 
@@ -89,7 +105,7 @@ This is the actual work. It is smaller than a rewrite and larger than "run
 
 `pickAndReadDocument()` in `src/core/document/openDocument.ts` calls the dialog
 plugin's `open()`, then hands the result to `readPath()`, which invokes the
-Rust `read_document(path)` command. `read_document` is six lines: reject
+Rust `read_document(path)` command. `read_document` is a few lines: reject
 anything not ending in `.pdf`, then `std::fs::read`.
 
 On Android none of that holds. `open()` returns a SAF `content://` URI rather
@@ -121,14 +137,15 @@ the narrower thing will silently take the desktop branch:
 
 | Site | Consequence on Android |
 | --- | --- |
-| `commands/defaultCommands.ts:49` | Offers "Set Folio as default PDF viewer", which calls a Windows-only command |
-| `commands/defaultCommands.ts:258`, `components/MenuBar/MenuBar.tsx:329` | Offers "Check for updates" with no updater plugin registered |
-| `features/updates/checkForUpdates.ts:18` | Calls `check()`; fails silently at launch, error-toasts on the manual path |
-| `state/documentStore.ts:51` | `booting: isTauri()` waits on a launch file that arrives by a different route |
-| `components/Viewer/EmptyState.tsx:64` | Shows a desktop-shaped open affordance |
+| `file.setDefaultViewer` in `commands/defaultCommands.ts`, and the "Make Folio your default PDF viewer" button in `components/Viewer/EmptyState.tsx` | Offers a Windows-only command (`open_default_apps_settings`) |
+| `help.checkForUpdates` in `commands/defaultCommands.ts`, the Help menu item in `components/MenuBar/MenuBar.tsx`, and the About dialog | Offers "Check for updates" with no updater plugin registered |
+| `features/updates/checkForUpdates.ts` | Calls `check()`; fails silently at launch, error-toasts on the manual path |
+| `features/updates/crashUpdate.ts` (`canSelfUpdate`, used by the crash screen in `components/common/ErrorBoundary.tsx`) | Reads `__TAURI_INTERNALS__` directly, so the crash screen would offer a self-update that cannot run. It deliberately imports no app module, so it needs its own platform check |
+| `state/documentStore.ts` | `booting: isTauri()` waits on a launch file that arrives by a different route |
+| `components/Viewer/EmptyState.tsx` | Shows a desktop-shaped open affordance, and a Continue button holding a filesystem path (see open questions) |
 
 The change is to keep `isTauri()` meaning "there is a Tauri shell" and add an
-explicit platform predicate (`isDesktop()` / `isAndroid()`) for the five sites
+explicit platform predicate (`isDesktop()` / `isAndroid()`) for the sites
 above. This is small, but it is the kind of thing that produces a dead menu
 item in a store build rather than a build failure, so it belongs early.
 
@@ -143,7 +160,7 @@ extension and the `application/pdf` MIME type for the desktop installer. Adding
 
 The file then arrives as a `RunEvent::Opened`, and `lib.rs` **already has that
 handler**: it is the branch currently gated `#[cfg(target_os = "macos")]`,
-which emits `folio:open-pdf` to the window. The frontend listener in
+which emits `folio:open-pdf` to the window (wired but untested on macOS). The frontend listener in
 `features/fileopen/openFromLaunch.ts` is already waiting for that event. So the
 work is to generalise the existing `Opened` branch to Android and make its
 payload a URI rather than a path, not to build a new path.
@@ -154,8 +171,9 @@ instead.
 
 ### 4. Capabilities
 
-`src-tauri/capabilities/default.json` grants `updater:default` and points
-`$schema` at `desktop-schema.json`. `updater` is not compiled on Android, and
+`src-tauri/capabilities/default.json` grants `updater:default` (alongside
+`core`, `dialog`, `process:allow-restart`, `deep-link` and scoped `opener`
+permissions) and points `$schema` at `desktop-schema.json`. `updater` is not compiled on Android, and
 Tauri resolves the ACL at build time, so this is expected to be a **build
 failure**, not a runtime one.
 
@@ -175,7 +193,7 @@ store build. The GitHub APK does not get them for free; see
 
 ### 6. `src-tauri/gen/` is gitignored
 
-`.gitignore` currently ignores `src-tauri/gen/` wholesale. `tauri android init`
+`.gitignore` ignores `src-tauri/gen/` wholesale. `tauri android init`
 generates a full Gradle project at `src-tauri/gen/android/`, and the default
 Tauri position is that it is regenerable and can stay ignored.
 
@@ -194,13 +212,17 @@ means the decision gets made by accident, which is the bad outcome.
 The narrow-viewport layout exists, but it was built for a narrow *window*, not
 for a touch device:
 
-- **Pinch-to-zoom does not exist.** Zoom is currently buttons and keyboard.
+- **Pinch-to-zoom does not exist.** Zoom is buttons and keyboard.
 - **Touch target sizes** need auditing against WCAG 2.2 AA 2.5.8 (24x24 CSS px
   minimum), which is a release gate for this project rather than a nice-to-have.
 - **TalkBack is not VoiceOver or NVDA.** The announcer, focus management, and
   the text layer all need verifying on a real device. The existing
   screen-reader support is the reason to expect this to go well, not a reason
   to skip the check.
+- **Hover and right-click.** The context menu opens on right-click, the
+  "copy address" hint appears on hover over a link, and the auto-scroll
+  controls change size from a right-click. A touch device has none of the
+  three, so each needs a long-press or a visible equivalent.
 - **Text selection** on a touch device uses a different interaction model than
   the mouse-driven text layer assumes.
 
@@ -218,17 +240,17 @@ Accessibility is a release gate here, so this is scope, not polish.
   `bundle.android.minSdkVersion`. `compileSdk`/`targetSdk` are 36 and are not
   configurable from `tauri.conf.json` (see above).
 - `versionCode` is derived automatically as
-  `major * 1000000 + minor * 1000 + patch`, so 0.5.0 gives 5000. The four files
+  `major * 1000000 + minor * 1000 + patch`, so 1.0.1 gives 1000001. The four files
   [releasing.md](releasing.md) already asks you to keep in version sync stay the
   source of truth; Android does not add a fifth.
 - `src-tauri/deny.toml` has no `[targets]` section, so the Android targets pull
   new transitive crates (`jni`, `ndk`, and friends) into the `cargo deny`
   licence and advisory check. Expect to widen the allow-list once.
 
-CI (`.github/workflows/ci.yml`) currently runs `quality`, `fuzz`, `e2e`, and a
-matrixed `build`. Android wants an `assemble` job that compiles the four ABIs
-without signing, in the same spirit as the existing `--no-bundle` desktop
-compile.
+CI (`.github/workflows/ci.yml`) runs `quality`, `browser-extension`, `fuzz`,
+`e2e` (the Playwright suite, then again against a production build), and a
+`build` matrixed over Linux, macOS and Windows. Android wants an `assemble` job that compiles the four ABIs
+without signing, in the same spirit as the existing desktop debug build.
 
 ## Distribution
 
@@ -241,7 +263,8 @@ advantage worth not spoiling. Play delivers updates, which closes the updater
 gap for store installs.
 
 **GitHub Releases APK.** Sideloaded, in the same spirit as the Windows
-installer. Borrow the pattern from `handy/android-v2` deliberately: keep one
+installer (which is EV-signed, with a separate minisign key for the updater, see
+[releasing.md](releasing.md); neither applies to an APK). Borrow the pattern from `handy/android-v2` deliberately: keep one
 stable keystore so that every build carries the same signature and an update
 installs over the top rather than failing with a package-conflict error. Handy
 commits its keystore on the grounds that it is an identity rather than a
@@ -257,7 +280,7 @@ certificate has to account for both. That is the constraint below.
 The Chrome extension hands PDFs to the desktop app through `folio://open?url=`.
 That does not carry over to Android for free.
 
-`plugins.deep-link` currently configures only a `desktop` block. The mobile
+`plugins.deep-link` configures only a `desktop` block (the `folio` scheme). The mobile
 block is documented as domain-based App Links (a `host` plus a
 `.well-known/assetlinks.json` served from it) in the installed plugin's own
 README, while the current online documentation also lists a `scheme` field for
@@ -292,7 +315,7 @@ Not "later maybe", but "known to need work before it can ship on a phone":
 
 - **Printing.** `features/print/` rasterises the whole document under a single
   peak-bitmap budget sized for a desktop, and hands the result to
-  `window.print()`. Both the budget and the print mechanism need rethinking for
+  `window.print()`, with placed edits and signatures baked in. Both the budget and the print mechanism need rethinking for
   Android's print framework.
 - **OCR.** tesseract.js plus a self-hosted wasm core and model is heavy to
   download and heavy to run on a phone.
@@ -300,7 +323,7 @@ Not "later maybe", but "known to need work before it can ship on a phone":
   pixels of area. Those numbers were chosen for desktop; there is no documented
   Android-specific ceiling, so treat them as needing measurement on real
   devices rather than assuming they transfer.
-- **Editing, forms, and signing.** All desktop-shaped interactions (precise
+- **Editing, page operations, combining, forms, and signing.** All desktop-shaped interactions (precise
   pointer targeting, in-place editors) before they are anything else.
 - **Plugins and AI.** Out of scope until the viewer itself is solid.
 
@@ -311,8 +334,9 @@ listed here so the change is deliberate rather than an oversight discovered
 later:
 
 - **`ROADMAP.md`** frames Folio as desktop-first throughout, and its non-goals
-  section argues the browser extension is not a v1 target on that basis. A
-  shipped Android app changes that framing and needs the roadmap to say so.
+  section ("Not a hosted web app. Folio is a desktop app first") rests on that
+  framing. It already carries an Android section pointing here; a shipped
+  Android app means the rest needs to say so too.
 - **`docs/architecture.md`** opens with "Folio is a desktop PDF viewer" and
   describes the Tauri command boundary in desktop terms.
 - **`docs/getting-started.md`** covers desktop prerequisites only.
@@ -333,3 +357,11 @@ None of those edits are part of this document. They belong with the code.
 4. Phones only, or phones and tablets? A tablet layout is closer to the desktop
    one and might not want the drawer at all.
 5. Is on-device testing a manual checklist or an emulator job in CI?
+6. The start-screen Continue button stores a filesystem path. On Android that
+   would be a `content://` URI whose read permission may not survive a
+   restart. Does v1 persist the permission, hide Continue, or keep only the
+   per-file reading position (keyed by a hash of the bytes, so it needs no
+   path)?
+7. The copy-address hint, the context menu, and the auto-scroll size setting
+   all rely on hover or right-click. Which touch gesture or visible control
+   replaces each in v1, or are any of them left out?
