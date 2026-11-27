@@ -112,6 +112,19 @@ An early, unwired scaffold (Claude provider, MCP stubs) was removed in 0.8.x and
 
 **Milestone: AI GA.** Summarize, Ask, and Extract are stable and provider-agnostic, keys are stored securely, and the MCP client and server directions are generally available and opt-in.
 
+## Android
+
+A read-only Folio for Android phones and tablets, built on Tauri 2's Android target around the same React app rather than as a native rewrite. Scoped in [docs/android.md](docs/android.md).
+
+| Area | Deliverable | Status |
+| --- | --- | --- |
+| Viewer | Open, render, navigate, zoom, search, thumbnails, outline, and dark mode, from the existing app in an Android WebView | Planned |
+| Scope of v1 | Read-only: no annotations, editing, OCR, forms, signing, printing, plugins, or AI in the first release | Planned |
+| Distribution | Google Play, plus a signed APK on GitHub Releases | Planned |
+| Accessibility | TalkBack support and touch-target sizes held to the same WCAG 2.2 AA gate as the desktop app | Planned |
+
+**Milestone: Android v1.** The read-only viewer is published on both channels and passes the same accessibility gate as the desktop app.
+
 ## Non-goals
 
 Saying no keeps Folio focused. These are explicitly out of scope, at least through v1:
